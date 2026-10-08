@@ -1,5 +1,15 @@
 package app.everyday.android.ui.household
 
+import app.everyday.android.household.JoinRequestInfo
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.Button
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,6 +56,11 @@ fun MembersScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
 
     FormScaffold("Household members", onBack) {
         vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (vm.requests.isNotEmpty()) {
+            Text("Waiting to join", style = MaterialTheme.typography.titleMedium)
+            vm.requests.forEach { request -> RequestCard(request, members, vm) }
+            HorizontalDivider()
+        }
         Column {
             members.forEach { member ->
                 val isAdmin = member.id == session.adminMemberId
@@ -80,7 +95,7 @@ fun MembersScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
         AlertDialog(
             onDismissRequest = { removing = null },
             title = { Text("Remove ${member.displayName}?") },
-            text = { Text("Their phone will go back to the profile picker.") },
+            text = { Text("Their phone is signed out and goes back to the join screen.") },
             confirmButton = { TextButton(onClick = { vm.removeMember(member.id); removing = null }) { Text("Remove") } },
             dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
         )
@@ -119,4 +134,39 @@ private fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, on
         confirmButton = { TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** A phone asking to join: approve as a new member, link it to an existing member, or reject it. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RequestCard(request: JoinRequestInfo, members: List<MemberEntity>, vm: HouseholdViewModel) {
+    var linking by remember { mutableStateOf(false) }
+    Column(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(12.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(request.name, style = MaterialTheme.typography.titleMedium)
+        request.deviceLabel?.let {
+            Text("Phone: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { vm.approve(request.id, null) }, enabled = !vm.busy) { Text("Add as new") }
+            Box {
+                OutlinedButton(onClick = { linking = true }, enabled = !vm.busy && members.isNotEmpty()) { Text("This is…") }
+                DropdownMenu(expanded = linking, onDismissRequest = { linking = false }) {
+                    members.forEach { m ->
+                        DropdownMenuItem(text = { Text(m.displayName) }, onClick = { linking = false; vm.approve(request.id, m.id) })
+                    }
+                }
+            }
+            TextButton(onClick = { vm.reject(request.id) }, enabled = !vm.busy) { Text("Reject") }
+        }
+        Text(
+            "\"This is…\" links the phone to someone already in the list, e.g. a new phone or a person you added by hand.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }

@@ -4,12 +4,14 @@ import android.content.Context
 import android.os.Build
 import android.provider.Settings
 import app.everyday.android.data.ReminderRepository
+import androidx.core.content.edit
+import app.everyday.android.reminders.Notifier
 import app.everyday.android.reminders.ReminderEngine
 import java.time.ZoneId
 
 /**
- * Household membership on this phone: creating or joining the household, picking a profile,
- * keeping the member list fresh, and the admin's member management.
+ * Household membership on this phone: creating the household, asking to join and waiting for the
+ * admin's approval, keeping the member list fresh, and the admin's member management and approvals.
  */
 class HouseholdManager(
     private val context: Context,
@@ -17,6 +19,8 @@ class HouseholdManager(
     private val repository: ReminderRepository,
     private val engine: ReminderEngine,
 ) {
+    private val notifier = Notifier(context)
+
     private fun client(baseUrl: String = session.current.serverUrl) = ApiClient(baseUrl, session.current.token)
 
     suspend fun householdExists(serverUrl: String) = ApiClient(serverUrl).householdExists()
@@ -32,29 +36,12 @@ class HouseholdManager(
             adminPin = adminPin,
             deviceLabel = deviceLabel(),
         )
-        saveJoin(serverUrl, result)
-        chooseProfile(result.household.adminMemberId ?: result.household.members.first().id)
+        saveJoin(serverUrl, result, requestedName = adminName)
     }
 
-    /** Joins with the household code. The user picks their profile next. */
-    suspend fun join(serverUrl: String, householdCode: String) {
-        saveJoin(serverUrl, ApiClient(serverUrl).join(householdCode, deviceLabel()))
-    }
-
-    /**
-     * Picks whose phone this is. The first pick after joining takes over the reminders made before
-     * joining; later switches leave each profile's reminders with that profile.
-     */
-    suspend fun chooseProfile(memberId: String) {
-        if (session.current.memberId == null) repository.adoptLocalProfile(memberId)
-        session.update { it.copy(memberId = memberId) }
-        engine.recompute()
-    }
-
-    /** Lets the user switch profile: back to the picker. */
-    suspend fun clearProfile() {
-        session.update { it.copy(memberId = null) }
-        engine.recompute()
+    /** Asks to join as [name]. The phone waits for the admin's approval (see [refresh]). */
+    suspend fun join(serverUrl: String, householdCode: String, name: String) {
+        saveJoin(serverUrl, ApiClient(serverUrl).join(householdCode, name, deviceLabel()), requestedName = name)
     }
 
     /**
@@ -103,7 +90,7 @@ class HouseholdManager(
         refresh()
     }
 
-    private suspend fun saveJoin(serverUrl: String, result: JoinResult) {
+    private suspend fun saveJoin(serverUrl: String, result: JoinResult, requestedName: String) {
         session.update {
             it.copy(
                 serverUrl = serverUrl,
@@ -111,6 +98,7 @@ class HouseholdManager(
                 householdName = result.household.name,
                 adminMemberId = result.household.adminMemberId,
                 memberId = null,
+                requestedName = requestedName,
                 skippedSetup = false,
             )
         }
@@ -119,14 +107,44 @@ class HouseholdManager(
 
     private suspend fun apply(household: HouseholdInfo) {
         repository.cacheMembers(household.members.map { it.id to it.displayName })
+        val memberId = household.memberId?.takeIf { household.approved }
+        // Approved just now: reminders made on this phone before joining become this member's.
+        val newlyApproved = memberId != null && session.current.memberId != memberId
+        if (newlyApproved) repository.adoptLocalProfile(memberId!!)
         session.update { state ->
             state.copy(
                 householdName = household.name,
                 adminMemberId = household.adminMemberId,
-                // A profile removed by the admin sends this phone back to the picker.
-                memberId = state.memberId?.takeIf { id -> household.members.any { it.id == id } },
+                memberId = memberId,
+                pendingRequests = household.pendingRequestIds.size,
             )
         }
+        if (newlyApproved) engine.recompute()
+        announceRequests(household.pendingRequestIds)
+    }
+
+    /** On the admin's phone: one notification per new join request. */
+    private fun announceRequests(ids: List<String>) {
+        val prefs = context.getSharedPreferences("household", Context.MODE_PRIVATE)
+        val announced = prefs.getStringSet("announced_requests", emptySet())!!
+        val fresh = ids.filter { it !in announced }
+        if (fresh.isNotEmpty()) notifier.showJoinRequests(ids.size, session.current.householdName.orEmpty())
+        if (ids.isEmpty()) notifier.cancelJoinRequests()
+        prefs.edit { putStringSet("announced_requests", ids.toSet()) }
+    }
+
+    // Join requests (admin, with the PIN).
+
+    suspend fun joinRequests(pin: String) = client().joinRequests(pin)
+
+    suspend fun approveRequest(pin: String, id: String, memberId: String?) {
+        client().approveRequest(pin, id, memberId)
+        refresh()
+    }
+
+    suspend fun rejectRequest(pin: String, id: String) {
+        client().rejectRequest(pin, id)
+        refresh()
     }
 
     private fun deviceLabel(): String =

@@ -64,6 +64,11 @@ Design agreed 2026-10-08 (see CLAUDE.md, "Sync (Phase 4)"). Built and verified e
 - [x] Calendar shows shared reminders I've accepted (read-only, with the owner's name)
 - [ ] Deploy: `pg_dump` and a copy of the phone's database first
 
+## Since Phase 4
+- [x] Chore reminders look like chores (green, house icon); distinct member colours
+- [x] Quick chore times on the chore sheet, shown on the timetable for everyone
+- [x] Join by name with admin approval (or linking to an existing member); phones locked to their member
+
 ## Later / ideas (to discuss before building)
 - [ ] Optional per-member PIN (the admin PIN exists from Phase 2)
 - [ ] Chore rotation (assignees rotate each week automatically)

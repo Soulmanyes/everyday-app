@@ -119,6 +119,23 @@ class Notifier(private val context: Context) {
         NotificationManagerCompat.from(context).notify("INVITE:$reminderId", NOTIFICATION_ID, notification)
     }
 
+    /** On the admin's phone: someone asked to join; approving needs the PIN in member management. */
+    @SuppressLint("MissingPermission") // checked by canPost()
+    fun showJoinRequests(count: Int, householdName: String) {
+        if (!canPost()) return
+        ensureChannels()
+        val notification = NotificationCompat.Builder(context, INVITE_CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(if (count == 1) "Someone wants to join $householdName" else "$count people want to join $householdName")
+            .setContentText("Open Settings → Manage members to approve")
+            .setAutoCancel(true)
+            .setContentIntent(openApp(JOIN_TAG))
+            .build()
+        NotificationManagerCompat.from(context).notify(JOIN_TAG, NOTIFICATION_ID, notification)
+    }
+
+    fun cancelJoinRequests() = manager.cancel(JOIN_TAG, NOTIFICATION_ID)
+
     fun cancelInvite(reminderId: String) = manager.cancel("INVITE:$reminderId", NOTIFICATION_ID)
 
     fun isPersistentShowing() = manager.activeNotifications.any { it.tag == PERSISTENT_TAG }
@@ -155,6 +172,7 @@ class Notifier(private val context: Context) {
         const val NOTIFICATION_ID = 1
         const val PERSISTENT_TAG = "PERSISTENT:all"
         private const val INVITE_CHANNEL = "invites"
+        private const val JOIN_TAG = "JOIN_REQUESTS"
         private const val MAX_DONE_ACTIONS = 3
         private const val DONE_LABEL_LENGTH = 18
 

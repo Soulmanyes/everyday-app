@@ -1,5 +1,9 @@
 package app.everyday.android.ui.household
 
+import androidx.compose.material3.Surface
+import kotlinx.coroutines.delay
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -87,15 +91,20 @@ private fun WelcomeScreen(onCreate: () -> Unit, onJoin: () -> Unit, onSkip: () -
 @Composable
 private fun JoinScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
     var code by rememberSaveable { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
     var server by rememberSaveable { mutableStateOf(vm.session.value.serverUrl) }
     FormScaffold("Join household", onBack) {
-        Text("Ask whoever set up the household for the household code.", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "Ask whoever set up the household for the household code. They'll approve you before you're in.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        OutlinedTextField(name, { name = it.take(40) }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         SecretField(code, { code = it }, "Household code")
         ServerField(server) { server = it }
         vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
-            onClick = { vm.join(server, code) },
-            enabled = !vm.busy && code.isNotBlank(),
+            onClick = { vm.join(server, code, name) },
+            enabled = !vm.busy && code.isNotBlank() && name.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
         ) { Text(if (vm.busy) "Joining…" else "Join") }
     }
@@ -191,4 +200,32 @@ private fun ServerField(value: String, onChange: (String) -> Unit) {
     } else {
         TextButton(onClick = { open = true }) { Text("Change server address") }
     }
+}
+
+/** Shown after asking to join, until the admin approves (or rejects) this phone. */
+@Composable
+fun WaitingScreen(vm: HouseholdViewModel) {
+    val session by vm.session.collectAsStateWithLifecycle()
+    // Checks every 10 seconds while the screen is open; the background job also checks.
+    LaunchedEffect(Unit) {
+        while (true) {
+            vm.refresh()
+            delay(10_000)
+        }
+    }
+    // A Surface gives the screen the theme's background and text colours (dark mode too).
+    Surface(Modifier.fillMaxSize()) { Column(
+        Modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("Waiting for approval", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "Ask the admin of ${session.householdName ?: "the household"} to approve \"${session.requestedName.orEmpty()}\" " +
+                "in Settings → Manage members. This screen moves on by itself once they do.",
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+        )
+        OutlinedButton(onClick = { vm.leave {} }, enabled = !vm.busy) { Text("Cancel request") }
+    } }
 }

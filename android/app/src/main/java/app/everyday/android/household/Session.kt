@@ -15,8 +15,12 @@ data class SessionState(
     val token: String? = null,
     val householdName: String? = null,
     val adminMemberId: String? = null,
-    /** The profile chosen on this phone; null until picked. */
+    /** The member this phone belongs to; null until the admin approves it. */
     val memberId: String? = null,
+    /** The name this phone asked to join as, while waiting for approval. */
+    val requestedName: String? = null,
+    /** Join requests waiting for the admin (only known on the admin's phone). */
+    val pendingRequests: Int = 0,
     /** The user chose "Not now" on the welcome screen. */
     val skippedSetup: Boolean = false,
 ) {
@@ -42,6 +46,8 @@ class Session(context: Context) {
             putString(KEY_HOUSEHOLD, next.householdName)
             putString(KEY_ADMIN, next.adminMemberId)
             putString(KEY_MEMBER, next.memberId)
+            putString(KEY_REQUESTED, next.requestedName)
+            putInt(KEY_REQUESTS, next.pendingRequests)
             putBoolean(KEY_SKIPPED, next.skippedSetup)
         }
         _state.value = next
@@ -56,6 +62,8 @@ class Session(context: Context) {
         householdName = prefs.getString(KEY_HOUSEHOLD, null),
         adminMemberId = prefs.getString(KEY_ADMIN, null),
         memberId = prefs.getString(KEY_MEMBER, null),
+        requestedName = prefs.getString(KEY_REQUESTED, null),
+        pendingRequests = prefs.getInt(KEY_REQUESTS, 0),
         skippedSetup = prefs.getBoolean(KEY_SKIPPED, false),
     )
 
@@ -65,6 +73,8 @@ class Session(context: Context) {
         const val KEY_HOUSEHOLD = "household_name"
         const val KEY_ADMIN = "admin_member_id"
         const val KEY_MEMBER = "member_id"
+        const val KEY_REQUESTED = "requested_name"
+        const val KEY_REQUESTS = "pending_requests"
         const val KEY_SKIPPED = "skipped_setup"
     }
 }

@@ -27,7 +27,20 @@ import java.time.LocalDate
 
 data class Member(val id: String, val displayName: String)
 
-data class HouseholdInfo(val name: String, val adminMemberId: String?, val members: List<Member>)
+data class HouseholdInfo(
+    val name: String,
+    val adminMemberId: String?,
+    val members: List<Member>,
+    /** False while the phone waits for the admin to approve it. */
+    val approved: Boolean = true,
+    /** The member this phone belongs to, once approved. */
+    val memberId: String? = null,
+    /** Pending join requests; only sent to the admin's phone. */
+    val pendingRequestIds: List<String> = emptyList(),
+)
+
+/** A phone waiting for the admin's approval. */
+data class JoinRequestInfo(val id: String, val name: String, val deviceLabel: String?)
 
 data class JoinResult(val token: String, val household: HouseholdInfo)
 
@@ -65,8 +78,26 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
             .put("deviceLabel", deviceLabel),
     ).toJoinResult()
 
-    suspend fun join(householdCode: String, deviceLabel: String): JoinResult =
-        call("POST", "/join", JSONObject().put("householdCode", householdCode).put("deviceLabel", deviceLabel)).toJoinResult()
+    /** Asks to join as [name]. The phone stays pending until the admin approves it. */
+    suspend fun join(householdCode: String, name: String, deviceLabel: String): JoinResult = call(
+        "POST",
+        "/join",
+        JSONObject().put("householdCode", householdCode).put("name", name).put("deviceLabel", deviceLabel),
+    ).toJoinResult()
+
+    suspend fun joinRequests(pin: String): List<JoinRequestInfo> =
+        callArray("GET", "/join-requests", pin).objects().map {
+            JoinRequestInfo(it.getString("id"), it.getString("name"), it.optStringOrNull("deviceLabel"))
+        }
+
+    /** Approves a request as a new member, or as the existing member [memberId]. */
+    suspend fun approveRequest(pin: String, id: String, memberId: String?) {
+        call("POST", "/join-requests/$id/approve", JSONObject().put("memberId", memberId ?: JSONObject.NULL), pin)
+    }
+
+    suspend fun rejectRequest(pin: String, id: String) {
+        call("POST", "/join-requests/$id/reject", JSONObject(), pin)
+    }
 
     suspend fun me(): HouseholdInfo = call("GET", "/me").toHousehold()
 
@@ -138,6 +169,13 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
     }
 
     private suspend fun call(method: String, path: String, body: JSONObject? = null, adminPin: String? = null): JSONObject =
+        request(method, path, body, adminPin).let { if (it.isBlank()) JSONObject() else JSONObject(it) }
+
+    private suspend fun callArray(method: String, path: String, adminPin: String? = null): JSONArray =
+        JSONArray(request(method, path, null, adminPin))
+
+    /** Returns the response body text; throws [ApiError] for errors. */
+    private suspend fun request(method: String, path: String, body: JSONObject?, adminPin: String?): String =
         withContext(Dispatchers.IO) {
             val connection = try {
                 URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
@@ -164,7 +202,7 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
                         ?: "The server returned an error ($status)."
                     throw ApiError(status, message)
                 }
-                if (text.isBlank()) JSONObject() else JSONObject(text)
+                text
             } catch (e: IOException) {
                 throw ApiError(0, "Couldn't reach the server. Check your internet connection.")
             } finally {
@@ -180,6 +218,9 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
             name = household.getString("name"),
             adminMemberId = household.optString("adminMemberId").takeIf { it.isNotEmpty() && it != "null" },
             members = getJSONArray("members").toMembers(),
+            approved = optString("deviceStatus", "approved") == "approved",
+            memberId = optStringOrNull("memberId"),
+            pendingRequestIds = optArray("pendingRequestIds").let { a -> (0 until a.length()).map { a.getString(it) } },
         )
     }
 

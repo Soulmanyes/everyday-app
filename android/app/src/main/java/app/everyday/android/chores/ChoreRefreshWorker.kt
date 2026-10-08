@@ -18,6 +18,8 @@ import java.util.concurrent.TimeUnit
 class ChoreRefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val app = applicationContext.app
+        // Picks up approval of this phone, new join requests (admin), and member changes.
+        app.household.refresh()
         app.chores.refresh()
         // Kept in this worker (not a new one): installed phones have it enqueued by class name.
         runCatching { app.sync.sync() }

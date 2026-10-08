@@ -211,12 +211,11 @@ private fun HouseholdSection(vm: HouseholdViewModel, onManageMembers: () -> Unit
         }
         val me = members.firstOrNull { it.id == session.memberId }
         Text(session.householdName.orEmpty(), style = MaterialTheme.typography.bodyLarge)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Profile: ${me?.displayName ?: "?"}", Modifier.weight(1f))
-            OutlinedButton(onClick = vm::switchProfile) { Text("Switch") }
-        }
+        Text("You: ${me?.displayName ?: "?"}")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onManageMembers) { Text("Manage members") }
+            OutlinedButton(onClick = onManageMembers) {
+                Text(if (session.pendingRequests > 0) "Manage members (${session.pendingRequests} waiting)" else "Manage members")
+            }
             OutlinedButton(onClick = { confirmLeave = true }) { Text("Leave") }
         }
         OutlinedButton(onClick = onOpenShared) { Text("Reminders shared with me") }

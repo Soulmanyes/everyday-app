@@ -35,7 +35,7 @@ import app.everyday.android.ui.chores.ChoresScreen
 import app.everyday.android.ui.editor.EditorScreen
 import app.everyday.android.ui.household.HouseholdViewModel
 import app.everyday.android.ui.household.MembersScreen
-import app.everyday.android.ui.household.ProfilePicker
+import app.everyday.android.ui.household.WaitingScreen
 import app.everyday.android.ui.household.SetupFlow
 import app.everyday.android.ui.settings.SettingsScreen
 import app.everyday.android.ui.shared.SharedScreen
@@ -63,7 +63,7 @@ fun EverydayApp() {
     val session by household.session.collectAsStateWithLifecycle()
     when {
         !session.joined && !session.skippedSetup -> SetupFlow(household)
-        session.joined && session.memberId == null -> ProfilePicker(household)
+        session.joined && session.memberId == null -> WaitingScreen(household)
         else -> MainNav(household)
     }
 }

@@ -12,6 +12,7 @@ import app.everyday.android.EverydayApplication
 import app.everyday.android.data.MemberEntity
 import app.everyday.android.household.ApiError
 import app.everyday.android.household.HouseholdManager
+import app.everyday.android.household.JoinRequestInfo
 import app.everyday.android.household.Session
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -54,11 +55,22 @@ class HouseholdViewModel(
     fun create(serverUrl: String, setupCode: String, householdName: String, householdCode: String, adminName: String, pin: String) =
         run({ manager.create(serverUrl.trim(), setupCode.trim(), householdName, householdCode, adminName, pin) })
 
-    fun join(serverUrl: String, householdCode: String) = run({ manager.join(serverUrl.trim(), householdCode) })
+    fun join(serverUrl: String, householdCode: String, name: String) = run({ manager.join(serverUrl.trim(), householdCode, name.trim()) })
 
-    fun chooseProfile(memberId: String) = run({ manager.chooseProfile(memberId) })
+    /** Join requests, loaded once the admin PIN is entered. */
+    var requests by mutableStateOf<List<JoinRequestInfo>>(emptyList())
+        private set
 
-    fun switchProfile() = run({ manager.clearProfile() })
+    fun loadRequests() = adminPin?.let { pin -> run({ requests = manager.joinRequests(pin) }) }
+
+    /** Approves as a new member ([memberId] null) or as an existing member. */
+    fun approve(id: String, memberId: String?) = adminPin?.let { pin ->
+        run({ manager.approveRequest(pin, id, memberId); requests = manager.joinRequests(pin) })
+    }
+
+    fun reject(id: String) = adminPin?.let { pin ->
+        run({ manager.rejectRequest(pin, id); requests = manager.joinRequests(pin) })
+    }
 
     fun leave(onDone: () -> Unit) = run({ manager.leave() }, onDone)
 
@@ -68,7 +80,7 @@ class HouseholdViewModel(
 
     fun refresh() = viewModelScope.launch { manager.refresh() }
 
-    fun unlockAdmin(pin: String, onUnlocked: () -> Unit) = run({ manager.verifyAdminPin(pin) }) {
+    fun unlockAdmin(pin: String, onUnlocked: () -> Unit) = run({ manager.verifyAdminPin(pin); requests = manager.joinRequests(pin) }) {
         adminPin = pin
         onUnlocked()
     }
@@ -76,6 +88,7 @@ class HouseholdViewModel(
     /** Forgets the PIN and any error from member management, so it doesn't show up on other screens. */
     fun lockAdmin() {
         adminPin = null
+        requests = emptyList()
         error = null
     }
 
