@@ -6,11 +6,11 @@ Status: `[ ]` planned · `[~]` in progress · `[x]` done
 - [x] Private GitHub repo, `CLAUDE.md`, this roadmap
 - [~] Android project skeleton (Compose, Material 3); written, not yet built (needs Android SDK)
 - [x] Ktor server skeleton with `/health`, PostgreSQL connection, Flyway V1 schema
-- [~] docker-compose stack (Postgres + API + Caddy); db + api running on the VM (arm64 image builds, V1 migration applied), Caddy waits for a domain
-- [ ] Set up a DuckDNS subdomain and point it at the Oracle VM
+- [x] docker-compose stack (Postgres + API + Caddy) running on the VM
+- [x] DuckDNS subdomain `everyday-home.duckdns.org` pointing at the VM
 - [x] Grow the VM root filesystem (now 100 GB)
-- [ ] Open ports 80/443 on the Oracle VCN security list and in firewalld on the VM
-- [ ] First deploy to the Oracle VM and confirm `https://<subdomain>/health` works
+- [x] Open ports 80/443 on the Oracle VCN security list and in firewalld on the VM
+- [x] First deploy; `https://everyday-home.duckdns.org/health` returns ok with a Let's Encrypt cert
 
 ## Phase 1: Local reminders (works offline, single phone)
 - [ ] Room database: reminders, reminder times, weekday mask

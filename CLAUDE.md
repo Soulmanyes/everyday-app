@@ -76,6 +76,8 @@ Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Tim
 - The VM also runs other services. Never stop, restart or change firewall rules for anything else on the VM without asking.
 - `V1__initial_schema.sql` **has been deployed** (2026-10-08). Schema changes from now on need a new migration file.
 - Oracle blocks ports in **two places**: the VCN security list / NSG in the console, and the VM's **firewalld**. Open 80 and 443 in both.
+- **`firewall-cmd --reload` wipes Docker's NAT rules** on this VM. Symptoms: containers get "network is unreachable", and published ports time out from outside. After any firewalld reload, run `docker compose down && docker compose up -d` in `~/everyday-app/deploy` (or `sudo systemctl restart docker`).
+- Public endpoint: `https://everyday-home.duckdns.org` (DuckDNS → the VM's public IP). If the VM's public IP ever changes, update it at duckdns.org.
 - The VM is arm64, so images must be built for `linux/arm64`. Building on the VM itself is simplest.
 - Back up Postgres with `pg_dump` on a schedule (roadmap).
 
