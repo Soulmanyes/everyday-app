@@ -47,8 +47,12 @@ deploy/    docker-compose stack for the Oracle VM (Postgres, API, Caddy for HTTP
 - **Household**: one row. Holds the household code hash, the household timezone, the admin member and the admin PIN hash.
 - **Member**: a person in the household (display name, colour). Members don't have passwords.
 - **Device**: a phone that has joined the household with the code. The server stores a hash of its token.
-- **Chore**: shared by the household. Has a title, optional notes, and the weekdays it happens on.
-- **Chore assignment**: links members to a chore. The timetable is the chores laid out by weekday with their assignees.
+- **Chore**: shared by the household. Has a title, optional notes, the weekdays it happens on, and a **completion type**:
+  - **ANY** ("one person"): done for the day once anyone marks it done. Any member can mark it done or undo it, including members who aren't assigned.
+  - **EACH** ("each person"): every assignee does their own part. A member can mark done or undo **only their own part**, and the chore is complete for the day when every assignee has done theirs.
+  - Any member can add, edit or delete chores and change assignees. No PIN is needed.
+- **Chore assignment**: links members to a chore. Every chore has **at least one** assignee. The timetable is the chores laid out by weekday with their assignees.
+- **Chore completion**: one row per (chore, member, day) saying that member did the chore on that day. ANY chores have at most one row per day. The day is the date in the **household timezone**. These rows only drive "done today": there is **no history screen**. Rows are kept (they are tiny).
 - **Reminder**: owned by one member. Has a message, a set of weekdays, an active (paused) flag, and a **mode**:
   - **timed**: a normal notification at each of **one or more times of day** (as many as the user wants). It has a **Snooze** action that uses the member's snooze length.
   - **persistent**: an ongoing notification shown during **one or more time windows** (e.g. 16:00-17:00 and 18:00-19:00), with an **"All day"** preset (00:00-23:59). It can't be swiped away. On Android 14+ the system allows swiping, so the app re-posts it while still inside the window. It has a **Done** action, which hides it until the next day. Done can also be set (and undone) from the calendar.
@@ -78,6 +82,15 @@ The Reminders tab is a **weekly calendar** (7 day columns), not a list.
 - **Samsung:** One UI can put sideloaded apps to sleep, which blocks alarms. The app offers a button to request ignoring battery optimizations. Each phone should also add the app to *Settings → Battery → Background usage limits → Never sleeping apps*.
 - Notifications fire only for reminders that the profile currently selected on that phone owns or has accepted.
 
+### Chores (Phase 3)
+
+- The server is the source of truth for chores, assignments and completions. The app keeps a **read-only cache** in Room so the timetable and chore reminders work offline. Adding, editing, deleting and marking done need a network until Phase 4.
+- The app refreshes the cache when it opens, when the Chores tab opens, after every chore write, and every 15 minutes in the background with WorkManager. **Alarms never wait for the network.** They use whatever is cached.
+- A chore reminder stops for the rest of the day once the chore counts as done **for the picked profile**: for ANY, once anyone has done it; for EACH, once that member has done their own part. It starts again the next day. `ReminderScheduler` takes the cached chore done state as an input, so this stays pure and unit-tested.
+- The editor offers a chore only if the picked profile is in its cached assignees. This is checked locally because reminders don't reach the server until Phase 4.
+- After a refresh, the app deletes the picked profile's chore reminders for chores it is no longer assigned to, and for deleted chores.
+- "Own part" means the profile picked on that phone. Profiles are honor-system, like the rest of login.
+
 ## Server rules
 
 - Store the household code, admin PIN and device tokens **only as hashes**, never in plain text. Never log them. The code and PIN use PBKDF2 (slow); device tokens are 32 random bytes and use SHA-256.
@@ -86,6 +99,8 @@ The Reminders tab is a **weekly calendar** (7 day columns), not a list.
 - Member changes also need the `X-Admin-Pin` header, checked on the server.
 - Failed code/PIN/setup-token attempts are counted globally (all traffic comes through Caddy, so per-IP limits don't work). Too many failures lock those endpoints for a while.
 - A `401` tells the app its token is no longer valid, and the app returns to the join screen.
+- Chore routes need only the device token. Chore IDs are client-generated UUIDs. Validate a non-empty title, weekdays 1..127, at least one assignee, and that every assignee is an existing member who isn't deleted. For EACH, only an assignee can have a completion. For ANY, allow at most one completion per day (checked in the API, because the type lives on `chore`). Today's date comes from `household.timezone`, never from UTC `CURRENT_DATE`.
+- Deleting a member is a soft delete, so `ON DELETE CASCADE` doesn't fire. Member deletion must also soft-delete that member's chore assignments.
 - Test against a throwaway stack, never the production database: a test household there would block the real setup.
 - Schema changes go through **Flyway migrations** in `server/src/main/resources/db/migration` (`V<n>__description.sql`). Never edit a migration that has already been deployed.
 - Configuration comes from environment variables (see `deploy/.env.example`). `.env` is gitignored and must never be committed.
@@ -95,7 +110,7 @@ The Reminders tab is a **weekly calendar** (7 day columns), not a list.
 - **The API must not be reachable over plain HTTP from the internet.** The household code is the only secret, and HTTP would leak it. Only Caddy publishes ports (80/443). Postgres and the API are not published.
 - The VM runs **Oracle Linux 9 (arm64)**, user `opc`. The code lives in `~/everyday-app` and is copied there with rsync from a dev machine (no GitHub credentials on the server). `deploy/.env` exists only on the server.
 - The VM also runs other services. Never stop, restart or change firewall rules for anything else on the VM without asking.
-- `V1__initial_schema.sql` **has been deployed** (2026-10-08). Schema changes from now on need a new migration file.
+- `V1__initial_schema.sql` and `V2__uuid_sync_schema.sql` **have been deployed** (2026-10-08). Schema changes from now on need a new migration file (Phase 3 adds `V3`).
 - Oracle blocks ports in **two places**: the VCN security list / NSG in the console, and the VM's **firewalld**. Open 80 and 443 in both.
 - **`firewall-cmd --reload` wipes Docker's NAT rules** on this VM. Symptoms: containers get "network is unreachable", and published ports time out from outside. After any firewalld reload, run `docker compose down && docker compose up -d` in `~/everyday-app/deploy` (or `sudo systemctl restart docker`).
 - Public endpoint: `https://everyday-home.duckdns.org` (DuckDNS → the VM's public IP). If the VM's public IP ever changes, update it at duckdns.org.
