@@ -4,7 +4,7 @@ Status: `[ ]` planned · `[~]` in progress · `[x]` done
 
 ## Phase 0: Foundations
 - [x] Private GitHub repo, `CLAUDE.md`, this roadmap
-- [~] Android project skeleton (Compose, Material 3); written, not yet built (needs Android SDK)
+- [x] Android project skeleton (Compose, Material 3); debug APK builds and runs on an API 37 emulator
 - [x] Ktor server skeleton with `/health`, PostgreSQL connection, Flyway V1 schema
 - [x] docker-compose stack (Postgres + API + Caddy) running on the VM
 - [x] DuckDNS subdomain `everyday-home.duckdns.org` pointing at the VM
