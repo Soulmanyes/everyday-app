@@ -69,6 +69,8 @@ Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Rem
 
 The Reminders tab is a **weekly calendar** (7 day columns), not a list.
 
+Chore reminders **look like chores**: the fixed chore green and the Chores tab's house icon (`ui/Kinds.kt`), so users can tell them from normal reminders, which use the Reminders tab's icon and are the ones that can be shared. Member dots get distinct colours in household order, with no greens.
+
 ## Android rules
 
 - **Reminders must fire with no network.** Reminders and their times live in a local Room database and are scheduled on the device with `AlarmManager`. The server is for sync, not for triggering notifications.

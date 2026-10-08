@@ -4,20 +4,24 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.everyday.android.data.ChoreCompletion
 import app.everyday.android.data.ChoreWithDetails
 import app.everyday.android.data.MemberEntity
+import app.everyday.android.ui.ChoreIcon
 import app.everyday.android.ui.formatWeekdays
 import java.time.LocalDate
 
@@ -47,7 +51,10 @@ fun ChoreSheet(
             Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(c.title, style = MaterialTheme.typography.titleLarge)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(ChoreIcon, contentDescription = null)
+                Text(c.title, style = MaterialTheme.typography.titleLarge)
+            }
             Text(
                 formatWeekdays(c.weekdays) + " · " +
                     if (c.completion == ChoreCompletion.ANY) "One person does it" else "Each person does it",

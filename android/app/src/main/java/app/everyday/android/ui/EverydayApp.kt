@@ -4,8 +4,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -43,8 +41,8 @@ import app.everyday.android.ui.settings.SettingsScreen
 import app.everyday.android.ui.shared.SharedScreen
 
 private enum class Tab(val label: String, val icon: ImageVector) {
-    Reminders("Reminders", Icons.Default.DateRange),
-    Chores("Chores", Icons.Default.Home),
+    Reminders("Reminders", ReminderIcon),
+    Chores("Chores", ChoreIcon),
 }
 
 private object Routes {

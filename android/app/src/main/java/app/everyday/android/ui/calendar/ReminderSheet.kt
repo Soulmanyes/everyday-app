@@ -9,11 +9,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.everyday.android.data.ReminderMode
@@ -21,6 +23,7 @@ import app.everyday.android.data.ReminderView
 import app.everyday.android.reminders.Window
 import app.everyday.android.reminders.isOnWeekday
 import app.everyday.android.ui.formatMinute
+import app.everyday.android.ui.kindIcon
 import app.everyday.android.ui.formatWeekdays
 import app.everyday.android.ui.formatWindow
 import java.time.LocalDate
@@ -50,7 +53,15 @@ fun ReminderSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(r.message, style = MaterialTheme.typography.titleLarge)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(kindIcon(r.choreId), contentDescription = null)
+                Text(r.message, style = MaterialTheme.typography.titleLarge)
+            }
+            Text(
+                if (r.choreId != null) "Chore reminder · only for you, can't be shared" else "Reminder · can be shared",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text(
                 (if (persistent) "Persistent" else "Timed") + " · " + formatWeekdays(r.weekdays),
                 style = MaterialTheme.typography.bodyMedium,

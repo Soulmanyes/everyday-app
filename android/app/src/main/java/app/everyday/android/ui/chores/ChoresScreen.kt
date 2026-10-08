@@ -26,6 +26,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -45,6 +47,7 @@ import app.everyday.android.data.ChoreWithDetails
 import app.everyday.android.data.MemberEntity
 import app.everyday.android.data.toCompletion
 import app.everyday.android.reminders.isOnWeekday
+import app.everyday.android.ui.choreColors
 import app.everyday.android.ui.dayShort
 import kotlinx.coroutines.delay
 import java.time.DayOfWeek
@@ -52,13 +55,18 @@ import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
 
-/** Avatar colours for members, picked by a stable hash of the member id. */
+/** Member dot colours. No greens: chore cards are green. */
 private val MEMBER_COLORS = listOf(
-    Color(0xFF1E88E5), Color(0xFF43A047), Color(0xFFE53935), Color(0xFF8E24AA),
-    Color(0xFFFB8C00), Color(0xFF00897B), Color(0xFF6D4C41), Color(0xFF3949AB),
+    Color(0xFF1E88E5), Color(0xFFE53935), Color(0xFF8E24AA), Color(0xFFFB8C00),
+    Color(0xFF6D4C41), Color(0xFF3949AB), Color(0xFFD81B60), Color(0xFF00ACC1),
 )
 
-fun memberColor(id: String): Color = MEMBER_COLORS[Math.floorMod(id.hashCode(), MEMBER_COLORS.size)]
+/** Colours handed out in household order, so members don't share one (up to 8 members). */
+private val LocalMemberColors = compositionLocalOf { emptyMap<String, Color>() }
+
+@Composable
+fun memberColor(id: String): Color =
+    LocalMemberColors.current[id] ?: MEMBER_COLORS[Math.floorMod(id.hashCode(), MEMBER_COLORS.size)]
 
 fun ChoreWithDetails.isCompleteOn(date: LocalDate) =
     ChoreRules.isComplete(chore.completion, assigneeIds, completions.map { it.toCompletion() }, date)
@@ -73,10 +81,6 @@ fun ChoresScreen(onEditChore: (String?) -> Unit, onAddReminder: (String) -> Unit
     val chores by vm.chores.collectAsStateWithLifecycle()
     val members by vm.members.collectAsStateWithLifecycle()
     val session by vm.session.collectAsStateWithLifecycle()
-    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
-    var focusedDay by rememberSaveable { mutableStateOf<DayOfWeek?>(null) }
-    BackHandler(enabled = focusedDay != null) { focusedDay = null }
-
     // Checks every minute so "today" rolls over at midnight while the screen is open.
     val today by produceState(LocalDate.now()) {
         while (true) {
@@ -97,6 +101,24 @@ fun ChoresScreen(onEditChore: (String?) -> Unit, onAddReminder: (String) -> Unit
     }
 
     val membersById = members.associateBy { it.id }
+    val colors = members.mapIndexed { i, m -> m.id to MEMBER_COLORS[i % MEMBER_COLORS.size] }.toMap()
+    CompositionLocalProvider(LocalMemberColors provides colors) { ChoresContent(vm, chores, members, membersById, session.memberId, today, onEditChore, onAddReminder) }
+}
+
+@Composable
+private fun ChoresContent(
+    vm: ChoresViewModel,
+    chores: List<ChoreWithDetails>,
+    members: List<MemberEntity>,
+    membersById: Map<String, MemberEntity>,
+    myId: String?,
+    today: LocalDate,
+    onEditChore: (String?) -> Unit,
+    onAddReminder: (String) -> Unit,
+) {
+    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var focusedDay by rememberSaveable { mutableStateOf<DayOfWeek?>(null) }
+    BackHandler(enabled = focusedDay != null) { focusedDay = null }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             vm.error?.let { message ->
@@ -136,7 +158,7 @@ fun ChoresScreen(onEditChore: (String?) -> Unit, onAddReminder: (String) -> Unit
             item = selected,
             today = today,
             membersById = membersById,
-            myId = session.memberId,
+            myId = myId,
             busy = vm.busy,
             onDismiss = { selectedId = null },
             onEdit = { selectedId = null; onEditChore(selected.chore.id) },
@@ -207,7 +229,7 @@ private fun ChoreCard(c: ChoreWithDetails, done: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Column(
         Modifier.fillMaxWidth()
-            .background(if (done) colors.surfaceVariant else colors.secondaryContainer, RoundedCornerShape(4.dp))
+            .background(if (done) colors.surfaceVariant else colors.choreColors().first, RoundedCornerShape(4.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 3.dp, vertical = 3.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -216,7 +238,7 @@ private fun ChoreCard(c: ChoreWithDetails, done: Boolean, onClick: () -> Unit) {
             (if (done) "✓ " else "") + c.chore.title,
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 11.sp),
             fontWeight = FontWeight.Medium,
-            color = if (done) colors.onSurfaceVariant else colors.onSecondaryContainer,
+            color = if (done) colors.onSurfaceVariant else colors.choreColors().second,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
@@ -258,12 +280,16 @@ private fun DayView(
             val colors = MaterialTheme.colorScheme
             Column(
                 Modifier.fillMaxWidth()
-                    .background(if (done) colors.surfaceVariant else colors.secondaryContainer, RoundedCornerShape(8.dp))
+                    .background(if (done) colors.surfaceVariant else colors.choreColors().first, RoundedCornerShape(8.dp))
                     .clickable { onSelect(c.chore.id) }
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text((if (done) "✓ " else "") + c.chore.title, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    (if (done) "✓ " else "") + c.chore.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (done) colors.onSurfaceVariant else colors.choreColors().second,
+                )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     c.assigneeIds.forEach { id -> MemberChip(id, membersById[id]?.displayName ?: "?") }
                 }

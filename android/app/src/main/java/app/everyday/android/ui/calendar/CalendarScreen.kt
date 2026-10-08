@@ -58,7 +58,9 @@ import app.everyday.android.data.ReminderMode
 import app.everyday.android.data.ReminderView
 import app.everyday.android.reminders.Window
 import app.everyday.android.reminders.isOnWeekday
+import app.everyday.android.ui.choreColors
 import app.everyday.android.ui.dayShort
+import app.everyday.android.ui.kindIcon
 import app.everyday.android.ui.formatMinute
 import app.everyday.android.ui.formatWindow
 import kotlinx.coroutines.delay
@@ -348,16 +350,19 @@ private fun ReminderBlock(
     val colors = MaterialTheme.colorScheme
     val (bg, fg) = when {
         doneToday -> colors.surfaceVariant to colors.onSurfaceVariant
+        r.reminder.choreId != null -> colors.choreColors()
         persistent -> colors.primaryContainer to colors.onPrimaryContainer
         else -> colors.tertiaryContainer to colors.onTertiaryContainer
     }
-    Box(
+    Row(
         modifier
             .alpha(if (r.reminder.active) 1f else 0.4f)
             .background(bg, RoundedCornerShape(4.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 3.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
+        Icon(kindIcon(r.reminder.choreId), contentDescription = null, tint = fg, modifier = Modifier.padding(top = 1.dp).size(9.dp))
         Text(
             (if (doneToday) "✓ " else "") + label,
             color = fg,

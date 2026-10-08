@@ -57,6 +57,9 @@ import app.everyday.android.data.RecipientStatus
 import app.everyday.android.data.ReminderMode
 import app.everyday.android.reminders.MINUTES_PER_DAY
 import app.everyday.android.reminders.Window
+import androidx.compose.foundation.shape.RoundedCornerShape
+import app.everyday.android.ui.ChoreIcon
+import app.everyday.android.ui.choreColors
 import app.everyday.android.ui.dayLetter
 import app.everyday.android.ui.formatMinute
 import app.everyday.android.ui.formatWindow
@@ -98,11 +101,18 @@ fun EditorScreen(reminderId: String?, choreId: String?, onDone: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             vm.choreTitle?.let {
-                Text(
-                    "Reminder for the chore \"$it\". It stays quiet on days the chore is already done.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                val (bg, fg) = MaterialTheme.colorScheme.choreColors()
+                Row(
+                    Modifier.fillMaxWidth().background(bg, RoundedCornerShape(8.dp)).padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(ChoreIcon, contentDescription = null, tint = fg)
+                    Text(
+                        "Chore reminder for \"$it\". Only for you, so it can't be shared. It stays quiet on days the chore is already done.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = fg,
+                    )
+                }
             }
             OutlinedTextField(
                 value = draft.message,
