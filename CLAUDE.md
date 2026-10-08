@@ -72,7 +72,10 @@ Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Tim
 ## Deployment notes (Oracle Cloud)
 
 - **The API must not be reachable over plain HTTP from the internet.** The household code is the only secret, and HTTP would leak it. Only Caddy publishes ports (80/443). Postgres and the API are not published.
-- Oracle blocks ports in **two places**: the VCN security list / NSG in the console, and the VM's own `iptables` rules (Oracle's Ubuntu images block by default). Open 80 and 443 in both.
+- The VM runs **Oracle Linux 9 (arm64)**, user `opc`. The code lives in `~/everyday-app` and is copied there with rsync from a dev machine (no GitHub credentials on the server). `deploy/.env` exists only on the server.
+- The VM also runs other services. Never stop, restart or change firewall rules for anything else on the VM without asking.
+- `V1__initial_schema.sql` **has been deployed** (2026-10-08). Schema changes from now on need a new migration file.
+- Oracle blocks ports in **two places**: the VCN security list / NSG in the console, and the VM's **firewalld**. Open 80 and 443 in both.
 - The VM is arm64, so images must be built for `linux/arm64`. Building on the VM itself is simplest.
 - Back up Postgres with `pg_dump` on a schedule (roadmap).
 
