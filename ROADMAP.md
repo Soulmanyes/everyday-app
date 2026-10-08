@@ -51,11 +51,18 @@ Built and verified end to end on an API 37 emulator against the test stack on 20
 - No history screen (decided 2026-10-08)
 
 ## Phase 4: Sync
-- [ ] Server: reminders CRUD scoped to the owning member
-- [ ] Shared general reminders: owner invites members; invitees get an in-app invite and opt in/out
-- [ ] App: offline-first sync (local Room is the source for alarms, push and pull changes)
-- [ ] Conflict rule: last write wins using `updated_at`
-- [ ] Background sync with WorkManager
+Design agreed 2026-10-08 (see CLAUDE.md, "Sync (Phase 4)").
+
+- [ ] Server V4 migration: `reminder.owner_receives`, `reminder_recipient.deleted`; store client `updated_at`
+- [ ] Server: `POST /sync` (push dirty rows, per-row validation and rejection, last write wins, full snapshot back)
+- [ ] Server: removing a member deletes their unshared reminders and their invites; shared ones live on for accepted invitees until all remove them
+- [ ] App: Room v3 migration (dirty flags, `reminder_state` keyed by reminder + member, local recipients) with a tested upgrade
+- [ ] App: pure, unit-tested merge of a snapshot into Room
+- [ ] App: sync on open, after edits, and every 15 min (same job as chores)
+- [ ] App: share a general reminder with members; owner sees Pending / Accepted / Declined; "Remind me too"
+- [ ] App: invites notification and a "Shared with me" list to opt in/out; removed member's reminders can be removed for yourself
+- [ ] Calendar shows shared reminders I've accepted (read-only, with the owner's name)
+- [ ] Deploy: `pg_dump` and a copy of the phone's database first
 
 ## Later / ideas (to discuss before building)
 - [ ] Optional per-member PIN (the admin PIN exists from Phase 2)
