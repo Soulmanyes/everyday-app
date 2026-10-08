@@ -54,18 +54,21 @@ class ReminderEngine(
             if (byId[id]?.reminder?.active != true) notifier.cancel(ReminderMode.TIMED, id)
         }
 
-        // Persistent notifications: show the visible ones, cancel the rest.
-        val quiet = prefs.getStringSet(KEY_QUIET, emptySet())!!
-        val showing = notifier.showing(ReminderMode.PERSISTENT)
-        for (id in result.visiblePersistent) {
-            if (id !in showing) byId[id]?.let { notifier.showPersistent(it.reminder, settings, quiet = id in quiet) }
+        // Persistent reminders share one notification listing all that are showing now. It alerts only
+        // when a reminder appears that wasn't in it before (not when re-posted after a swipe).
+        val shown = prefs.getStringSet(KEY_SHOWN, emptySet())!!
+        val visible = result.visiblePersistent.mapNotNull { byId[it]?.reminder }.sortedBy { it.createdAt }
+        // Persistent notifications from before they were combined into one.
+        notifier.showing(ReminderMode.PERSISTENT).filter { it != "all" }.forEach { notifier.cancel(ReminderMode.PERSISTENT, it) }
+        if (visible.isEmpty()) {
+            notifier.cancelPersistent()
+        } else {
+            notifier.showPersistent(visible, settings, alert = visible.any { it.id !in shown })
         }
-        for (id in showing - result.visiblePersistent) notifier.cancel(ReminderMode.PERSISTENT, id)
 
         prefs.edit {
             putLong(KEY_LAST_CHECK, now.toEpochMilli())
-            // Forget the "re-post quietly" flag once a reminder's window is over.
-            putStringSet(KEY_QUIET, quiet intersect result.visiblePersistent)
+            putStringSet(KEY_SHOWN, result.visiblePersistent)
         }
         scheduleAlarm(result.nextWakeAt)
     }
@@ -82,12 +85,8 @@ class ReminderEngine(
         recompute()
     }
 
-    /** The user swiped away a persistent notification: re-post it quietly if it should still show. */
-    suspend fun onPersistentDismissed(reminderId: String) {
-        val quiet = prefs.getStringSet(KEY_QUIET, emptySet())!!
-        prefs.edit { putStringSet(KEY_QUIET, quiet + reminderId) }
-        recompute()
-    }
+    /** The user swiped away the persistent notification: re-post it quietly if it should still show. */
+    suspend fun onPersistentDismissed() = recompute()
 
     fun canScheduleExactAlarms(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
@@ -113,6 +112,7 @@ class ReminderEngine(
 
     private companion object {
         const val KEY_LAST_CHECK = "last_check"
-        const val KEY_QUIET = "quiet_persistent"
+        /** Persistent reminders in the notification at the last recompute, to tell which ones are new. */
+        const val KEY_SHOWN = "shown_persistent"
     }
 }

@@ -16,8 +16,9 @@ import app.everyday.android.data.ReminderMode
 import app.everyday.android.data.SoundMode
 
 /**
- * Posts and cancels reminder notifications. Each reminder has at most one notification, identified
- * by the tag "<kind>:<reminderId>" and id [NOTIFICATION_ID].
+ * Posts and cancels reminder notifications. Each timed reminder has at most one notification,
+ * identified by the tag "TIMED:<reminderId>" and id [NOTIFICATION_ID]. Persistent reminders share
+ * one ongoing notification with the tag [PERSISTENT_TAG].
  *
  * A channel's sound can't change after it is created, so there is one channel per
  * {timed, persistent} x {sound, vibrate, silent}, and the member's setting picks the channel.
@@ -62,26 +63,47 @@ class Notifier(private val context: Context) {
     }
 
     /**
-     * Posts a persistent notification. [quiet] uses the silent channel, for re-posting after the user
-     * swiped it away (Android 14+ lets users swipe ongoing notifications) without alerting again.
+     * Posts the one ongoing notification that lists every persistent reminder showing now ([reminders],
+     * at least one). Android 16 bundles an app's notifications into one collapsed block, so separate
+     * notifications would hide all but one. Each reminder gets a Done button, up to [MAX_DONE_ACTIONS].
+     *
+     * [alert] is true when a reminder has just appeared and should make its sound. Otherwise an
+     * update stays quiet, including a re-post after the user swiped it away (Android 14+ allows that).
      */
     @SuppressLint("MissingPermission") // checked by canPost()
-    fun showPersistent(reminder: ReminderEntity, settings: MemberSettingsEntity, quiet: Boolean) {
+    fun showPersistent(reminders: List<ReminderEntity>, settings: MemberSettingsEntity, alert: Boolean) {
         if (!canPost()) return
-        val sound = if (quiet) SoundMode.SILENT else settings.persistentSound
-        val notification = NotificationCompat.Builder(context, channelId(ReminderMode.PERSISTENT, sound))
+        val showing = isPersistentShowing()
+        val sound = if (!alert && !showing) SoundMode.SILENT else settings.persistentSound
+        val single = reminders.singleOrNull()
+        val builder = NotificationCompat.Builder(context, channelId(ReminderMode.PERSISTENT, sound))
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(reminder.message)
-            .setContentText("Tap Done when finished")
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setContentIntent(openApp(reminder.id))
-            .setDeleteIntent(action(ReminderReceiver.ACTION_DISMISSED, reminder.id))
-            .addAction(0, "Done", action(ReminderReceiver.ACTION_DONE, reminder.id))
-            .build()
-        NotificationManagerCompat.from(context).notify(tag(ReminderMode.PERSISTENT, reminder.id), NOTIFICATION_ID, notification)
+            .setOnlyAlertOnce(!alert)
+            .setContentIntent(openApp(PERSISTENT_TAG))
+            .setDeleteIntent(action(ReminderReceiver.ACTION_DISMISSED, null))
+        if (single != null) {
+            builder.setContentTitle(single.message)
+                .setContentText("Tap Done when finished")
+                .addAction(0, "Done", action(ReminderReceiver.ACTION_DONE, single.id))
+        } else {
+            val style = NotificationCompat.InboxStyle()
+            reminders.forEach { style.addLine("• ${it.message}") }
+            if (reminders.size > MAX_DONE_ACTIONS) style.setSummaryText("Open the app to mark the rest done")
+            builder.setContentTitle("${reminders.size} reminders")
+                .setContentText(reminders.joinToString(", ") { it.message })
+                .setStyle(style)
+            reminders.take(MAX_DONE_ACTIONS).forEach {
+                builder.addAction(0, "Done: ${it.message.take(DONE_LABEL_LENGTH)}", action(ReminderReceiver.ACTION_DONE, it.id))
+            }
+        }
+        NotificationManagerCompat.from(context).notify(PERSISTENT_TAG, NOTIFICATION_ID, builder.build())
     }
+
+    fun isPersistentShowing() = manager.activeNotifications.any { it.tag == PERSISTENT_TAG }
+
+    fun cancelPersistent() = manager.cancel(PERSISTENT_TAG, NOTIFICATION_ID)
 
     /** Reminder ids that currently have a notification of [mode] showing. */
     fun showing(mode: ReminderMode): Set<String> {
@@ -95,22 +117,25 @@ class Notifier(private val context: Context) {
 
     fun cancel(mode: ReminderMode, reminderId: String) = manager.cancel(tag(mode, reminderId), NOTIFICATION_ID)
 
-    private fun openApp(reminderId: String): PendingIntent = PendingIntent.getActivity(
+    private fun openApp(key: String): PendingIntent = PendingIntent.getActivity(
         context,
-        reminderId.hashCode(),
+        key.hashCode(),
         Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
-    private fun action(action: String, reminderId: String): PendingIntent = PendingIntent.getBroadcast(
+    private fun action(action: String, reminderId: String?): PendingIntent = PendingIntent.getBroadcast(
         context,
-        (action + reminderId).hashCode(),
+        (action + reminderId.orEmpty()).hashCode(),
         Intent(context, ReminderReceiver::class.java).setAction(action).putExtra(ReminderReceiver.EXTRA_ID, reminderId),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
     companion object {
         const val NOTIFICATION_ID = 1
+        const val PERSISTENT_TAG = "PERSISTENT:all"
+        private const val MAX_DONE_ACTIONS = 3
+        private const val DONE_LABEL_LENGTH = 18
 
         fun tag(mode: ReminderMode, reminderId: String) = "${mode.name}:$reminderId"
 

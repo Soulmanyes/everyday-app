@@ -20,7 +20,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 when (intent.action) {
                     ACTION_SNOOZE -> id?.let { engine.snooze(it) }
                     ACTION_DONE -> id?.let { onDone(context, it) }
-                    ACTION_DISMISSED -> id?.let { engine.onPersistentDismissed(it) }
+                    ACTION_DISMISSED -> engine.onPersistentDismissed()
                     // ACTION_ALARM, boot, time and timezone changes, app updates, exact-alarm permission changes.
                     else -> engine.recompute()
                 }

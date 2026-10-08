@@ -77,6 +77,7 @@ The Reminders tab is a **weekly calendar** (7 day columns), not a list.
 - Recomputing must handle **"now" falling inside a window**, and post that window's notification immediately.
 - Done and snooze state are stored in Room, not only in alarms, so they survive reboots.
 - Local IDs are client-generated UUID strings (offline-first sync). Entities carry `ownerMemberId`, `updatedAt` and a soft-delete flag. Settings are keyed by member ID. Phase 1 uses one default local member until login exists (Phase 2).
+- **All persistent reminders showing at once share one ongoing notification** that lists them, with a Done button for each (up to 3; the rest are marked done in the app). Android 16 bundles an app's separate notifications into one collapsed block, even with a group per reminder (tried on the Phone, 2026-10-08), so separate notifications would hide all but one. The combined notification alerts only when a reminder newly appears in it.
 - Notification channels can't change their sound after creation. There are six channels, {timed, persistent} x {sound, vibrate, silent}, and the member's setting picks which one to use.
 - Room schemas are exported to `android/app/schemas/` and committed. Every Room version bump needs a tested migration, so nobody loses reminders.
 - **Samsung:** One UI can put sideloaded apps to sleep, which blocks alarms. The app offers a button to request ignoring battery optimizations. Each phone should also add the app to *Settings → Battery → Background usage limits → Never sleeping apps*.
