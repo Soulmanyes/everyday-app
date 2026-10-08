@@ -27,11 +27,12 @@ Verified on an API 37 emulator on 2026-10-08. Not yet tested on a real Samsung p
 - [x] Calendar readability: tap a day header for a full-width day view with times on the blocks
 
 ## Phase 2: Household and login
-- [ ] Server: create a household (one-time setup command) and set the household code
-- [ ] Server: `POST /join` with the household code, which returns a device token
-- [ ] Server: members CRUD
-- [ ] App: join screen (server URL + household code), store the token securely
-- [ ] App: profile picker on launch, remember the last profile
+- [ ] Server V2 migration: rebuild the (empty) V1 tables with UUID ids, sync fields (`updated_at`, `deleted`), reminder modes/windows/state, member settings, admin member + PIN
+- [ ] Server: `POST /household` (one-time setup token, singleton), `POST /join`, `GET /me`, members CRUD behind the admin PIN, failed-attempt lockout
+- [ ] App: welcome screen (create household / join / not now), join with household code, create household flow
+- [ ] App: profile picker, remembered per phone, switch in Settings; existing reminders move to the picked profile
+- [ ] App: admin member management (PIN), leave household, 401 returns to join
+- [ ] Production: deploy V2, set `SETUP_TOKEN`, owner creates the household from their phone
 
 ## Phase 3: Chore timetable
 - [ ] Server: chores and chore assignments CRUD
@@ -45,11 +46,10 @@ Verified on an API 37 emulator on 2026-10-08. Not yet tested on a real Samsung p
 - [ ] Shared general reminders: owner invites members; invitees get an in-app invite and opt in/out
 - [ ] App: offline-first sync (local Room is the source for alarms, push and pull changes)
 - [ ] Conflict rule: last write wins using `updated_at`
-- [ ] Server V2 migration: reminder mode, windows, done/snooze log, member settings, UUID ids (V1 is deployed and predates the Phase 1 design)
 - [ ] Background sync with WorkManager
 
 ## Later / ideas (to discuss before building)
-- [ ] Optional per-member PIN
+- [ ] Optional per-member PIN (the admin PIN exists from Phase 2)
 - [ ] Chore rotation (assignees rotate each week automatically)
 - [ ] Push notification when someone changes the chore timetable (needs FCM or ntfy)
 - [ ] Home-screen widget: today's chores and the next reminder

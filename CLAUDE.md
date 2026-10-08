@@ -34,14 +34,17 @@ deploy/    docker-compose stack for the Oracle VM (Postgres, API, Caddy for HTTP
 |---|---|
 | App | Native Android, Kotlin, Jetpack Compose, Material 3. `minSdk 28` (Android 9): the oldest household phone runs Android 9. |
 | Users | One household, several members |
-| Login | **Household code + profile picker.** A phone enters the shared household code once and receives a device token. After that, anyone opens the app and taps their profile, with no password. Optional per-member PIN is a roadmap item. |
+| Login | **Household code + profile picker.** A phone enters the shared household code once and receives a device token. The person picks their profile once per phone (switchable in Settings), with no password. |
+| Household setup | The **first phone creates the household** (name, household code, admin name, admin PIN), using a one-time `SETUP_TOKEN` from the server's `.env`. The server allows exactly one household. |
+| Members | Only the **admin** (the household's creator) adds, renames or removes members, and every such request must include the **admin PIN**, which the server checks. The admin can't be removed. |
+| Joining | Reminders made on a phone before it joined move to the profile picked on that phone. |
 | Backend | Ktor (Kotlin) REST API + PostgreSQL, both in Docker on an Oracle Cloud **Ampere A1 (arm64)** VM |
 | HTTPS | Caddy reverse proxy with automatic Let's Encrypt certificates. The owner has **no domain**, so the plan is a free DuckDNS subdomain. |
 | Repo | Private GitHub repo `everyday-app` |
 
 ## Domain model
 
-- **Household**: one row. Holds the household code hash and the household timezone.
+- **Household**: one row. Holds the household code hash, the household timezone, the admin member and the admin PIN hash.
 - **Member**: a person in the household (display name, colour). Members don't have passwords.
 - **Device**: a phone that has joined the household with the code. The server stores a hash of its token.
 - **Chore**: shared by the household. Has a title, optional notes, and the weekdays it happens on.
@@ -77,8 +80,13 @@ The Reminders tab is a **weekly calendar** (7 day columns), not a list.
 
 ## Server rules
 
-- Store the household code and device tokens **only as hashes**, never in plain text. Never log them.
-- Every API route except `/health` and `POST /join` requires a valid device token.
+- Store the household code, admin PIN and device tokens **only as hashes**, never in plain text. Never log them. The code and PIN use PBKDF2 (slow); device tokens are 32 random bytes and use SHA-256.
+- Secrets travel in the JSON body or headers, **never in URLs** (URLs end up in logs).
+- Every API route except `GET /health`, `GET /status`, `POST /household` (needs `SETUP_TOKEN`) and `POST /join` requires a valid device token (`Authorization: Bearer ...`).
+- Member changes also need the `X-Admin-Pin` header, checked on the server.
+- Failed code/PIN/setup-token attempts are counted globally (all traffic comes through Caddy, so per-IP limits don't work). Too many failures lock those endpoints for a while.
+- A `401` tells the app its token is no longer valid, and the app returns to the join screen.
+- Test against a throwaway stack, never the production database: a test household there would block the real setup.
 - Schema changes go through **Flyway migrations** in `server/src/main/resources/db/migration` (`V<n>__description.sql`). Never edit a migration that has already been deployed.
 - Configuration comes from environment variables (see `deploy/.env.example`). `.env` is gitignored and must never be committed.
 
