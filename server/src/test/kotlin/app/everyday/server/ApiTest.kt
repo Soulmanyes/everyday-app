@@ -38,6 +38,7 @@ class ApiTest {
         api = ApiContext(
             store = HouseholdStore(postgres.postgresDatabase),
             chores = ChoreStore(postgres.postgresDatabase),
+            sync = SyncStore(postgres.postgresDatabase),
             secrets = Secrets(iterations = 1_000),
             limiter = AttemptLimiter(maxFailures = 5, clock = { now }),
             setupToken = SETUP,
@@ -91,7 +92,7 @@ class ApiTest {
 
     @Test
     fun `creation is refused when no setup token is configured`() {
-        api = ApiContext(api.store, api.chores, api.secrets, api.limiter, setupToken = null)
+        api = ApiContext(api.store, api.chores, api.sync, api.secrets, api.limiter, setupToken = null)
         api { client -> assertEquals(HttpStatusCode.Forbidden, client.postJson("/household", createRequest()).status) }
     }
 
@@ -322,6 +323,6 @@ class ApiTest {
         const val CODE = "kitchen-table"
         const val PIN = "4821"
 
-        private val postgres: EmbeddedPostgres by lazy { EmbeddedPostgres.start() }
+        val postgres: EmbeddedPostgres by lazy { EmbeddedPostgres.start() }
     }
 }

@@ -24,6 +24,7 @@ data class HealthResponse(val status: String)
 class ApiContext(
     val store: HouseholdStore,
     val chores: ChoreStore,
+    val sync: SyncStore,
     val secrets: Secrets,
     val limiter: AttemptLimiter,
     /** One-time token needed to create the household; null disables creation. */
@@ -118,6 +119,15 @@ fun Application.configureRouting(api: ApiContext?) {
             if (id == household.adminMemberId) badRequest("The admin can't be removed.")
             if (!api.store.deleteMember(household.id, id)) throw ApiException(HttpStatusCode.NotFound, "No such member.")
             call.respond(HttpStatusCode.NoContent)
+        }
+
+        /** Pushes the phone's changed rows for one member and returns everything that member can see. */
+        post("/sync") {
+            val household = api.household(call)
+            when (val result = api.sync.sync(household.id, call.receive<SyncRequest>())) {
+                is SyncStore.Result.Ok -> call.respond(result.response)
+                SyncStore.Result.UnknownMember -> badRequest("Unknown member.")
+            }
         }
 
         get("/chores") {

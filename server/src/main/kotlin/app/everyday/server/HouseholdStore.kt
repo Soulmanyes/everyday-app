@@ -103,7 +103,8 @@ class HouseholdStore(private val db: DataSource) {
     }
 
     /**
-     * Soft-deletes a member and their chore assignments (a soft delete doesn't trigger ON DELETE CASCADE).
+     * Soft-deletes a member (a soft delete doesn't trigger ON DELETE CASCADE) with their chore assignments,
+     * their invites, and their reminders except shared ones invitees still have (those live on read-only).
      * Returns false if there was no such member.
      */
     fun deleteMember(householdId: UUID, memberId: UUID): Boolean = db.transaction { conn ->
@@ -114,6 +115,10 @@ class HouseholdStore(private val db: DataSource) {
             conn.prepareStatement("UPDATE chore_assignment SET deleted = TRUE, updated_at = now() WHERE member_id = ? AND NOT deleted").run {
                 setObject(1, memberId); executeUpdate()
             }
+            conn.prepareStatement("UPDATE reminder_recipient SET deleted = TRUE, updated_at = now() WHERE member_id = ? AND NOT deleted").run {
+                setObject(1, memberId); executeUpdate()
+            }
+            conn.deleteOrphanedSharedReminders()
         }
         deleted
     }

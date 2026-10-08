@@ -20,6 +20,7 @@ fun main() {
     val api = ApiContext(
         store = HouseholdStore(dataSource),
         chores = ChoreStore(dataSource),
+        sync = SyncStore(dataSource),
         secrets = Secrets(),
         limiter = AttemptLimiter(),
         setupToken = System.getenv("SETUP_TOKEN")?.takeIf { it.isNotBlank() },
