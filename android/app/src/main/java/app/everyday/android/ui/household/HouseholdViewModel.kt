@@ -73,8 +73,10 @@ class HouseholdViewModel(
         onUnlocked()
     }
 
+    /** Forgets the PIN and any error from member management, so it doesn't show up on other screens. */
     fun lockAdmin() {
         adminPin = null
+        error = null
     }
 
     fun addMember(name: String) = adminPin?.let { pin -> run({ manager.addMember(pin, name.trim()) }) }
