@@ -4,9 +4,9 @@ Status: `[ ]` planned · `[~]` in progress · `[x]` done
 
 ## Phase 0: Foundations
 - [x] Private GitHub repo, `CLAUDE.md`, this roadmap
-- [x] Android project skeleton (Compose, Material 3)
+- [~] Android project skeleton (Compose, Material 3); written, not yet built (needs Android SDK)
 - [x] Ktor server skeleton with `/health`, PostgreSQL connection, Flyway V1 schema
-- [x] docker-compose stack (Postgres + API + Caddy)
+- [~] docker-compose stack (Postgres + API + Caddy); written, not yet run
 - [ ] Set up a DuckDNS subdomain and point it at the Oracle VM
 - [ ] Open ports 80/443 on the Oracle VCN security list and the VM's iptables
 - [ ] First deploy to the Oracle VM and confirm `https://<subdomain>/health` works
