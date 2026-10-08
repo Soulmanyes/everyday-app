@@ -32,7 +32,7 @@ deploy/    docker-compose stack for the Oracle VM (Postgres, API, Caddy for HTTP
 
 | Topic | Decision |
 |---|---|
-| App | Native Android, Kotlin, Jetpack Compose, Material 3 |
+| App | Native Android, Kotlin, Jetpack Compose, Material 3. `minSdk 28` (Android 9): the oldest household phone runs Android 9. |
 | Users | One household, several members |
 | Login | **Household code + profile picker.** A phone enters the shared household code once and receives a device token. After that, anyone opens the app and taps their profile, with no password. Optional per-member PIN is a roadmap item. |
 | Backend | Ktor (Kotlin) REST API + PostgreSQL, both in Docker on an Oracle Cloud **Ampere A1 (arm64)** VM |
@@ -47,9 +47,9 @@ deploy/    docker-compose stack for the Oracle VM (Postgres, API, Caddy for HTTP
 - **Chore**: shared by the household. Has a title, optional notes, and the weekdays it happens on.
 - **Chore assignment**: links members to a chore. The timetable is the chores laid out by weekday with their assignees.
 - **Reminder**: owned by one member. Has a message, a set of weekdays, an active flag, and **one or more times of day** (as many as the user wants). It's either:
-  - **general**: `chore_id` is null and it belongs to its owner only, or
-  - **chore reminder**: `chore_id` is set. Only members assigned to that chore can create one, and each member manages their own reminders for the chore.
-- *Assumption, confirm with the owner:* general reminders are personal and are only shown and fired on the owner's chosen profile.
+  - **general**: `chore_id` is null. It's personal by default, but the owner can **invite other members**. Each invitee is notified of the invite and can **opt in or out** at any time. It fires for the owner and every opted-in invitee. Only the owner edits the message, days and times. Or:
+  - **chore reminder**: `chore_id` is set. Only members assigned to that chore can create one, and each member manages their own reminders for the chore. Chore reminders are never shared.
+- **Reminder recipient**: an invited member of a general reminder, with status `pending`, `accepted` or `declined`.
 
 Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Times of day are local wall-clock times in the household timezone.
 
@@ -60,7 +60,7 @@ Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Tim
 - Request `POST_NOTIFICATIONS` at runtime (Android 13+).
 - Reschedule all alarms on `BOOT_COMPLETED`, `TIME_SET`, `TIMEZONE_CHANGED`, and app update (`MY_PACKAGE_REPLACED`).
 - Schedule one alarm per (reminder, time) for its next occurrence only, and schedule the following one when it fires.
-- Notifications fire only for reminders owned by the profile currently selected on that phone.
+- Notifications fire only for reminders that the profile currently selected on that phone owns or has accepted.
 
 ## Server rules
 

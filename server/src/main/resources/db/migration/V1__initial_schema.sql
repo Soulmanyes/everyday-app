@@ -45,7 +45,7 @@ CREATE TABLE chore_assignment (
     PRIMARY KEY (chore_id, member_id)
 );
 
--- Owned by one member. chore_id NULL = general (personal) reminder;
+-- Owned by one member. chore_id NULL = general reminder (personal unless shared via reminder_recipient);
 -- otherwise a chore reminder, which the owner may only have while assigned to that chore
 -- (enforced in the API, not the schema).
 CREATE TABLE reminder (
@@ -68,4 +68,14 @@ CREATE TABLE reminder_time (
     reminder_id  BIGINT NOT NULL REFERENCES reminder (id) ON DELETE CASCADE,
     time_of_day  TIME   NOT NULL,
     UNIQUE (reminder_id, time_of_day)
+);
+
+-- Members invited to a general reminder. They receive it only once they accept.
+-- Chore reminders are never shared (enforced in the API).
+CREATE TABLE reminder_recipient (
+    reminder_id  BIGINT      NOT NULL REFERENCES reminder (id) ON DELETE CASCADE,
+    member_id    BIGINT      NOT NULL REFERENCES member (id) ON DELETE CASCADE,
+    status       TEXT        NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined')),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (reminder_id, member_id)
 );

@@ -35,6 +35,7 @@ Status: `[ ]` planned · `[~]` in progress · `[x]` done
 
 ## Phase 4: Sync
 - [ ] Server: reminders CRUD scoped to the owning member
+- [ ] Shared general reminders: owner invites members; invitees get an in-app invite and opt in/out
 - [ ] App: offline-first sync (local Room is the source for alarms, push and pull changes)
 - [ ] Conflict rule: last write wins using `updated_at`
 - [ ] Background sync with WorkManager

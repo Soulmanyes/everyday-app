@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "app.everyday.android"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
