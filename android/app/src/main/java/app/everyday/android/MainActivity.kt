@@ -33,6 +33,10 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         // Catch up on anything missed (e.g. alarms dropped by the system) whenever the app is opened.
-        lifecycleScope.launch { app.engine.recompute() }
+        lifecycleScope.launch {
+            app.engine.recompute()
+            // Picks up member changes, and notices if this phone was removed from the household.
+            app.household.refresh()
+        }
     }
 }

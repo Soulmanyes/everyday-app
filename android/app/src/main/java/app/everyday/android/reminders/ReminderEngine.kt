@@ -26,7 +26,7 @@ class ReminderEngine(private val context: Context, private val repository: Remin
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
 
     suspend fun recompute() = mutex.withLock {
-        repository.ensureLocalMember()
+        repository.ensureCurrentMember()
         notifier.ensureChannels()
         val now = Instant.now()
         val zone = ZoneId.systemDefault()

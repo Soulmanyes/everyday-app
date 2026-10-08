@@ -18,6 +18,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -31,6 +33,10 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import app.everyday.android.ui.calendar.CalendarScreen
 import app.everyday.android.ui.editor.EditorScreen
+import app.everyday.android.ui.household.HouseholdViewModel
+import app.everyday.android.ui.household.MembersScreen
+import app.everyday.android.ui.household.ProfilePicker
+import app.everyday.android.ui.household.SetupFlow
 import app.everyday.android.ui.settings.SettingsScreen
 
 private enum class Tab(val label: String, val icon: ImageVector) {
@@ -41,12 +47,24 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 private object Routes {
     const val MAIN = "main"
     const val SETTINGS = "settings"
+    const val MEMBERS = "members"
     const val EDIT = "edit?id={id}"
     fun edit(id: String?) = if (id == null) "edit" else "edit?id=$id"
 }
 
 @Composable
 fun EverydayApp() {
+    val household: HouseholdViewModel = viewModel(factory = HouseholdViewModel.Factory)
+    val session by household.session.collectAsStateWithLifecycle()
+    when {
+        !session.joined && !session.skippedSetup -> SetupFlow(household)
+        session.joined && session.memberId == null -> ProfilePicker(household)
+        else -> MainNav(household)
+    }
+}
+
+@Composable
+private fun MainNav(household: HouseholdViewModel) {
     val nav = rememberNavController()
     NavHost(navController = nav, startDestination = Routes.MAIN) {
         composable(Routes.MAIN) {
@@ -62,7 +80,10 @@ fun EverydayApp() {
             EditorScreen(reminderId = entry.arguments?.getString("id"), onDone = { nav.popBackStack() })
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { nav.popBackStack() })
+            SettingsScreen(onBack = { nav.popBackStack() }, onManageMembers = { nav.navigate(Routes.MEMBERS) })
+        }
+        composable(Routes.MEMBERS) {
+            MembersScreen(household, onBack = { nav.popBackStack() })
         }
     }
 }

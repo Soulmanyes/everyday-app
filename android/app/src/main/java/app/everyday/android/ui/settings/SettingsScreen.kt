@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -28,10 +29,13 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,13 +47,15 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.everyday.android.data.SoundMode
+import app.everyday.android.ui.household.HouseholdViewModel
 
 private val SNOOZE_OPTIONS = listOf(5, 10, 15, 30, 60)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onManageMembers: () -> Unit) {
     val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
+    val household: HouseholdViewModel = viewModel(factory = HouseholdViewModel.Factory)
     val settings by vm.settings.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -81,6 +87,9 @@ fun SettingsScreen(onBack: () -> Unit) {
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            HouseholdSection(household, onManageMembers)
+            HorizontalDivider()
+
             Setting("Snooze length", "How long Snooze waits before reminding you again") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SNOOZE_OPTIONS.forEach { minutes ->
@@ -181,5 +190,44 @@ private fun Status(title: String, ok: Boolean, okText: String, badText: String, 
             )
         }
         if (!ok && button != null) OutlinedButton(onClick = onClick) { Text(button) }
+    }
+}
+
+@Composable
+private fun HouseholdSection(vm: HouseholdViewModel, onManageMembers: () -> Unit) {
+    val session by vm.session.collectAsStateWithLifecycle()
+    val members by vm.members.collectAsStateWithLifecycle()
+    var confirmLeave by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Household", style = MaterialTheme.typography.titleMedium)
+        if (!session.joined) {
+            Text(
+                "This phone isn't part of a household yet. Reminders stay on this phone.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = vm::startSetup) { Text("Join or set up a household") }
+            return@Column
+        }
+        val me = members.firstOrNull { it.id == session.memberId }
+        Text(session.householdName.orEmpty(), style = MaterialTheme.typography.bodyLarge)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Profile: ${me?.displayName ?: "?"}", Modifier.weight(1f))
+            OutlinedButton(onClick = vm::switchProfile) { Text("Switch") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onManageMembers) { Text("Manage members") }
+            OutlinedButton(onClick = { confirmLeave = true }) { Text("Leave") }
+        }
+        vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    }
+    if (confirmLeave) {
+        AlertDialog(
+            onDismissRequest = { confirmLeave = false },
+            title = { Text("Leave household?") },
+            text = { Text("This phone stops syncing with the household. Reminders of this profile are hidden until you join again and pick it.") },
+            confirmButton = { TextButton(onClick = { confirmLeave = false; vm.leave {} }) { Text("Leave") } },
+            dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Cancel") } },
+        )
     }
 }

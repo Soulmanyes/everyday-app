@@ -6,8 +6,8 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
-import io.ktor.client.request.patch
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
@@ -144,7 +144,7 @@ class ApiTest {
         val alexId = alex.body<MemberDto>().id
         assertEquals(HttpStatusCode.Conflict, client.postJson("/members", MemberRequest("alex"), token, PIN).status)
 
-        val renamed = client.patch("/members/$alexId") {
+        val renamed = client.put("/members/$alexId") {
             contentType(ContentType.Application.Json)
             header(HttpHeaders.Authorization, "Bearer $token")
             header(ADMIN_PIN_HEADER, PIN)

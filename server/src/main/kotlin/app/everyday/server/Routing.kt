@@ -8,8 +8,8 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
-import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
+import io.ktor.server.routing.put
 import io.ktor.server.routing.routing
 import kotlinx.serialization.Serializable
 import java.time.ZoneId
@@ -99,7 +99,7 @@ fun Application.configureRouting(api: ApiContext?) {
             call.respond(HttpStatusCode.Created, member)
         }
 
-        patch("/members/{id}") {
+        put("/members/{id}") {
             val household = api.requireAdmin(call)
             val id = memberId(call)
             val req = call.receive<MemberRequest>()

@@ -74,6 +74,9 @@ interface ReminderDao {
 
     @Upsert
     suspend fun upsertState(state: ReminderStateEntity)
+
+    @Query("UPDATE reminder SET ownerMemberId = :to, updatedAt = :now WHERE ownerMemberId = :from")
+    suspend fun moveReminders(from: String, to: String, now: Long)
 }
 
 @Dao
@@ -92,4 +95,20 @@ interface MemberDao {
 
     @Upsert
     suspend fun upsertSettings(settings: MemberSettingsEntity)
+
+    @Query("SELECT * FROM member WHERE deleted = 0 AND id != :excludeId ORDER BY displayName COLLATE NOCASE")
+    fun observeMembers(excludeId: String = LOCAL_MEMBER_ID): Flow<List<MemberEntity>>
+
+    @Upsert
+    suspend fun upsertMembers(members: List<MemberEntity>)
+
+    /** Marks cached members that the server no longer lists as deleted. */
+    @Query("UPDATE member SET deleted = 1 WHERE id NOT IN (:keepIds) AND id != :localId")
+    suspend fun markOthersDeleted(keepIds: List<String>, localId: String = LOCAL_MEMBER_ID)
+
+    @Query("DELETE FROM member_settings WHERE memberId = :memberId")
+    suspend fun deleteSettings(memberId: String)
+
+    @Query("DELETE FROM member WHERE id = :memberId")
+    suspend fun deleteMember(memberId: String)
 }
