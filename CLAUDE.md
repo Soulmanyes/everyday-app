@@ -46,20 +46,33 @@ deploy/    docker-compose stack for the Oracle VM (Postgres, API, Caddy for HTTP
 - **Device**: a phone that has joined the household with the code. The server stores a hash of its token.
 - **Chore**: shared by the household. Has a title, optional notes, and the weekdays it happens on.
 - **Chore assignment**: links members to a chore. The timetable is the chores laid out by weekday with their assignees.
-- **Reminder**: owned by one member. Has a message, a set of weekdays, an active flag, and **one or more times of day** (as many as the user wants). It's either:
-  - **general**: `chore_id` is null. It's personal by default, but the owner can **invite other members**. Each invitee is notified of the invite and can **opt in or out** at any time. It fires for the owner and every opted-in invitee. Only the owner edits the message, days and times. Or:
-  - **chore reminder**: `chore_id` is set. Only members assigned to that chore can create one, and each member manages their own reminders for the chore. Chore reminders are never shared.
+- **Reminder**: owned by one member. Has a message, a set of weekdays, an active (paused) flag, and a **mode**:
+  - **timed**: a normal notification at each of **one or more times of day** (as many as the user wants). It has a **Snooze** action that uses the member's snooze length.
+  - **persistent**: an ongoing notification shown during **one or more time windows** (e.g. 16:00-17:00 and 18:00-19:00), with an **"All day"** preset (00:00-23:59). It can't be swiped away. On Android 14+ the system allows swiping, so the app re-posts it while still inside the window. It has a **Done** action, which hides it until the next day. Done can also be set (and undone) from the calendar.
+  - Window rules: the end is after the start, no window crosses midnight, and windows of the same reminder don't overlap.
+  - It's also either:
+    - **general**: `chore_id` is null. It's personal by default, but the owner can **invite other members**. Each invitee is notified of the invite and can **opt in or out** at any time. It fires for the owner and every opted-in invitee. Only the owner edits the message, days and times. Or:
+    - **chore reminder**: `chore_id` is set. Only members assigned to that chore can create one, and each member manages their own reminders for the chore. Chore reminders are never shared.
 - **Reminder recipient**: an invited member of a general reminder, with status `pending`, `accepted` or `declined`.
+- **Member settings** (per member, edited in the app): snooze length in minutes, and **Sound / Vibrate / Silent** chosen separately for timed and persistent reminders.
 
-Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Times of day are local wall-clock times in the household timezone.
+Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Reminders repeat **weekly** only. Times of day are local wall-clock times in the household timezone.
+
+The Reminders tab is a **weekly calendar** (7 day columns), not a list.
 
 ## Android rules
 
 - **Reminders must fire with no network.** Reminders and their times live in a local Room database and are scheduled on the device with `AlarmManager`. The server is for sync, not for triggering notifications.
-- Use exact alarms (`setExactAndAllowWhileIdle`). Handle the `SCHEDULE_EXACT_ALARM` / `USE_EXACT_ALARM` permission and fall back gracefully if it's denied.
+- Use exact alarms (`setExactAndAllowWhileIdle`). The manifest declares `USE_EXACT_ALARM` (API 33+) and `SCHEDULE_EXACT_ALARM` with `maxSdkVersion=32`. Still check `canScheduleExactAlarms()`, and fall back to an inexact alarm if it returns false.
 - Request `POST_NOTIFICATIONS` at runtime (Android 13+).
 - Reschedule all alarms on `BOOT_COMPLETED`, `TIME_SET`, `TIMEZONE_CHANGED`, and app update (`MY_PACKAGE_REPLACED`).
-- Schedule one alarm per (reminder, time) for its next occurrence only, and schedule the following one when it fires.
+- Scheduling lives in one pure, unit-tested function (`ReminderScheduler`). Given the reminders, done/snooze state and "now", it returns what should be showing now and the next event time. The app keeps **one exact alarm for the earliest next event** and recomputes after every fire, edit, boot or time change. Events include timed fires, window starts and ends, and snooze expiries.
+- Recomputing must handle **"now" falling inside a window**, and post that window's notification immediately.
+- Done and snooze state are stored in Room, not only in alarms, so they survive reboots.
+- Local IDs are client-generated UUID strings (offline-first sync). Entities carry `ownerMemberId`, `updatedAt` and a soft-delete flag. Settings are keyed by member ID. Phase 1 uses one default local member until login exists (Phase 2).
+- Notification channels can't change their sound after creation. There are six channels, {timed, persistent} x {sound, vibrate, silent}, and the member's setting picks which one to use.
+- Room schemas are exported to `android/app/schemas/` and committed. Every Room version bump needs a tested migration, so nobody loses reminders.
+- **Samsung:** One UI can put sideloaded apps to sleep, which blocks alarms. The app offers a button to request ignoring battery optimizations. Each phone should also add the app to *Settings → Battery → Background usage limits → Never sleeping apps*.
 - Notifications fire only for reminders that the profile currently selected on that phone owns or has accepted.
 
 ## Server rules

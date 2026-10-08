@@ -13,12 +13,15 @@ Status: `[ ]` planned · `[~]` in progress · `[x]` done
 - [x] First deploy; `https://everyday-home.duckdns.org/health` returns ok with a Let's Encrypt cert
 
 ## Phase 1: Local reminders (works offline, single phone)
-- [ ] Room database: reminders, reminder times, weekday mask
-- [ ] Create / edit / delete reminder screen: message, weekdays, any number of times
-- [ ] AlarmManager scheduling with exact alarms and the permission flow
-- [ ] Notification channel and `POST_NOTIFICATIONS` permission
-- [ ] Reschedule on boot, time change, timezone change, and app update
-- [ ] Pause/resume a reminder without deleting it
+- [ ] Room database (UUID ids, owner, soft delete, schema export): reminders, times, windows, done/snooze state, member settings
+- [ ] Pure scheduler with unit tests (weekday mask, DST, now-inside-window, done, snooze)
+- [ ] Timed reminders: notification with Snooze (per-member snooze length)
+- [ ] Persistent reminders: ongoing notification during time windows or all day; Done hides it until tomorrow; re-posted if swiped (Android 14+)
+- [ ] One exact alarm for the next event; recompute on fire, edit, boot, time/timezone change, app update
+- [ ] Notification permission flow and exact-alarm fallback
+- [ ] Weekly calendar screen (7 day columns), mark done / undo from the calendar
+- [ ] Create / edit / delete / pause reminder screen
+- [ ] Settings screen: snooze length, Sound/Vibrate/Silent for timed and persistent, battery optimization button
 
 ## Phase 2: Household and login
 - [ ] Server: create a household (one-time setup command) and set the household code
@@ -39,12 +42,12 @@ Status: `[ ]` planned · `[~]` in progress · `[x]` done
 - [ ] Shared general reminders: owner invites members; invitees get an in-app invite and opt in/out
 - [ ] App: offline-first sync (local Room is the source for alarms, push and pull changes)
 - [ ] Conflict rule: last write wins using `updated_at`
+- [ ] Server V2 migration: reminder mode, windows, done/snooze log, member settings, UUID ids (V1 is deployed and predates the Phase 1 design)
 - [ ] Background sync with WorkManager
 
 ## Later / ideas (to discuss before building)
 - [ ] Optional per-member PIN
 - [ ] Chore rotation (assignees rotate each week automatically)
-- [ ] Snooze and "done" actions directly on the notification
 - [ ] Push notification when someone changes the chore timetable (needs FCM or ntfy)
 - [ ] Home-screen widget: today's chores and the next reminder
 - [ ] Shopping list shared by the household
