@@ -7,6 +7,7 @@ import app.everyday.android.app
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Handles the reminder alarm, notification actions, and system events that require rescheduling. */
 class ReminderReceiver : BroadcastReceiver() {
@@ -18,7 +19,7 @@ class ReminderReceiver : BroadcastReceiver() {
             try {
                 when (intent.action) {
                     ACTION_SNOOZE -> id?.let { engine.snooze(it) }
-                    ACTION_DONE -> id?.let { engine.setDoneToday(it, true) }
+                    ACTION_DONE -> id?.let { onDone(context, it) }
                     ACTION_DISMISSED -> id?.let { engine.onPersistentDismissed(it) }
                     // ACTION_ALARM, boot, time and timezone changes, app updates, exact-alarm permission changes.
                     else -> engine.recompute()
@@ -27,6 +28,18 @@ class ReminderReceiver : BroadcastReceiver() {
                 pending.finish()
             }
         }
+    }
+
+    /**
+     * Hides the reminder for today, then also ticks its chore (if it has one) for the picked profile.
+     * Ticking needs the server; offline it is skipped and only the reminder is hidden. The time
+     * limit keeps the receiver within the system's limit for goAsync().
+     */
+    private suspend fun onDone(context: Context, reminderId: String) {
+        val app = context.app
+        app.engine.setDoneToday(reminderId, true)
+        val choreId = app.repository.getDraft(reminderId)?.choreId ?: return
+        withTimeoutOrNull(8_000) { runCatching { app.chores.markDone(choreId) } }
     }
 
     companion object {

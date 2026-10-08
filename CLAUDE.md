@@ -88,6 +88,7 @@ The Reminders tab is a **weekly calendar** (7 day columns), not a list.
 - The app refreshes the cache when it opens, when the Chores tab opens, after every chore write, and every 15 minutes in the background with WorkManager. **Alarms never wait for the network.** They use whatever is cached.
 - A chore reminder stops for the rest of the day once the chore counts as done **for the picked profile**: for ANY, once anyone has done it; for EACH, once that member has done their own part. It starts again the next day. `ReminderScheduler` takes the cached chore done state as an input, so this stays pure and unit-tested.
 - The editor offers a chore only if the picked profile is in its cached assignees. This is checked locally because reminders don't reach the server until Phase 4.
+- The **Done** button on a persistent chore reminder's notification also marks the chore done for the picked profile (ANY: for everyone; EACH: their part). Offline, it only hides the reminder.
 - After a refresh, the app deletes the picked profile's chore reminders for chores it is no longer assigned to, and for deleted chores.
 - "Own part" means the profile picked on that phone. Profiles are honor-system, like the rest of login.
 

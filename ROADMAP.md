@@ -47,6 +47,7 @@ Built and verified end to end on an API 37 emulator against the test stack on 20
 - [x] App: add/edit/delete chore, choose weekdays, completion type, assign members
 - [x] App: mark done / undo for today: ANY by anyone; EACH only your own part
 - [x] Chore reminders: assigned members add their own reminders for a chore (any number of times); they stop for the day once the chore is done for that member; deleted when unassigned or the chore is deleted
+- [x] Done on a persistent chore reminder's notification also ticks the chore (decided 2026-10-08)
 - No history screen (decided 2026-10-08)
 
 ## Phase 4: Sync
