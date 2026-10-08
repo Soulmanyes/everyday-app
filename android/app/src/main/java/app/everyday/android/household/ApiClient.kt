@@ -4,6 +4,17 @@ import app.everyday.android.data.ChoreCompletion
 import app.everyday.android.data.ChoreCompletionEntity
 import app.everyday.android.data.ChoreEntity
 import app.everyday.android.data.ChoreSnapshot
+import app.everyday.android.data.MemberSettingsEntity
+import app.everyday.android.data.ReminderEntity
+import app.everyday.android.data.ReminderMode
+import app.everyday.android.data.ReminderRecipientEntity
+import app.everyday.android.data.ReminderStateEntity
+import app.everyday.android.data.SoundMode
+import app.everyday.android.reminders.Window
+import app.everyday.android.sync.SyncSnapshot
+import app.everyday.android.sync.SyncedReminder
+import app.everyday.android.sync.recipientStatus
+import app.everyday.android.sync.wire
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -100,6 +111,31 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
     suspend fun undoChoreDone(id: String, memberId: String) =
         call("POST", "/chores/$id/undo", JSONObject().put("memberId", memberId)).toChoreSnapshot()
 
+    /** One sync round trip for [memberId]: pushes the changed rows, returns everything they can see. */
+    suspend fun sync(
+        memberId: String,
+        reminders: List<SyncedReminder>,
+        states: List<ReminderStateEntity>,
+        settings: MemberSettingsEntity?,
+        answers: List<ReminderRecipientEntity>,
+    ): SyncSnapshot {
+        val body = JSONObject()
+            .put("memberId", memberId)
+            .put("reminders", JSONArray(reminders.map { it.toJson() }))
+            .put("states", JSONArray(states.map { it.toJson() }))
+            .put("recipientStatuses", JSONArray(answers.map {
+                JSONObject().put("reminderId", it.reminderId).put("status", it.status.wire()).put("updatedAt", it.updatedAt)
+            }))
+        settings?.let {
+            body.put(
+                "settings",
+                JSONObject().put("snoozeMinutes", it.snoozeMinutes).put("timedSound", it.timedSound.name)
+                    .put("persistentSound", it.persistentSound.name).put("updatedAt", it.updatedAt),
+            )
+        }
+        return call("POST", "/sync", body).toSyncSnapshot(memberId)
+    }
+
     private suspend fun call(method: String, path: String, body: JSONObject? = null, adminPin: String? = null): JSONObject =
         withContext(Dispatchers.IO) {
             val connection = try {
@@ -175,4 +211,73 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
     }
 
     private fun JSONArray.objects() = (0 until length()).map { getJSONObject(it) }
+
+    private fun SyncedReminder.toJson() = JSONObject()
+        .put("id", reminder.id)
+        .put("ownerMemberId", reminder.ownerMemberId)
+        .put("choreId", reminder.choreId ?: JSONObject.NULL)
+        .put("message", reminder.message)
+        .put("mode", reminder.mode.name)
+        .put("weekdays", reminder.weekdays)
+        .put("active", reminder.active)
+        .put("ownerReceives", reminder.ownerReceives)
+        .put("times", JSONArray(times))
+        .put("windows", JSONArray(windows.map { JSONObject().put("startMinute", it.startMinute).put("endMinute", it.endMinute) }))
+        .put("recipients", JSONArray(recipients.map { JSONObject().put("memberId", it.memberId) }))
+        .put("createdAt", reminder.createdAt)
+        .put("updatedAt", reminder.updatedAt)
+        .put("deleted", reminder.deleted)
+
+    private fun ReminderStateEntity.toJson() = JSONObject()
+        .put("reminderId", reminderId)
+        .put("doneOn", doneOn ?: JSONObject.NULL)
+        .put("snoozeUntil", snoozeUntil ?: JSONObject.NULL)
+        .put("updatedAt", updatedAt)
+
+    // isNull is also true for a missing key.
+    private fun JSONObject.optStringOrNull(name: String) = if (isNull(name)) null else optString(name).takeIf { it.isNotEmpty() }
+
+    private fun JSONObject.optLongOrNull(name: String) = if (isNull(name)) null else getLong(name)
+
+    private fun JSONObject.optArray(name: String) = optJSONArray(name) ?: JSONArray()
+
+    private fun JSONObject.toSyncSnapshot(memberId: String): SyncSnapshot {
+        val reminders = getJSONArray("reminders").objects().map { r ->
+            val id = r.getString("id")
+            SyncedReminder(
+                reminder = ReminderEntity(
+                    id = id,
+                    ownerMemberId = r.getString("ownerMemberId"),
+                    message = r.getString("message"),
+                    mode = ReminderMode.valueOf(r.getString("mode")),
+                    weekdays = r.getInt("weekdays"),
+                    active = r.optBoolean("active", true),
+                    choreId = r.optStringOrNull("choreId"),
+                    createdAt = r.getLong("createdAt"),
+                    updatedAt = r.getLong("updatedAt"),
+                    deleted = r.optBoolean("deleted", false),
+                    ownerReceives = r.optBoolean("ownerReceives", true),
+                ),
+                times = r.optArray("times").let { a -> (0 until a.length()).map { a.getInt(it) } },
+                windows = r.optArray("windows").objects().map { Window(it.getInt("startMinute"), it.getInt("endMinute")) },
+                recipients = r.optArray("recipients").objects().map {
+                    ReminderRecipientEntity(id, it.getString("memberId"), recipientStatus(it.optString("status", "pending")), it.optLong("updatedAt", 0))
+                },
+            )
+        }
+        val states = optArray("states").objects().map {
+            ReminderStateEntity(it.getString("reminderId"), memberId, it.optStringOrNull("doneOn"), it.optLongOrNull("snoozeUntil"), it.getLong("updatedAt"))
+        }
+        val settings = optJSONObject("settings")?.let {
+            MemberSettingsEntity(
+                memberId = memberId,
+                snoozeMinutes = it.getInt("snoozeMinutes"),
+                timedSound = SoundMode.valueOf(it.getString("timedSound")),
+                persistentSound = SoundMode.valueOf(it.getString("persistentSound")),
+                updatedAt = it.getLong("updatedAt"),
+            )
+        }
+        val rejected = optArray("rejected").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
+        return SyncSnapshot(reminders, states, settings, rejected)
+    }
 }

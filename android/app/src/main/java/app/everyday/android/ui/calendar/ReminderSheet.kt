@@ -2,6 +2,8 @@ package app.everyday.android.ui.calendar
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,7 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.everyday.android.data.ReminderMode
-import app.everyday.android.data.ReminderWithDetails
+import app.everyday.android.data.ReminderView
 import app.everyday.android.reminders.Window
 import app.everyday.android.reminders.isOnWeekday
 import app.everyday.android.ui.formatMinute
@@ -24,15 +26,18 @@ import app.everyday.android.ui.formatWindow
 import java.time.LocalDate
 
 /** Details and quick actions for a reminder tapped on the calendar. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ReminderSheet(
-    item: ReminderWithDetails,
+    item: ReminderView,
     today: LocalDate,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onToggleActive: () -> Unit,
     onToggleDone: (Boolean) -> Unit,
+    /** Display names by member id, for shared reminders. */
+    memberNames: Map<String, String>,
+    onOptOut: () -> Unit,
 ) {
     val r = item.reminder
     val persistent = r.mode == ReminderMode.PERSISTENT
@@ -53,9 +58,34 @@ fun ReminderSheet(
             )
             Text(schedule, style = MaterialTheme.typography.bodyLarge)
             if (!r.active) Text("Paused", color = MaterialTheme.colorScheme.error)
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onEdit) { Text("Edit") }
-                OutlinedButton(onClick = onToggleActive) { Text(if (r.active) "Pause" else "Resume") }
+            if (!item.isOwn) {
+                Text(
+                    "Shared by ${memberNames[r.ownerMemberId] ?: "a removed member"}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (item.recipients.isNotEmpty()) {
+                Text(
+                    "Shared with " + item.recipients.joinToString(", ") { memberNames[it.memberId] ?: "a removed member" } +
+                        if (!r.ownerReceives) " · not reminding you" else "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            FlowRow(
+                Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // Only the owner edits or pauses; an invitee's own switch is opting out.
+                if (item.isOwn) {
+                    Button(onClick = onEdit) { Text("Edit") }
+                    OutlinedButton(onClick = onToggleActive) { Text(if (r.active) "Pause" else "Resume") }
+                } else {
+                    OutlinedButton(onClick = onOptOut) {
+                        Text(if (r.ownerMemberId in memberNames) "Opt out" else "Remove for me")
+                    }
+                }
                 if (persistent && r.active && isOnWeekday(r.weekdays, today)) {
                     OutlinedButton(onClick = { onToggleDone(!doneToday) }) {
                         Text(if (doneToday) "Undo done" else "Done today")

@@ -11,6 +11,9 @@ import app.everyday.android.household.HouseholdManager
 import app.everyday.android.household.Session
 import app.everyday.android.household.SessionState
 import app.everyday.android.reminders.ReminderEngine
+import app.everyday.android.sync.SyncManager
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
@@ -29,10 +32,19 @@ class EverydayApplication : Application() {
     val engine by lazy { ReminderEngine(this, repository, choreRepository, currentMemberId = { session.current.profileId() }) }
     val household by lazy { HouseholdManager(this, session, repository, engine) }
     val chores by lazy { ChoreManager(session, choreRepository, repository, engine) }
+    /** For flows shared beyond one screen. */
+    val mainScope = MainScope()
+    val sync by lazy { SyncManager(this, session, database, engine) }
 
     override fun onCreate() {
         super.onCreate()
         ChoreRefreshWorker.schedule(this)
+        // Joining, picking or switching a profile pulls that profile's reminders.
+        MainScope().launch {
+            session.state.map { it.memberId?.takeIf { _ -> it.joined } }.distinctUntilChanged().collect { id ->
+                if (id != null) sync.requestSync()
+            }
+        }
     }
 }
 

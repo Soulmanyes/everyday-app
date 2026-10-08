@@ -1,5 +1,6 @@
 package app.everyday.android.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -31,6 +32,8 @@ data class MemberSettingsEntity(
     val timedSound: SoundMode = SoundMode.SOUND,
     val persistentSound: SoundMode = SoundMode.SILENT,
     val updatedAt: Long = 0,
+    /** Changed on this phone since the last sync. */
+    @ColumnInfo(defaultValue = "0") val dirty: Boolean = false,
 )
 
 enum class ReminderMode { TIMED, PERSISTENT }
@@ -48,6 +51,10 @@ data class ReminderEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val deleted: Boolean = false,
+    /** "Remind me too": whether the owner of a shared reminder gets it as well. */
+    @ColumnInfo(defaultValue = "1") val ownerReceives: Boolean = true,
+    /** Changed on this phone since the last sync. */
+    @ColumnInfo(defaultValue = "0") val dirty: Boolean = false,
 )
 
 @Entity(
@@ -73,16 +80,38 @@ data class ReminderWindowEntity(
     val endMinute: Int,
 )
 
-/** Per-reminder runtime state. Kept in the database so it survives reboots. */
+/** Done/snooze state of a reminder for one member. Kept in the database so it survives reboots. */
 @Entity(
     tableName = "reminder_state",
+    primaryKeys = ["reminderId", "memberId"],
     foreignKeys = [ForeignKey(ReminderEntity::class, ["id"], ["reminderId"], onDelete = ForeignKey.CASCADE)],
 )
 data class ReminderStateEntity(
-    @PrimaryKey val reminderId: String,
+    val reminderId: String,
+    val memberId: String,
     /** ISO date (yyyy-MM-dd) the persistent reminder was marked done, hiding it for that day. */
     val doneOn: String? = null,
     /** Epoch millis when a snoozed timed reminder fires again. */
     val snoozeUntil: Long? = null,
     val updatedAt: Long = 0,
+    /** Changed on this phone since the last sync. */
+    val dirty: Boolean = false,
+)
+
+enum class RecipientStatus { PENDING, ACCEPTED, DECLINED }
+
+/** A member invited to a shared reminder, with their answer. */
+@Entity(
+    tableName = "reminder_recipient",
+    primaryKeys = ["reminderId", "memberId"],
+    foreignKeys = [ForeignKey(ReminderEntity::class, ["id"], ["reminderId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("memberId")],
+)
+data class ReminderRecipientEntity(
+    val reminderId: String,
+    val memberId: String,
+    val status: RecipientStatus = RecipientStatus.PENDING,
+    val updatedAt: Long = 0,
+    /** This member changed their own answer on this phone since the last sync. */
+    val dirty: Boolean = false,
 )

@@ -16,19 +16,21 @@ import kotlinx.coroutines.launch
 class SettingsViewModel(
     private val repository: ReminderRepository,
     val engine: ReminderEngine,
+    private val requestSync: () -> Unit,
 ) : ViewModel() {
     val settings = repository.observeSettings()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun update(transform: (MemberSettingsEntity) -> MemberSettingsEntity) = viewModelScope.launch {
         repository.saveSettings(transform(repository.getSettings()))
+        requestSync()
     }
 
     companion object {
         val Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as EverydayApplication
-                SettingsViewModel(app.repository, app.engine)
+                SettingsViewModel(app.repository, app.engine, app.sync::requestSync)
             }
         }
     }

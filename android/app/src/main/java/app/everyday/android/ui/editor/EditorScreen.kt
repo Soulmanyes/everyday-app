@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -50,7 +51,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.everyday.android.data.RecipientStatus
 import app.everyday.android.data.ReminderMode
 import app.everyday.android.reminders.MINUTES_PER_DAY
 import app.everyday.android.reminders.Window
@@ -67,6 +70,7 @@ fun EditorScreen(reminderId: String?, choreId: String?, onDone: () -> Unit) {
         factory = EditorViewModel.factory(reminderId, choreId),
     )
     val draft = vm.draft
+    val members by vm.members.collectAsStateWithLifecycle()
     var confirmDelete by remember { mutableStateOf(false) }
     var addingTime by remember { mutableStateOf(false) }
     var addingWindowStart by remember { mutableStateOf<Int?>(null) }
@@ -203,6 +207,47 @@ fun EditorScreen(reminderId: String?, choreId: String?, onDone: () -> Unit) {
                 Switch(checked = draft.active, onCheckedChange = null)
             }
 
+            // Chore reminders are never shared.
+            if (draft.choreId == null && members.isNotEmpty()) {
+                Section("Share with") {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        members.forEach { m ->
+                            val answer = vm.answers[m.id]?.takeIf { m.id in draft.recipientIds }
+                            FilterChip(
+                                selected = m.id in draft.recipientIds,
+                                onClick = { vm.toggleRecipient(m.id) },
+                                label = { Text(m.displayName + answer?.let { " · " + answerLabel(it) }.orEmpty()) },
+                            )
+                        }
+                    }
+                    Text(
+                        "They get an invite and can opt in or out. Only you can change it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (draft.recipientIds.isNotEmpty()) {
+                        Row(
+                            Modifier.toggleable(
+                                value = draft.ownerReceives,
+                                role = Role.Switch,
+                                onValueChange = { on -> vm.update { it.copy(ownerReceives = on) } },
+                            ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Remind me too")
+                                Text(
+                                    "Turn off for a heads-up meant only for others, like \"I'm out tonight\"",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(checked = draft.ownerReceives, onCheckedChange = null)
+                        }
+                    }
+                }
+            }
+
             vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }
@@ -235,6 +280,12 @@ fun EditorScreen(reminderId: String?, choreId: String?, onDone: () -> Unit) {
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
+}
+
+private fun answerLabel(status: RecipientStatus) = when (status) {
+    RecipientStatus.PENDING -> "pending"
+    RecipientStatus.ACCEPTED -> "in"
+    RecipientStatus.DECLINED -> "out"
 }
 
 @Composable

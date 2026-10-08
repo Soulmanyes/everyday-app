@@ -22,7 +22,28 @@ data class ReminderDraft(
     val windows: List<Window> = emptyList(),
     /** Set for a chore reminder; fixed once the reminder exists. */
     val choreId: String? = null,
+    /** Members invited to this (general) reminder. */
+    val recipientIds: List<String> = emptyList(),
+    /** "Remind me too": whether the owner gets a shared reminder as well. */
+    val ownerReceives: Boolean = true,
 )
+
+/**
+ * A reminder as seen by one member ([memberId], the picked profile): their own done/snooze state,
+ * and whether it's theirs or shared with them.
+ */
+data class ReminderView(val details: ReminderWithDetails, val memberId: String) {
+    val reminder get() = details.reminder
+    val times get() = details.times
+    val windows get() = details.windows
+    val recipients get() = details.recipients
+    val state get() = details.states.firstOrNull { it.memberId == memberId }
+    val isOwn get() = reminder.ownerMemberId == memberId
+    val myAnswer get() = details.recipients.firstOrNull { it.memberId == memberId }?.status
+
+    /** Whether it notifies this member: the owner unless "Remind me too" is off, or an invitee who accepted. */
+    val firesForMe get() = if (isOwn) reminder.ownerReceives else myAnswer == RecipientStatus.ACCEPTED
+}
 
 /**
  * Reminders and settings of the profile currently picked on this phone ([currentMemberId]): the
@@ -46,11 +67,27 @@ class ReminderRepository(
         members.insertSettingsIfMissing(MemberSettingsEntity(id, updatedAt = clock()))
     }
 
-    fun observeReminders(): Flow<List<ReminderWithDetails>> = memberIdChanges.flatMapLatest { id ->
-        reminders.observeReminders(id).map { list -> list.sortedBy { it.reminder.createdAt } }
+    /** Reminders the current profile owns, plus shared reminders it accepted. */
+    fun observeReminders(): Flow<List<ReminderView>> = memberIdChanges.flatMapLatest { id ->
+        reminders.observeVisible(id).map { list -> list.sortedBy { it.reminder.createdAt }.map { ReminderView(it, id) } }
     }
 
-    suspend fun getReminders(memberId: String = currentMemberId()) = reminders.getReminders(memberId)
+    suspend fun getReminders(memberId: String = currentMemberId()) = reminders.getVisible(memberId).map { ReminderView(it, memberId) }
+
+    /** Other members' reminders the current profile is invited to, whatever its answer. */
+    fun observeSharedWithMe(): Flow<List<ReminderView>> = memberIdChanges.flatMapLatest { id ->
+        reminders.observeSharedWith(id).map { list -> list.sortedBy { it.reminder.createdAt }.map { ReminderView(it, id) } }
+    }
+
+    suspend fun getAnswers(reminderId: String): Map<String, RecipientStatus> =
+        reminders.getReminder(reminderId)?.recipients.orEmpty().associate { it.memberId to it.status }
+
+    /** Opts the current profile in or out of a shared reminder. */
+    suspend fun setMyAnswer(reminderId: String, status: RecipientStatus) {
+        val me = currentMemberId()
+        val row = reminders.getRecipient(reminderId, me) ?: return
+        reminders.upsertRecipients(listOf(row.copy(status = status, updatedAt = clock(), dirty = true)))
+    }
 
     suspend fun getDraft(id: String): ReminderDraft? = reminders.getReminder(id)?.let { d ->
         ReminderDraft(
@@ -62,6 +99,8 @@ class ReminderRepository(
             times = d.times.map { it.minuteOfDay }.sorted(),
             windows = d.windows.map { Window(it.startMinute, it.endMinute) }.sortedBy { it.startMinute },
             choreId = d.reminder.choreId,
+            recipientIds = d.recipients.map { it.memberId },
+            ownerReceives = d.reminder.ownerReceives,
         )
     }
 
@@ -80,13 +119,20 @@ class ReminderRepository(
             choreId = existing?.choreId ?: draft.choreId,
             createdAt = existing?.createdAt ?: now,
             updatedAt = now,
+            ownerReceives = draft.ownerReceives,
+            dirty = true,
         )
+        // Chore reminders are never shared. Invitees keep their answer; new ones start pending.
+        val invited = if (entity.choreId == null) draft.recipientIds.distinct() - entity.ownerMemberId else emptyList()
+        val previous = reminders.getReminder(id)?.recipients.orEmpty().associateBy { it.memberId }
+        val recipients = invited.map { previous[it] ?: ReminderRecipientEntity(id, it, RecipientStatus.PENDING, now) }
         val times = if (draft.mode == ReminderMode.TIMED) draft.times.distinct() else emptyList()
         val windows = if (draft.mode == ReminderMode.PERSISTENT) draft.windows else emptyList()
         reminders.saveReminder(
             entity,
             times.map { ReminderTimeEntity(UUID.randomUUID().toString(), id, it) },
             windows.map { ReminderWindowEntity(UUID.randomUUID().toString(), id, it.startMinute, it.endMinute) },
+            recipients,
         )
         return id
     }
@@ -99,13 +145,15 @@ class ReminderRepository(
     suspend fun setActive(id: String, active: Boolean) = reminders.setActive(id, active, clock())
 
     suspend fun setDone(id: String, date: LocalDate?) {
-        val state = reminders.getState(id) ?: ReminderStateEntity(id)
-        reminders.upsertState(state.copy(doneOn = date?.toString(), updatedAt = clock()))
+        val me = currentMemberId()
+        val state = reminders.getState(id, me) ?: ReminderStateEntity(id, me)
+        reminders.upsertState(state.copy(doneOn = date?.toString(), updatedAt = clock(), dirty = true))
     }
 
     suspend fun setSnooze(id: String, until: Instant?) {
-        val state = reminders.getState(id) ?: ReminderStateEntity(id)
-        reminders.upsertState(state.copy(snoozeUntil = until?.toEpochMilli(), updatedAt = clock()))
+        val me = currentMemberId()
+        val state = reminders.getState(id, me) ?: ReminderStateEntity(id, me)
+        reminders.upsertState(state.copy(snoozeUntil = until?.toEpochMilli(), updatedAt = clock(), dirty = true))
     }
 
     fun observeSettings(): Flow<MemberSettingsEntity?> = memberIdChanges.flatMapLatest { members.observeSettings(it) }
@@ -114,7 +162,7 @@ class ReminderRepository(
         members.getSettings(memberId) ?: MemberSettingsEntity(memberId)
 
     suspend fun saveSettings(settings: MemberSettingsEntity) =
-        members.upsertSettings(settings.copy(updatedAt = clock()))
+        members.upsertSettings(settings.copy(updatedAt = clock(), dirty = true))
 
     fun observeMembers() = members.observeMembers()
 
@@ -127,20 +175,22 @@ class ReminderRepository(
     /** Gives the reminders and settings made before joining to [memberId], then removes the local profile. */
     suspend fun adoptLocalProfile(memberId: String) = db.withTransaction {
         reminders.moveReminders(LOCAL_MEMBER_ID, memberId, clock())
+        reminders.moveStates(LOCAL_MEMBER_ID, memberId)
         val local = members.getSettings(LOCAL_MEMBER_ID)
         if (local != null && members.getSettings(memberId) == null) {
-            members.upsertSettings(local.copy(memberId = memberId, updatedAt = clock()))
+            members.upsertSettings(local.copy(memberId = memberId, updatedAt = clock(), dirty = true))
         }
         members.deleteSettings(LOCAL_MEMBER_ID)
         members.deleteMember(LOCAL_MEMBER_ID)
     }
 }
 
-fun ReminderWithDetails.toSpec(choreDoneOn: Set<LocalDate> = emptySet()) = ReminderSpec(
+fun ReminderView.toSpec(choreDoneOn: Set<LocalDate> = emptySet()) = ReminderSpec(
     id = reminder.id,
     mode = reminder.mode,
     weekdays = reminder.weekdays,
-    active = reminder.active,
+    // Paused by the owner, "Remind me too" off, or not accepted: it doesn't notify this member.
+    active = reminder.active && firesForMe,
     times = times.map { it.minuteOfDay },
     windows = windows.map { Window(it.startMinute, it.endMinute) },
     doneOn = state?.doneOn?.let(LocalDate::parse),

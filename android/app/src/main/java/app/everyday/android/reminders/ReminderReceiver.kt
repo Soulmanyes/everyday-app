@@ -18,7 +18,7 @@ class ReminderReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 when (intent.action) {
-                    ACTION_SNOOZE -> id?.let { engine.snooze(it) }
+                    ACTION_SNOOZE -> id?.let { engine.snooze(it); context.app.sync.requestSync() }
                     ACTION_DONE -> id?.let { onDone(context, it) }
                     ACTION_DISMISSED -> engine.onPersistentDismissed()
                     // ACTION_ALARM, boot, time and timezone changes, app updates, exact-alarm permission changes.
@@ -38,6 +38,7 @@ class ReminderReceiver : BroadcastReceiver() {
     private suspend fun onDone(context: Context, reminderId: String) {
         val app = context.app
         app.engine.setDoneToday(reminderId, true)
+        app.sync.requestSync()
         val choreId = app.repository.getDraft(reminderId)?.choreId ?: return
         withTimeoutOrNull(8_000) { runCatching { app.chores.markDone(choreId) } }
     }

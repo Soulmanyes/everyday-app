@@ -33,7 +33,8 @@ fun main() {
 
 /** Installs plugins and routes. [api] is null in tests that only need /health. */
 fun Application.module(api: ApiContext? = null) {
-    install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+    // encodeDefaults: the phone's parser expects every field, including ones equal to their default.
+    install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; encodeDefaults = true }) }
     // Default call logging records method, path and status only: no headers or bodies, so no secrets.
     install(CallLogging)
     install(StatusPages) {

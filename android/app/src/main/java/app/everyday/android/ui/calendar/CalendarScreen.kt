@@ -53,8 +53,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.everyday.android.data.RecipientStatus
 import app.everyday.android.data.ReminderMode
-import app.everyday.android.data.ReminderWithDetails
+import app.everyday.android.data.ReminderView
 import app.everyday.android.reminders.Window
 import app.everyday.android.reminders.isOnWeekday
 import app.everyday.android.ui.dayShort
@@ -74,16 +75,18 @@ private const val TIMED_LENGTH_MINUTES = 30
 
 /** One block on the calendar: a timed reminder's time, or one window of a persistent reminder. */
 private data class CalendarItem(
-    val reminder: ReminderWithDetails,
+    val reminder: ReminderView,
     val startMinute: Int,
     val endMinute: Int,
     val label: String,
 )
 
 @Composable
-fun CalendarScreen(onEditReminder: (String?) -> Unit) {
+fun CalendarScreen(onEditReminder: (String?) -> Unit, onOpenShared: () -> Unit) {
     val vm: CalendarViewModel = viewModel(factory = CalendarViewModel.Factory)
     val reminders by vm.reminders.collectAsStateWithLifecycle()
+    val members by vm.members.collectAsStateWithLifecycle()
+    val invites by vm.pendingInvites.collectAsStateWithLifecycle()
     var weekOffset by rememberSaveable { mutableIntStateOf(0) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     // Day view: the focused day as an epoch day, or null for the week view.
@@ -114,6 +117,16 @@ fun CalendarScreen(onEditReminder: (String?) -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
+            if (invites > 0) {
+                Text(
+                    if (invites == 1) "1 shared reminder is waiting for your answer" else "$invites shared reminders are waiting for your answer",
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .clickable(onClick = onOpenShared)
+                        .padding(12.dp),
+                )
+            }
             if (focusedDay != null) {
                 DayHeader(focusedDay, today, onChange = { focusedEpochDay = it.toEpochDay() }, onBackToWeek = ::backToWeek)
             } else {
@@ -147,6 +160,8 @@ fun CalendarScreen(onEditReminder: (String?) -> Unit) {
             onEdit = { selectedId = null; onEditReminder(selected.reminder.id) },
             onToggleActive = { vm.setActive(selected.reminder.id, !selected.reminder.active) },
             onToggleDone = { done -> vm.setDoneToday(selected.reminder.id, done) },
+            memberNames = members.associate { it.id to it.displayName },
+            onOptOut = { selectedId = null; vm.setAnswer(selected.reminder.id, RecipientStatus.DECLINED) },
         )
     }
 }
@@ -225,7 +240,7 @@ private fun DayHeaders(days: List<LocalDate>, today: LocalDate, onDayClick: (Loc
 private fun AllDayRow(
     days: List<LocalDate>,
     today: LocalDate,
-    reminders: List<ReminderWithDetails>,
+    reminders: List<ReminderView>,
     onSelect: (String) -> Unit,
 ) {
     val allDay = reminders.filter { r ->
@@ -256,7 +271,7 @@ private fun TimeGrid(
     days: List<LocalDate>,
     today: LocalDate,
     now: LocalTime,
-    reminders: List<ReminderWithDetails>,
+    reminders: List<ReminderView>,
     detailed: Boolean,
     onSelect: (String) -> Unit,
 ) {
@@ -320,7 +335,7 @@ private fun TimeGrid(
 
 @Composable
 private fun ReminderBlock(
-    r: ReminderWithDetails,
+    r: ReminderView,
     label: String,
     day: LocalDate,
     today: LocalDate,
@@ -357,7 +372,7 @@ private fun ReminderBlock(
 private fun minutesToDp(minutes: Int): Dp = HOUR_HEIGHT * (minutes / 60f)
 
 /** Calendar blocks for one day. [detailed] (day view) adds times to the labels; the week view has no room. */
-private fun itemsFor(day: LocalDate, reminders: List<ReminderWithDetails>, detailed: Boolean): List<CalendarItem> =
+private fun itemsFor(day: LocalDate, reminders: List<ReminderView>, detailed: Boolean): List<CalendarItem> =
     reminders.filter { isOnWeekday(it.reminder.weekdays, day) }.flatMap { r ->
         when (r.reminder.mode) {
             ReminderMode.TIMED -> r.times.map {

@@ -40,6 +40,7 @@ import app.everyday.android.ui.household.MembersScreen
 import app.everyday.android.ui.household.ProfilePicker
 import app.everyday.android.ui.household.SetupFlow
 import app.everyday.android.ui.settings.SettingsScreen
+import app.everyday.android.ui.shared.SharedScreen
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     Reminders("Reminders", Icons.Default.DateRange),
@@ -50,6 +51,7 @@ private object Routes {
     const val MAIN = "main"
     const val SETTINGS = "settings"
     const val MEMBERS = "members"
+    const val SHARED = "shared"
     const val EDIT = "edit?id={id}&choreId={choreId}"
     fun edit(id: String?) = if (id == null) "edit" else "edit?id=$id"
     fun newChoreReminder(choreId: String) = "edit?choreId=$choreId"
@@ -76,6 +78,7 @@ private fun MainNav(household: HouseholdViewModel) {
             MainScreen(
                 onOpenSettings = { nav.navigate(Routes.SETTINGS) },
                 onEditReminder = { id -> nav.navigate(Routes.edit(id)) },
+                onOpenShared = { nav.navigate(Routes.SHARED) },
                 onEditChore = { id -> nav.navigate(Routes.chore(id)) },
                 onAddChoreReminder = { choreId -> nav.navigate(Routes.newChoreReminder(choreId)) },
             )
@@ -100,7 +103,14 @@ private fun MainNav(household: HouseholdViewModel) {
             ChoreEditorScreen(choreId = entry.arguments?.getString("id"), onDone = { nav.popBackStack() })
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { nav.popBackStack() }, onManageMembers = { nav.navigate(Routes.MEMBERS) })
+            SettingsScreen(
+                onBack = { nav.popBackStack() },
+                onManageMembers = { nav.navigate(Routes.MEMBERS) },
+                onOpenShared = { nav.navigate(Routes.SHARED) },
+            )
+        }
+        composable(Routes.SHARED) {
+            SharedScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.MEMBERS) {
             MembersScreen(household, onBack = { nav.popBackStack() })
@@ -113,6 +123,7 @@ private fun MainNav(household: HouseholdViewModel) {
 private fun MainScreen(
     onOpenSettings: () -> Unit,
     onEditReminder: (String?) -> Unit,
+    onOpenShared: () -> Unit,
     onEditChore: (String?) -> Unit,
     onAddChoreReminder: (String) -> Unit,
 ) {
@@ -141,7 +152,7 @@ private fun MainScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (tab) {
-                Tab.Reminders -> CalendarScreen(onEditReminder = onEditReminder)
+                Tab.Reminders -> CalendarScreen(onEditReminder = onEditReminder, onOpenShared = onOpenShared)
                 Tab.Chores -> ChoresScreen(onEditChore = onEditChore, onAddReminder = onAddChoreReminder)
             }
         }

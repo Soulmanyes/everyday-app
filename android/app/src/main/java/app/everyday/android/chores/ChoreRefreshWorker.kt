@@ -12,12 +12,15 @@ import app.everyday.android.app
 import java.util.concurrent.TimeUnit
 
 /**
- * Refreshes the chore cache in the background, so a chore done on another phone silences this
- * phone's chore reminders even while the app is closed.
+ * Refreshes the chore cache and syncs reminders in the background, so changes from other phones
+ * (a chore done, an invite, an edited shared reminder) arrive even while the app is closed.
  */
 class ChoreRefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        applicationContext.app.chores.refresh()
+        val app = applicationContext.app
+        app.chores.refresh()
+        // Kept in this worker (not a new one): installed phones have it enqueued by class name.
+        runCatching { app.sync.sync() }
         return Result.success()
     }
 

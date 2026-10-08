@@ -27,6 +27,9 @@ class Notifier(private val context: Context) {
     private val manager = context.getSystemService(NotificationManager::class.java)
 
     fun ensureChannels() {
+        manager.createNotificationChannel(
+            NotificationChannel(INVITE_CHANNEL, "Shared reminder invites", NotificationManager.IMPORTANCE_DEFAULT),
+        )
         for (mode in ReminderMode.entries) for (sound in SoundMode.entries) {
             val channel = NotificationChannel(channelId(mode, sound), channelName(mode, sound), importance(mode, sound))
             when (sound) {
@@ -101,6 +104,23 @@ class Notifier(private val context: Context) {
         NotificationManagerCompat.from(context).notify(PERSISTENT_TAG, NOTIFICATION_ID, builder.build())
     }
 
+    /** "Sam shared "Bins" with you": opens the app, where the invite is accepted or declined. */
+    @SuppressLint("MissingPermission") // checked by canPost()
+    fun showInvite(reminderId: String, message: String, ownerName: String?) {
+        if (!canPost()) return
+        ensureChannels()
+        val notification = NotificationCompat.Builder(context, INVITE_CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("${ownerName ?: "Someone"} shared a reminder with you")
+            .setContentText("\"$message\" · Open the app to opt in or out")
+            .setAutoCancel(true)
+            .setContentIntent(openApp("INVITE:$reminderId"))
+            .build()
+        NotificationManagerCompat.from(context).notify("INVITE:$reminderId", NOTIFICATION_ID, notification)
+    }
+
+    fun cancelInvite(reminderId: String) = manager.cancel("INVITE:$reminderId", NOTIFICATION_ID)
+
     fun isPersistentShowing() = manager.activeNotifications.any { it.tag == PERSISTENT_TAG }
 
     fun cancelPersistent() = manager.cancel(PERSISTENT_TAG, NOTIFICATION_ID)
@@ -134,6 +154,7 @@ class Notifier(private val context: Context) {
     companion object {
         const val NOTIFICATION_ID = 1
         const val PERSISTENT_TAG = "PERSISTENT:all"
+        private const val INVITE_CHANNEL = "invites"
         private const val MAX_DONE_ACTIONS = 3
         private const val DONE_LABEL_LENGTH = 18
 
