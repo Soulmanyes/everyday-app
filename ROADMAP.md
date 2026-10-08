@@ -27,12 +27,14 @@ Verified on an API 37 emulator on 2026-10-08. Not yet tested on a real Samsung p
 - [x] Calendar readability: tap a day header for a full-width day view with times on the blocks
 
 ## Phase 2: Household and login
-- [ ] Server V2 migration: rebuild the (empty) V1 tables with UUID ids, sync fields (`updated_at`, `deleted`), reminder modes/windows/state, member settings, admin member + PIN
-- [ ] Server: `POST /household` (one-time setup token, singleton), `POST /join`, `GET /me`, members CRUD behind the admin PIN, failed-attempt lockout
-- [ ] App: welcome screen (create household / join / not now), join with household code, create household flow
-- [ ] App: profile picker, remembered per phone, switch in Settings; existing reminders move to the picked profile
-- [ ] App: admin member management (PIN), leave household, 401 returns to join
-- [ ] Production: deploy V2, set `SETUP_TOKEN`, owner creates the household from their phone
+Live since 2026-10-08: household created from the owner's phone; setup code disabled afterwards.
+
+- [x] Server V2 migration: rebuild the (empty) V1 tables with UUID ids, sync fields (`updated_at`, `deleted`), reminder modes/windows/state, member settings, admin member + PIN
+- [x] Server: `POST /household` (one-time setup token, singleton), `POST /join`, `GET /me`, members CRUD behind the admin PIN, failed-attempt lockout
+- [x] App: welcome screen (create household / join / not now), join with household code, create household flow
+- [x] App: profile picker, remembered per phone, switch in Settings; existing reminders move to the picked profile
+- [x] App: admin member management (PIN), leave household, 401 returns to join
+- [x] Production: deploy V2, set `SETUP_TOKEN`, owner creates the household from their phone
 
 ## Phase 3: Chore timetable
 - [ ] Server: chores and chore assignments CRUD
