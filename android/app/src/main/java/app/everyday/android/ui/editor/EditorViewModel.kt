@@ -9,35 +9,54 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.everyday.android.EverydayApplication
+import app.everyday.android.data.ChoreRepository
 import app.everyday.android.data.ReminderDraft
 import app.everyday.android.data.ReminderMode
 import app.everyday.android.data.ReminderRepository
 import app.everyday.android.reminders.MINUTES_PER_DAY
 import app.everyday.android.reminders.ReminderEngine
 import app.everyday.android.reminders.Window
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 val ALL_DAY = Window(0, MINUTES_PER_DAY)
 
 class EditorViewModel(
     private val reminderId: String?,
+    /** For a new chore reminder: the chore it belongs to. */
+    newChoreId: String?,
     private val repository: ReminderRepository,
+    private val chores: ChoreRepository,
     private val engine: ReminderEngine,
 ) : ViewModel() {
     var draft by mutableStateOf(ReminderDraft())
         private set
-    var loaded by mutableStateOf(reminderId == null)
+    var loaded by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
 
     val isNew get() = reminderId == null
 
+    /** Title of the chore this reminder belongs to, if any. */
+    var choreTitle by mutableStateOf<String?>(null)
+        private set
+
     init {
-        if (reminderId != null) viewModelScope.launch {
-            repository.getDraft(reminderId)?.let { draft = it }
+        viewModelScope.launch {
+            if (reminderId != null) {
+                repository.getDraft(reminderId)?.let { draft = it }
+            } else if (newChoreId != null) {
+                // A new chore reminder starts with the chore's title and days.
+                chore(newChoreId)?.let { c ->
+                    draft = ReminderDraft(message = c.chore.title, weekdays = c.chore.weekdays, choreId = c.chore.id)
+                }
+            }
+            choreTitle = draft.choreId?.let { chore(it)?.chore?.title }
             loaded = true
         }
     }
+
+    private suspend fun chore(id: String) = chores.observeChores().first().firstOrNull { it.chore.id == id }
 
     fun update(transform: (ReminderDraft) -> ReminderDraft) {
         draft = transform(draft)
@@ -97,10 +116,10 @@ class EditorViewModel(
     }
 
     companion object {
-        fun factory(reminderId: String?) = viewModelFactory {
+        fun factory(reminderId: String?, newChoreId: String?) = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as EverydayApplication
-                EditorViewModel(reminderId, app.repository, app.engine)
+                EditorViewModel(reminderId, newChoreId, app.repository, app.choreRepository, app.engine)
             }
         }
     }

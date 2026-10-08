@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.content.edit
+import app.everyday.android.data.ChoreRepository
 import app.everyday.android.data.ReminderMode
 import app.everyday.android.data.ReminderRepository
 import app.everyday.android.data.toSpec
@@ -19,7 +20,12 @@ import java.time.ZoneId
  * Glue between [ReminderScheduler] and Android: loads reminders, posts what is due, syncs persistent
  * notifications, and keeps a single alarm for the next event. Call [recompute] after anything changes.
  */
-class ReminderEngine(private val context: Context, private val repository: ReminderRepository) {
+class ReminderEngine(
+    private val context: Context,
+    private val repository: ReminderRepository,
+    private val chores: ChoreRepository,
+    private val currentMemberId: () -> String,
+) {
     private val mutex = Mutex()
     private val notifier = Notifier(context)
     private val prefs = context.getSharedPreferences("reminder_engine", Context.MODE_PRIVATE)
@@ -34,7 +40,10 @@ class ReminderEngine(private val context: Context, private val repository: Remin
         val byId = reminders.associateBy { it.reminder.id }
         val lastCheck = prefs.getLong(KEY_LAST_CHECK, 0L).takeIf { it > 0 }?.let(Instant::ofEpochMilli)
 
-        val result = ReminderScheduler.compute(reminders.map { it.toSpec() }, now, zone, lastCheck)
+        // Uses the cached chores, so alarms never wait for the network.
+        val choreDone = chores.doneDatesFor(currentMemberId())
+        val specs = reminders.map { r -> r.toSpec(r.reminder.choreId?.let { choreDone[it] }.orEmpty()) }
+        val result = ReminderScheduler.compute(specs, now, zone, lastCheck)
         val settings = repository.getSettings()
 
         result.expiredSnoozes.forEach { repository.setSnooze(it, null) }

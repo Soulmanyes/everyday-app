@@ -61,8 +61,11 @@ import java.time.DayOfWeek
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun EditorScreen(reminderId: String?, onDone: () -> Unit) {
-    val vm: EditorViewModel = viewModel(key = reminderId ?: "new", factory = EditorViewModel.factory(reminderId))
+fun EditorScreen(reminderId: String?, choreId: String?, onDone: () -> Unit) {
+    val vm: EditorViewModel = viewModel(
+        key = reminderId ?: "new-${choreId.orEmpty()}",
+        factory = EditorViewModel.factory(reminderId, choreId),
+    )
     val draft = vm.draft
     var confirmDelete by remember { mutableStateOf(false) }
     var addingTime by remember { mutableStateOf(false) }
@@ -90,6 +93,13 @@ fun EditorScreen(reminderId: String?, onDone: () -> Unit) {
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            vm.choreTitle?.let {
+                Text(
+                    "Reminder for the chore \"$it\". It stays quiet on days the chore is already done.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             OutlinedTextField(
                 value = draft.message,
                 onValueChange = { text -> vm.update { it.copy(message = text) } },
@@ -228,7 +238,7 @@ fun EditorScreen(reminderId: String?, onDone: () -> Unit) {
 }
 
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
+internal fun Section(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall)
         content()
@@ -236,7 +246,7 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun DayToggle(letter: String, selected: Boolean, onClick: () -> Unit) {
+internal fun DayToggle(letter: String, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Box(
         Modifier.size(40.dp)

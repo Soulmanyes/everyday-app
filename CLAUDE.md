@@ -132,6 +132,16 @@ cd android && ./gradlew assembleDebug
 # Emulator for testing: run headless so it does not cover the terminal
 ~/Android/Sdk/emulator/emulator -avd Medium_Phone_API_37.0 -no-window -no-snapshot-save -no-audio -no-boot-anim &
 
+# Room migration test (needs a running emulator)
+cd android && ./gradlew connectedDebugAndroidTest
+
+# End-to-end test against the throwaway stack on the VM (never production)
+rsync -az --exclude build --exclude .gradle --exclude .env server deploy oracle:~/everyday-app/
+ssh oracle 'cd ~/everyday-app/deploy && docker compose -p everyday-test -f docker-compose.yml -f docker-compose.test.yml up -d --build db api'
+ssh -f -N -L 18080:127.0.0.1:18080 oracle      # tunnel to the test API
+adb reverse tcp:18080 tcp:18080                # debug builds allow cleartext only to 127.0.0.1/localhost
+# In the app: server address http://127.0.0.1:18080, setup code test-setup-code
+
 # Full stack on the VM
 cd deploy && cp .env.example .env    # then fill in values
 docker compose up -d --build

@@ -20,6 +20,8 @@ data class ReminderDraft(
     val active: Boolean = true,
     val times: List<Int> = emptyList(),
     val windows: List<Window> = emptyList(),
+    /** Set for a chore reminder; fixed once the reminder exists. */
+    val choreId: String? = null,
 )
 
 /**
@@ -59,6 +61,7 @@ class ReminderRepository(
             active = d.reminder.active,
             times = d.times.map { it.minuteOfDay }.sorted(),
             windows = d.windows.map { Window(it.startMinute, it.endMinute) }.sortedBy { it.startMinute },
+            choreId = d.reminder.choreId,
         )
     }
 
@@ -74,7 +77,7 @@ class ReminderRepository(
             mode = draft.mode,
             weekdays = draft.weekdays,
             active = draft.active,
-            choreId = existing?.choreId,
+            choreId = existing?.choreId ?: draft.choreId,
             createdAt = existing?.createdAt ?: now,
             updatedAt = now,
         )
@@ -89,6 +92,9 @@ class ReminderRepository(
     }
 
     suspend fun delete(id: String) = reminders.softDelete(id, clock())
+
+    /** Deletes chore reminders whose owner is no longer assigned to the chore, or whose chore is gone. */
+    suspend fun deleteUnassignedChoreReminders() = reminders.softDeleteUnassignedChoreReminders(clock())
 
     suspend fun setActive(id: String, active: Boolean) = reminders.setActive(id, active, clock())
 
@@ -130,7 +136,7 @@ class ReminderRepository(
     }
 }
 
-fun ReminderWithDetails.toSpec() = ReminderSpec(
+fun ReminderWithDetails.toSpec(choreDoneOn: Set<LocalDate> = emptySet()) = ReminderSpec(
     id = reminder.id,
     mode = reminder.mode,
     weekdays = reminder.weekdays,
@@ -139,4 +145,5 @@ fun ReminderWithDetails.toSpec() = ReminderSpec(
     windows = windows.map { Window(it.startMinute, it.endMinute) },
     doneOn = state?.doneOn?.let(LocalDate::parse),
     snoozeUntil = state?.snoozeUntil?.let(Instant::ofEpochMilli),
+    choreDoneOn = choreDoneOn,
 )

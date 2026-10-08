@@ -27,6 +27,8 @@ data class ReminderSpec(
     val windows: List<Window> = emptyList(),
     val doneOn: LocalDate? = null,
     val snoozeUntil: Instant? = null,
+    /** Days its chore is already done for the owner (chore reminders only); it stays silent on those days. */
+    val choreDoneOn: Set<LocalDate> = emptySet(),
 )
 
 data class ScheduleResult(
@@ -66,10 +68,11 @@ object ReminderScheduler {
 
         for (r in reminders) {
             r.snoozeUntil?.let { until ->
+                val choreDone = until.atZone(zone).toLocalDate() in r.choreDoneOn
                 if (!until.isAfter(now)) {
                     expired += r.id
-                    if (r.active && until.isAfter(from)) due += r.id
-                } else if (r.active) {
+                    if (r.active && !choreDone && until.isAfter(from)) due += r.id
+                } else if (r.active && !choreDone) {
                     candidate(until)
                 }
             }
@@ -78,7 +81,7 @@ object ReminderScheduler {
             when (r.mode) {
                 ReminderMode.TIMED -> {
                     for (date in dates(today.minusDays(1), today.plusDays(LOOKAHEAD_DAYS))) {
-                        if (!r.isOn(date)) continue
+                        if (!r.isOn(date) || date in r.choreDoneOn) continue
                         for (minute in r.times) {
                             val t = instantAt(date, minute, zone)
                             if (t.isAfter(from) && !t.isAfter(now)) due += r.id
@@ -88,7 +91,7 @@ object ReminderScheduler {
                 }
                 ReminderMode.PERSISTENT -> {
                     for (date in dates(today.minusDays(1), today.plusDays(LOOKAHEAD_DAYS))) {
-                        if (!r.isOn(date) || r.doneOn == date) continue
+                        if (!r.isOn(date) || r.doneOn == date || date in r.choreDoneOn) continue
                         for (w in r.windows) {
                             val start = instantAt(date, w.startMinute, zone)
                             val end = instantAt(date, w.endMinute, zone)

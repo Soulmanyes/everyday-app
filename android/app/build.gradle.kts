@@ -16,6 +16,7 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -54,7 +55,16 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+    implementation(libs.work.runtime.ktx)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.room.testing)
+
+    constraints {
+        // room-testing needs 1.8.1, and the test APK must use the app's version (1.7.3 via navigation).
+        implementation(libs.kotlinx.serialization.core) { because("align with room-testing for MigrationTest") }
+    }
 }

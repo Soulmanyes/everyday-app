@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
             app.engine.recompute()
             // Picks up member changes, and notices if this phone was removed from the household.
             app.household.refresh()
+            app.chores.refresh()
         }
     }
 }

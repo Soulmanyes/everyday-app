@@ -66,6 +66,17 @@ interface ReminderDao {
     @Query("UPDATE reminder SET deleted = 1, updatedAt = :now WHERE id = :id")
     suspend fun softDelete(id: String, now: Long)
 
+    /** Assignments are only cached for chores that exist, so a missing row covers both cases. */
+    @Query(
+        """
+        UPDATE reminder SET deleted = 1, updatedAt = :now
+        WHERE choreId IS NOT NULL AND deleted = 0 AND NOT EXISTS (
+            SELECT 1 FROM chore_assignment a WHERE a.choreId = reminder.choreId AND a.memberId = reminder.ownerMemberId
+        )
+        """,
+    )
+    suspend fun softDeleteUnassignedChoreReminders(now: Long): Int
+
     @Query("UPDATE reminder SET active = :active, updatedAt = :now WHERE id = :id")
     suspend fun setActive(id: String, active: Boolean, now: Long)
 

@@ -155,4 +155,35 @@ class ReminderSchedulerTest {
         val r = timed(weekdays = 0, times = intArrayOf(hm(8)))
         assertNull(compute(listOf(r), "2026-10-07T07:00", null).nextWakeAt)
     }
+
+    @Test
+    fun `chore done today silences a timed chore reminder until tomorrow`() {
+        val today = LocalDate.parse("2026-10-07")
+        val r = timed(times = intArrayOf(hm(8), hm(20))).copy(choreDoneOn = setOf(today))
+        assertTrue(compute(listOf(r), "2026-10-07T20:00", "2026-10-07T19:59").dueTimed.isEmpty())
+        // Tomorrow's 08:00 is the next event; today's 20:00 is skipped.
+        assertEquals(at("2026-10-08T08:00"), compute(listOf(r), "2026-10-07T09:00", null).nextWakeAt)
+        assertEquals(setOf("t"), compute(listOf(r), "2026-10-08T08:00", "2026-10-08T07:59").dueTimed)
+    }
+
+    @Test
+    fun `chore done while a persistent chore reminder is showing hides it`() {
+        val r = persistent(windows = arrayOf(Window(hm(16), hm(18))))
+        assertEquals(setOf("p"), compute(listOf(r), "2026-10-07T17:00", null).visiblePersistent)
+        val done = r.copy(choreDoneOn = setOf(LocalDate.parse("2026-10-07")))
+        val result = compute(listOf(done), "2026-10-07T17:00", null)
+        assertTrue(result.visiblePersistent.isEmpty())
+        assertEquals(at("2026-10-08T16:00"), result.nextWakeAt)
+    }
+
+    @Test
+    fun `chore done today drops a snooze that would expire today`() {
+        val r = timed(times = intArrayOf(hm(8))).copy(
+            snoozeUntil = at("2026-10-07T08:10"),
+            choreDoneOn = setOf(LocalDate.parse("2026-10-07")),
+        )
+        val result = compute(listOf(r), "2026-10-07T08:10", "2026-10-07T08:05")
+        assertTrue(result.dueTimed.isEmpty())
+        assertEquals(setOf("t"), result.expiredSnoozes)
+    }
 }

@@ -1,7 +1,10 @@
 package app.everyday.android
 
 import android.app.Application
+import app.everyday.android.chores.ChoreManager
+import app.everyday.android.chores.ChoreRefreshWorker
 import app.everyday.android.data.AppDatabase
+import app.everyday.android.data.ChoreRepository
 import app.everyday.android.data.LOCAL_MEMBER_ID
 import app.everyday.android.data.ReminderRepository
 import app.everyday.android.household.HouseholdManager
@@ -22,8 +25,15 @@ class EverydayApplication : Application() {
             memberIdChanges = session.state.map { it.profileId() }.distinctUntilChanged(),
         )
     }
-    val engine by lazy { ReminderEngine(this, repository) }
+    val choreRepository by lazy { ChoreRepository(database) }
+    val engine by lazy { ReminderEngine(this, repository, choreRepository, currentMemberId = { session.current.profileId() }) }
     val household by lazy { HouseholdManager(this, session, repository, engine) }
+    val chores by lazy { ChoreManager(session, choreRepository, repository, engine) }
+
+    override fun onCreate() {
+        super.onCreate()
+        ChoreRefreshWorker.schedule(this)
+    }
 }
 
 /** The member whose reminders this phone shows and fires: the picked profile, or the local one. */
