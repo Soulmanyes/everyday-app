@@ -106,6 +106,9 @@ cd server && ./gradlew run            # needs DATABASE_URL etc. (see deploy/.env
 # Android (needs the Android SDK, e.g. from Android Studio; set sdk.dir in android/local.properties)
 cd android && ./gradlew assembleDebug
 
+# Emulator for testing: run headless so it does not cover the terminal
+~/Android/Sdk/emulator/emulator -avd Medium_Phone_API_37.0 -no-window -no-snapshot-save -no-audio -no-boot-anim &
+
 # Full stack on the VM
 cd deploy && cp .env.example .env    # then fill in values
 docker compose up -d --build
