@@ -1,0 +1,102 @@
+# CLAUDE.md
+
+Guidance for Claude Code (and humans) working in this repository.
+
+## What this is
+
+**Everyday App** is a private Android app for one household. It has two core features:
+
+1. **Reminders**: custom-message notifications that fire on chosen weekdays, at as many times per day as the user wants.
+2. **Chore timetable**: a household-wide weekly schedule of chores, with members linked to each chore.
+
+A small backend on the owner's Oracle Cloud VM stores and syncs the data between the household's phones.
+
+See `ROADMAP.md` for planned features and their order.
+
+## Working with the owner
+
+- The owner wants to be **asked when a decision comes up**. Don't silently pick product behaviour, data model changes, new dependencies, or anything that touches the server. Ask first.
+- When asking multiple-choice questions, always include a "Discuss this first" option.
+
+## Repository layout
+
+```
+android/   Android app: Kotlin + Jetpack Compose (standalone Gradle build)
+server/    API: Kotlin + Ktor + PostgreSQL (standalone Gradle build, Dockerfile)
+deploy/    docker-compose stack for the Oracle VM (Postgres, API, Caddy for HTTPS)
+```
+
+`android/` and `server/` are **separate Gradle builds on purpose**. Configuring an Android Gradle build requires the Android SDK, and the server image is built on the VM, where the SDK isn't installed. Don't merge them into one root build. If shared models are needed later, see the "Shared models" item in `ROADMAP.md`.
+
+## Decisions made (don't change without asking)
+
+| Topic | Decision |
+|---|---|
+| App | Native Android, Kotlin, Jetpack Compose, Material 3 |
+| Users | One household, several members |
+| Login | **Household code + profile picker.** A phone enters the shared household code once and receives a device token. After that, anyone opens the app and taps their profile, with no password. Optional per-member PIN is a roadmap item. |
+| Backend | Ktor (Kotlin) REST API + PostgreSQL, both in Docker on an Oracle Cloud **Ampere A1 (arm64)** VM |
+| HTTPS | Caddy reverse proxy with automatic Let's Encrypt certificates. The owner has **no domain**, so the plan is a free DuckDNS subdomain. |
+| Repo | Private GitHub repo `everyday-app` |
+
+## Domain model
+
+- **Household**: one row. Holds the household code hash and the household timezone.
+- **Member**: a person in the household (display name, colour). Members don't have passwords.
+- **Device**: a phone that has joined the household with the code. The server stores a hash of its token.
+- **Chore**: shared by the household. Has a title, optional notes, and the weekdays it happens on.
+- **Chore assignment**: links members to a chore. The timetable is the chores laid out by weekday with their assignees.
+- **Reminder**: owned by one member. Has a message, a set of weekdays, an active flag, and **one or more times of day** (as many as the user wants). It's either:
+  - **general**: `chore_id` is null and it belongs to its owner only, or
+  - **chore reminder**: `chore_id` is set. Only members assigned to that chore can create one, and each member manages their own reminders for the chore.
+- *Assumption, confirm with the owner:* general reminders are personal and are only shown and fired on the owner's chosen profile.
+
+Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Times of day are local wall-clock times in the household timezone.
+
+## Android rules
+
+- **Reminders must fire with no network.** Reminders and their times live in a local Room database and are scheduled on the device with `AlarmManager`. The server is for sync, not for triggering notifications.
+- Use exact alarms (`setExactAndAllowWhileIdle`). Handle the `SCHEDULE_EXACT_ALARM` / `USE_EXACT_ALARM` permission and fall back gracefully if it's denied.
+- Request `POST_NOTIFICATIONS` at runtime (Android 13+).
+- Reschedule all alarms on `BOOT_COMPLETED`, `TIME_SET`, `TIMEZONE_CHANGED`, and app update (`MY_PACKAGE_REPLACED`).
+- Schedule one alarm per (reminder, time) for its next occurrence only, and schedule the following one when it fires.
+- Notifications fire only for reminders owned by the profile currently selected on that phone.
+
+## Server rules
+
+- Store the household code and device tokens **only as hashes**, never in plain text. Never log them.
+- Every API route except `/health` and `POST /join` requires a valid device token.
+- Schema changes go through **Flyway migrations** in `server/src/main/resources/db/migration` (`V<n>__description.sql`). Never edit a migration that has already been deployed.
+- Configuration comes from environment variables (see `deploy/.env.example`). `.env` is gitignored and must never be committed.
+
+## Deployment notes (Oracle Cloud)
+
+- **The API must not be reachable over plain HTTP from the internet.** The household code is the only secret, and HTTP would leak it. Only Caddy publishes ports (80/443). Postgres and the API are not published.
+- Oracle blocks ports in **two places**: the VCN security list / NSG in the console, and the VM's own `iptables` rules (Oracle's Ubuntu images block by default). Open 80 and 443 in both.
+- The VM is arm64, so images must be built for `linux/arm64`. Building on the VM itself is simplest.
+- Back up Postgres with `pg_dump` on a schedule (roadmap).
+
+## Build and run
+
+Toolchain: Gradle 9.8.1 (via the wrapper) runs on any full JDK from 17 to 27. A JRE is not enough. Code is compiled for Java 21 through Gradle toolchains with the foojay resolver, which downloads a JDK 21 automatically if one isn't installed.
+
+```sh
+# Server
+cd server && ./gradlew build          # compile + tests
+cd server && ./gradlew run            # needs DATABASE_URL etc. (see deploy/.env.example)
+
+# Android (needs the Android SDK, e.g. from Android Studio; set sdk.dir in android/local.properties)
+cd android && ./gradlew assembleDebug
+
+# Full stack on the VM
+cd deploy && cp .env.example .env    # then fill in values
+docker compose up -d --build
+```
+
+Versions are pinned in each build's `gradle/libs.versions.toml`.
+
+## Conventions
+
+- Kotlin style: official Kotlin coding conventions.
+- Commit messages: Conventional Commits (`feat:`, `fix:`, `docs:`, ...).
+- Keep `ROADMAP.md` up to date when a feature ships or a plan changes.

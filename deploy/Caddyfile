@@ -1,0 +1,6 @@
+# Caddy obtains and renews a Let's Encrypt certificate for API_DOMAIN automatically.
+# API_DOMAIN must resolve to the VM's public IP (e.g. a DuckDNS subdomain).
+{$API_DOMAIN} {
+	encode gzip
+	reverse_proxy api:8080
+}
