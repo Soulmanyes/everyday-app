@@ -13,15 +13,18 @@ Status: `[ ]` planned · `[~]` in progress · `[x]` done
 - [x] First deploy; `https://everyday-home.duckdns.org/health` returns ok with a Let's Encrypt cert
 
 ## Phase 1: Local reminders (works offline, single phone)
-- [ ] Room database (UUID ids, owner, soft delete, schema export): reminders, times, windows, done/snooze state, member settings
-- [ ] Pure scheduler with unit tests (weekday mask, DST, now-inside-window, done, snooze)
-- [ ] Timed reminders: notification with Snooze (per-member snooze length)
-- [ ] Persistent reminders: ongoing notification during time windows or all day; Done hides it until tomorrow; re-posted if swiped (Android 14+)
-- [ ] One exact alarm for the next event; recompute on fire, edit, boot, time/timezone change, app update
-- [ ] Notification permission flow and exact-alarm fallback
-- [ ] Weekly calendar screen (7 day columns), mark done / undo from the calendar
-- [ ] Create / edit / delete / pause reminder screen
-- [ ] Settings screen: snooze length, Sound/Vibrate/Silent for timed and persistent, battery optimization button
+Verified on an API 37 emulator on 2026-10-08. Not yet tested on a real Samsung phone.
+
+- [x] Room database (UUID ids, owner, soft delete, schema export): reminders, times, windows, done/snooze state, member settings
+- [x] Pure scheduler with unit tests (weekday mask, DST, now-inside-window, done, snooze)
+- [x] Timed reminders: notification with Snooze (per-member snooze length)
+- [x] Persistent reminders: ongoing notification during time windows or all day; Done hides it until tomorrow; re-posted if swiped (Android 14+)
+- [x] One exact alarm for the next event; recompute on fire, edit, boot, time/timezone change, app update
+- [x] Notification permission flow and exact-alarm fallback
+- [x] Weekly calendar screen (7 day columns), mark done / undo from the calendar
+- [x] Create / edit / delete / pause reminder screen
+- [x] Settings screen: snooze length, Sound/Vibrate/Silent for timed and persistent, battery optimization button
+- [ ] Calendar readability: overlapping reminders in the 7 narrow columns get truncated (e.g. a day view on tapping a day header)
 
 ## Phase 2: Household and login
 - [ ] Server: create a household (one-time setup command) and set the household code
