@@ -43,3 +43,40 @@ data class ErrorResponse(val error: String)
 class ApiException(val status: HttpStatusCode, override val message: String) : RuntimeException(message)
 
 fun badRequest(message: String): Nothing = throw ApiException(HttpStatusCode.BadRequest, message)
+
+/** ANY: done for the day once anyone marks it. EACH: every assignee does their own part. */
+enum class ChoreCompletion { ANY, EACH }
+
+@Serializable
+data class ChoreRequest(
+    val title: String,
+    val notes: String? = null,
+    /** Bit 0 = Monday ... bit 6 = Sunday. */
+    val weekdays: Int,
+    val completion: ChoreCompletion,
+    val assigneeIds: List<String>,
+)
+
+@Serializable
+data class ChoreDto(
+    val id: String,
+    val title: String,
+    val notes: String? = null,
+    val weekdays: Int,
+    val completion: ChoreCompletion,
+    val assigneeIds: List<String>,
+)
+
+/** A member did a chore on a day (household timezone, ISO date). */
+@Serializable
+data class ChoreCompletionDto(val choreId: String, val memberId: String, val doneOn: String)
+
+@Serializable
+data class ChoreDoneRequest(val memberId: String)
+
+/**
+ * Every chore with its assignees, plus today's completions. Returned by every chore route,
+ * so the phone replaces its cache from any response.
+ */
+@Serializable
+data class ChoresResponse(val today: String, val chores: List<ChoreDto>, val completions: List<ChoreCompletionDto>)

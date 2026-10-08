@@ -102,11 +102,20 @@ class HouseholdStore(private val db: DataSource) {
         }
     }
 
-    /** Soft-deletes a member. Returns false if there was no such member. */
+    /**
+     * Soft-deletes a member and their chore assignments (a soft delete doesn't trigger ON DELETE CASCADE).
+     * Returns false if there was no such member.
+     */
     fun deleteMember(householdId: UUID, memberId: UUID): Boolean = db.transaction { conn ->
-        conn.prepareStatement(
+        val deleted = conn.prepareStatement(
             "UPDATE member SET deleted = TRUE, updated_at = now() WHERE id = ? AND household_id = ? AND NOT deleted",
         ).run { setObject(1, memberId); setObject(2, householdId); executeUpdate() > 0 }
+        if (deleted) {
+            conn.prepareStatement("UPDATE chore_assignment SET deleted = TRUE, updated_at = now() WHERE member_id = ? AND NOT deleted").run {
+                setObject(1, memberId); executeUpdate()
+            }
+        }
+        deleted
     }
 
     object NameTaken : RuntimeException("name taken")

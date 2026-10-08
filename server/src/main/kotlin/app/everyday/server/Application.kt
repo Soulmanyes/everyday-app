@@ -19,6 +19,7 @@ fun main() {
     val dataSource = createDataSource(DatabaseConfig.fromEnv())
     val api = ApiContext(
         store = HouseholdStore(dataSource),
+        chores = ChoreStore(dataSource),
         secrets = Secrets(),
         limiter = AttemptLimiter(),
         setupToken = System.getenv("SETUP_TOKEN")?.takeIf { it.isNotBlank() },
