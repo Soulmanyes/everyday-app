@@ -48,7 +48,11 @@ import app.everyday.android.data.MemberEntity
 import app.everyday.android.data.toCompletion
 import app.everyday.android.reminders.isOnWeekday
 import app.everyday.android.ui.choreColors
+import app.everyday.android.data.ChoreSlotEntity
+import app.everyday.android.reminders.Window
 import app.everyday.android.ui.dayShort
+import app.everyday.android.ui.formatMinute
+import app.everyday.android.ui.formatWindow
 import kotlinx.coroutines.delay
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -67,6 +71,17 @@ private val LocalMemberColors = compositionLocalOf { emptyMap<String, Color>() }
 @Composable
 fun memberColor(id: String): Color =
     LocalMemberColors.current[id] ?: MEMBER_COLORS[Math.floorMod(id.hashCode(), MEMBER_COLORS.size)]
+
+/**
+ * An assignee's slots on a chore: the current profile's from its reminders on this phone (shown at
+ * once), everyone else's from the server's timetable.
+ */
+private val LocalChoreSlots = compositionLocalOf<(ChoreWithDetails, String) -> List<ChoreSlotEntity>> { { c, m -> c.slots.filter { it.memberId == m } } }
+
+@Composable
+fun slotsOf(chore: ChoreWithDetails, memberId: String) = LocalChoreSlots.current(chore, memberId)
+
+fun formatSlot(slot: ChoreSlotEntity) = slot.endMinute?.let { formatWindow(Window(slot.startMinute, it)) } ?: formatMinute(slot.startMinute)
 
 fun ChoreWithDetails.isCompleteOn(date: LocalDate) =
     ChoreRules.isComplete(chore.completion, assigneeIds, completions.map { it.toCompletion() }, date)
@@ -102,7 +117,14 @@ fun ChoresScreen(onEditChore: (String?) -> Unit, onAddReminder: (String) -> Unit
 
     val membersById = members.associateBy { it.id }
     val colors = members.mapIndexed { i, m -> m.id to MEMBER_COLORS[i % MEMBER_COLORS.size] }.toMap()
-    CompositionLocalProvider(LocalMemberColors provides colors) { ChoresContent(vm, chores, members, membersById, session.memberId, today, onEditChore, onAddReminder) }
+    val mySlots by vm.mySlots.collectAsStateWithLifecycle()
+    val myId = session.memberId
+    val slots: (ChoreWithDetails, String) -> List<ChoreSlotEntity> = { c, m ->
+        if (m == myId) mySlots[c.chore.id].orEmpty() else c.slots.filter { it.memberId == m }
+    }
+    CompositionLocalProvider(LocalMemberColors provides colors, LocalChoreSlots provides slots) {
+        ChoresContent(vm, chores, members, membersById, myId, today, onEditChore, onAddReminder)
+    }
 }
 
 @Composable
@@ -165,6 +187,8 @@ private fun ChoresContent(
             onMarkDone = { vm.markDone(selected.chore.id) },
             onUndo = { vm.undoDone(selected.chore.id) },
             onAddReminder = { selectedId = null; onAddReminder(selected.chore.id) },
+            onAddTime = { minute -> vm.addTime(selected.chore, minute) },
+            onRemoveTime = { minute -> vm.removeTime(selected.chore.id, minute) },
         )
     }
 }
@@ -242,6 +266,15 @@ private fun ChoreCard(c: ChoreWithDetails, done: Boolean, onClick: () -> Unit) {
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
+        val times = c.assigneeIds.flatMap { slotsOf(c, it) }.map { it.startMinute }.distinct().sorted()
+        if (times.isNotEmpty()) {
+            Text(
+                times.take(2).joinToString(" ") { formatMinute(it) } + if (times.size > 2) " …" else "",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 10.sp),
+                color = if (done) colors.onSurfaceVariant else colors.choreColors().second,
+                maxLines = 2,
+            )
+        }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             c.assigneeIds.forEach { Box(Modifier.size(8.dp).background(memberColor(it), CircleShape)) }
         }
@@ -291,7 +324,9 @@ private fun DayView(
                     color = if (done) colors.onSurfaceVariant else colors.choreColors().second,
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    c.assigneeIds.forEach { id -> MemberChip(id, membersById[id]?.displayName ?: "?") }
+                    c.assigneeIds.forEach { id ->
+                        MemberChip(id, membersById[id]?.displayName ?: "?", detail = slotsOf(c, id).joinToString(", ") { formatSlot(it) })
+                    }
                 }
             }
         }
@@ -299,14 +334,14 @@ private fun DayView(
 }
 
 @Composable
-fun MemberChip(id: String, name: String, ticked: Boolean = false) {
+fun MemberChip(id: String, name: String, ticked: Boolean = false, detail: String = "") {
     Row(
         Modifier.background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Box(Modifier.size(10.dp).background(memberColor(id), CircleShape))
-        Text((if (ticked) "✓ " else "") + name, style = MaterialTheme.typography.labelMedium)
+        Text((if (ticked) "✓ " else "") + name + if (detail.isNotEmpty()) " · $detail" else "", style = MaterialTheme.typography.labelMedium)
     }
 }
 

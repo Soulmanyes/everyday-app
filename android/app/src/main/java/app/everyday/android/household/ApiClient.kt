@@ -3,6 +3,7 @@ package app.everyday.android.household
 import app.everyday.android.data.ChoreCompletion
 import app.everyday.android.data.ChoreCompletionEntity
 import app.everyday.android.data.ChoreEntity
+import app.everyday.android.data.ChoreSlotEntity
 import app.everyday.android.data.ChoreSnapshot
 import app.everyday.android.data.MemberSettingsEntity
 import app.everyday.android.data.ReminderEntity
@@ -206,6 +207,9 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
             },
             completions = completions.map {
                 ChoreCompletionEntity(it.getString("choreId"), it.getString("memberId"), it.getString("doneOn"))
+            },
+            slots = optArray("slots").objects().map {
+                ChoreSlotEntity(it.getString("choreId"), it.getString("memberId"), it.getInt("startMinute"), it.optLongOrNull("endMinute")?.toInt())
             },
         )
     }

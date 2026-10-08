@@ -11,7 +11,13 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import app.everyday.android.EverydayApplication
 import app.everyday.android.chores.ChoreManager
 import app.everyday.android.data.ChoreRepository
+import app.everyday.android.data.ChoreEntity
+import app.everyday.android.data.ChoreSlotEntity
 import app.everyday.android.data.MemberEntity
+import app.everyday.android.data.ReminderMode
+import app.everyday.android.data.ReminderRepository
+import app.everyday.android.reminders.ReminderEngine
+import kotlinx.coroutines.flow.map
 import app.everyday.android.household.ApiError
 import app.everyday.android.household.Session
 import kotlinx.coroutines.flow.Flow
@@ -25,7 +31,37 @@ class ChoresViewModel(
     repository: ChoreRepository,
     session: Session,
     members: Flow<List<MemberEntity>>,
+    private val reminders: ReminderRepository,
+    private val engine: ReminderEngine,
+    private val requestSync: () -> Unit,
 ) : ViewModel() {
+    /**
+     * The current profile's own slots per chore, from its chore reminders on this phone: shown at once,
+     * where other members' slots come from the server.
+     */
+    val mySlots = reminders.observeReminders().map { list ->
+        list.filter { it.isOwn && it.reminder.choreId != null && it.reminder.active }.flatMap { r ->
+            val choreId = r.reminder.choreId!!
+            when (r.reminder.mode) {
+                ReminderMode.TIMED -> r.times.map { ChoreSlotEntity(choreId, r.reminder.ownerMemberId, it.minuteOfDay) }
+                ReminderMode.PERSISTENT -> r.windows.map { ChoreSlotEntity(choreId, r.reminder.ownerMemberId, it.startMinute, it.endMinute) }
+            }
+        }.distinctBy { Triple(it.choreId, it.startMinute, it.endMinute) }.sortedBy { it.startMinute }.groupBy { it.choreId }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** Quick time on a chore the current profile is assigned to: a timed chore reminder. */
+    fun addTime(chore: ChoreEntity, minute: Int) = viewModelScope.launch {
+        reminders.addChoreTime(chore.id, chore.title, chore.weekdays, minute)
+        engine.recompute()
+        requestSync()
+    }
+
+    fun removeTime(choreId: String, minute: Int) = viewModelScope.launch {
+        reminders.removeChoreTime(choreId, minute)
+        engine.recompute()
+        requestSync()
+    }
+
     val chores = repository.observeChores().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val members = members.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val session = session.state
@@ -62,7 +98,15 @@ class ChoresViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as EverydayApplication
-                ChoresViewModel(app.chores, app.choreRepository, app.session, app.repository.observeMembers())
+                ChoresViewModel(
+                    app.chores,
+                    app.choreRepository,
+                    app.session,
+                    app.repository.observeMembers(),
+                    app.repository,
+                    app.engine,
+                    app.sync::requestSync,
+                )
             }
         }
     }

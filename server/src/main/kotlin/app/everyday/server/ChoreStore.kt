@@ -184,6 +184,33 @@ class ChoreStore(private val db: DataSource) {
                 }
             }
         }
-        return ChoresResponse(today.toString(), chores, completions)
+        // Active chore reminders of current assignees. Chore reminders are personal, but their times
+        // are shown on the timetable so the household sees when each person plans to do it.
+        val slots = prepareStatement(
+            """
+            SELECT r.chore_id, r.owner_member_id, t.minute_of_day AS start_minute, NULL::int AS end_minute
+            FROM reminder r JOIN reminder_time t ON t.reminder_id = r.id
+            JOIN chore c ON c.id = r.chore_id
+            JOIN chore_assignment a ON a.chore_id = r.chore_id AND a.member_id = r.owner_member_id AND NOT a.deleted
+            WHERE c.household_id = ? AND NOT c.deleted AND NOT r.deleted AND r.active AND r.mode = 'TIMED'
+            UNION
+            SELECT r.chore_id, r.owner_member_id, w.start_minute, w.end_minute
+            FROM reminder r JOIN reminder_window w ON w.reminder_id = r.id
+            JOIN chore c ON c.id = r.chore_id
+            JOIN chore_assignment a ON a.chore_id = r.chore_id AND a.member_id = r.owner_member_id AND NOT a.deleted
+            WHERE c.household_id = ? AND NOT c.deleted AND NOT r.deleted AND r.active AND r.mode = 'PERSISTENT'
+            ORDER BY 1, 2, 3
+            """.trimIndent(),
+        ).run {
+            setObject(1, householdId); setObject(2, householdId)
+            executeQuery().use { rs ->
+                buildList {
+                    while (rs.next()) {
+                        add(ChoreSlotDto(rs.getString(1), rs.getString(2), rs.getInt(3), rs.getObject(4) as Int?))
+                    }
+                }
+            }
+        }
+        return ChoresResponse(today.toString(), chores, completions, slots)
     }
 }

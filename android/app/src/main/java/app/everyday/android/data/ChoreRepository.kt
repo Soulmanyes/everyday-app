@@ -12,6 +12,7 @@ data class ChoreSnapshot(
     /** Assignee ids per chore id, in the server's order. */
     val assignees: Map<String, List<String>>,
     val completions: List<ChoreCompletionEntity>,
+    val slots: List<ChoreSlotEntity> = emptyList(),
 )
 
 /** The cached chores. Only [replace] writes them; changes go through the server (see ChoreManager). */
@@ -26,6 +27,7 @@ class ChoreRepository(private val db: AppDatabase) {
             snapshot.assignees[c.id].orEmpty().mapIndexed { i, member -> ChoreAssignmentEntity(c.id, member, i) }
         },
         snapshot.completions,
+        snapshot.slots,
     )
 
     /** For each cached chore, the days it counts as done for [memberId] (see [ChoreRules.doneDatesFor]). */

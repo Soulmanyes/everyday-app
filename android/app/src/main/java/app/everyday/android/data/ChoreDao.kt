@@ -25,6 +25,12 @@ interface ChoreDao {
     @Query("DELETE FROM chore_completion")
     suspend fun deleteCompletions()
 
+    @Query("DELETE FROM chore_slot")
+    suspend fun deleteSlots()
+
+    @Insert
+    suspend fun insertSlots(slots: List<ChoreSlotEntity>)
+
     @Insert
     suspend fun insertChores(chores: List<ChoreEntity>)
 
@@ -40,12 +46,15 @@ interface ChoreDao {
         chores: List<ChoreEntity>,
         assignments: List<ChoreAssignmentEntity>,
         completions: List<ChoreCompletionEntity>,
+        slots: List<ChoreSlotEntity>,
     ) {
         deleteChores()
         deleteAssignments()
         deleteCompletions()
+        deleteSlots()
         insertChores(chores)
         insertAssignments(assignments)
         insertCompletions(completions)
+        insertSlots(slots)
     }
 }

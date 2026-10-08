@@ -79,7 +79,17 @@ data class ChoreDoneRequest(val memberId: String)
  * so the phone replaces its cache from any response.
  */
 @Serializable
-data class ChoresResponse(val today: String, val chores: List<ChoreDto>, val completions: List<ChoreCompletionDto>)
+data class ChoresResponse(
+    val today: String,
+    val chores: List<ChoreDto>,
+    val completions: List<ChoreCompletionDto>,
+    /** When each assignee is reminded about each chore, from their chore reminders, for the timetable. */
+    val slots: List<ChoreSlotDto> = emptyList(),
+)
+
+/** One reminder slot of an assignee for a chore: a time ([endMinute] null) or a window. */
+@Serializable
+data class ChoreSlotDto(val choreId: String, val memberId: String, val startMinute: Int, val endMinute: Int? = null)
 
 // Sync (Phase 4). Times are epoch millis from the phone's clock; last write wins on updatedAt.
 

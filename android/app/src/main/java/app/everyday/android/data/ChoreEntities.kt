@@ -39,12 +39,23 @@ data class ChoreCompletionEntity(
     val doneOn: String,
 )
 
+/** When an assignee is reminded about a chore: a time ([endMinute] null) or a window. Shown on the timetable. */
+@Entity(tableName = "chore_slot", primaryKeys = ["choreId", "memberId", "startMinute"])
+data class ChoreSlotEntity(
+    val choreId: String,
+    val memberId: String,
+    val startMinute: Int,
+    val endMinute: Int? = null,
+)
+
 data class ChoreWithDetails(
     @Embedded val chore: ChoreEntity,
     @Relation(parentColumn = "id", entityColumn = "choreId")
     val assignments: List<ChoreAssignmentEntity>,
     @Relation(parentColumn = "id", entityColumn = "choreId")
     val completions: List<ChoreCompletionEntity>,
+    @Relation(parentColumn = "id", entityColumn = "choreId")
+    val slots: List<ChoreSlotEntity> = emptyList(),
 ) {
     val assigneeIds get() = assignments.sortedBy { it.position }.map { it.memberId }
 }

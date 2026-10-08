@@ -321,7 +321,7 @@ internal fun DayToggle(letter: String, selected: Boolean, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TimeDialog(title: String, initialMinute: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
+internal fun TimeDialog(title: String, initialMinute: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
     val state = rememberTimePickerState(
         initialHour = initialMinute / 60,
         initialMinute = initialMinute % 60,

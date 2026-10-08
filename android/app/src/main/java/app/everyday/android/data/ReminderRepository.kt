@@ -139,6 +139,33 @@ class ReminderRepository(
 
     suspend fun delete(id: String) = reminders.softDelete(id, clock())
 
+    private suspend fun myTimedChoreReminders(choreId: String) = getReminders().filter {
+        it.isOwn && it.reminder.choreId == choreId && it.reminder.mode == ReminderMode.TIMED && it.reminder.active
+    }.sortedBy { it.reminder.createdAt }
+
+    /**
+     * Quick chore time: adds [minute] to the current profile's first timed reminder for the chore,
+     * or creates one with the chore's title and days.
+     */
+    suspend fun addChoreTime(choreId: String, title: String, weekdays: Int, minute: Int) {
+        val existing = myTimedChoreReminders(choreId).firstOrNull()?.let { getDraft(it.reminder.id) }
+        if (existing == null) {
+            save(ReminderDraft(message = title, mode = ReminderMode.TIMED, weekdays = weekdays, times = listOf(minute), choreId = choreId))
+        } else if (minute !in existing.times) {
+            save(existing.copy(times = (existing.times + minute).sorted()))
+        }
+    }
+
+    /** Removes [minute] from the current profile's timed reminders for the chore; one left with no times is deleted. */
+    suspend fun removeChoreTime(choreId: String, minute: Int) {
+        for (r in myTimedChoreReminders(choreId)) {
+            val draft = getDraft(r.reminder.id) ?: continue
+            if (minute !in draft.times) continue
+            val left = draft.times - minute
+            if (left.isEmpty()) delete(r.reminder.id) else save(draft.copy(times = left))
+        }
+    }
+
     /** Deletes chore reminders whose owner is no longer assigned to the chore, or whose chore is gone. */
     suspend fun deleteUnassignedChoreReminders() = reminders.softDeleteUnassignedChoreReminders(clock())
 

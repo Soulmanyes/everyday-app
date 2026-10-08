@@ -108,6 +108,7 @@ Chore reminders **look like chores**: the fixed chore green and the Chores tab's
 - The editor offers a chore only if the picked profile is in its cached assignees. This is checked locally because reminders don't reach the server until Phase 4.
 - The **Done** button on a persistent chore reminder's notification also marks the chore done for the picked profile (ANY: for everyone; EACH: their part). Offline, it only hides the reminder.
 - After a refresh, the app deletes the picked profile's chore reminders for chores it is no longer assigned to, and for deleted chores.
+- **Chore times**: an assignee adds times straight from the chore sheet. Each is a time on that member's first timed chore reminder for the chore (created if needed; removing the last time deletes it). The server adds every assignee's active chore reminder times and windows to the chores snapshot (`slots`), so the timetable shows when each person is reminded. The picked profile's own slots come from its local reminders so they show at once.
 - "Own part" means the profile picked on that phone. Profiles are honor-system, like the rest of login.
 
 ## Server rules

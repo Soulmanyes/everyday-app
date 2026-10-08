@@ -69,6 +69,22 @@ class MigrationTest {
         db.query("SELECT count(*) FROM reminder_recipient").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
     }
 
+    @Test
+    fun migrate3To4AddsChoreSlotsAndKeepsReminders() {
+        helper.createDatabase(DB, 3).apply {
+            execSQL(
+                "INSERT INTO reminder (id, ownerMemberId, message, mode, weekdays, active, choreId, createdAt, updatedAt, deleted, ownerReceives, dirty) " +
+                    "VALUES ('r1', 'm1', 'Bins', 'TIMED', 127, 1, 'c1', 1, 5, 0, 1, 0)",
+            )
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(DB, 4, true)
+        db.query("SELECT message, choreId FROM reminder").use {
+            it.moveToFirst(); assertEquals(listOf("Bins", "c1"), listOf(it.getString(0), it.getString(1)))
+        }
+        db.query("SELECT count(*) FROM chore_slot").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

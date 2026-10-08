@@ -9,12 +9,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -22,6 +32,7 @@ import app.everyday.android.data.ChoreCompletion
 import app.everyday.android.data.ChoreWithDetails
 import app.everyday.android.data.MemberEntity
 import app.everyday.android.ui.ChoreIcon
+import app.everyday.android.ui.editor.TimeDialog
 import app.everyday.android.ui.formatWeekdays
 import java.time.LocalDate
 
@@ -39,7 +50,11 @@ fun ChoreSheet(
     onMarkDone: () -> Unit,
     onUndo: () -> Unit,
     onAddReminder: () -> Unit,
+    /** Quick time for the current profile: a timed chore reminder. */
+    onAddTime: (Int) -> Unit,
+    onRemoveTime: (Int) -> Unit,
 ) {
+    var addingTime by remember { mutableStateOf(false) }
     val c = item.chore
     val todays = item.completions.filter { it.doneOn == today.toString() }
     val doneBy = todays.map { it.memberId }.toSet()
@@ -64,11 +79,46 @@ fun ChoreSheet(
             c.notes?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 item.assigneeIds.forEach { id ->
-                    MemberChip(id, name(id), ticked = c.completion == ChoreCompletion.EACH && id in doneBy)
+                    MemberChip(
+                        id,
+                        name(id),
+                        ticked = c.completion == ChoreCompletion.EACH && id in doneBy,
+                        detail = slotsOf(item, id).joinToString(", ") { formatSlot(it) },
+                    )
                 }
             }
             if (item.assigneeIds.isEmpty()) {
                 Text("Nobody is assigned. Edit the chore to assign someone.", color = MaterialTheme.colorScheme.error)
+            }
+
+            if (assigned) {
+                val mine = slotsOf(item, myId!!)
+                Text("Your times", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    mine.forEach { slot ->
+                        if (slot.endMinute == null) {
+                            InputChip(
+                                selected = false,
+                                onClick = { onRemoveTime(slot.startMinute) },
+                                label = { Text(formatSlot(slot)) },
+                                trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove", Modifier.size(16.dp)) },
+                            )
+                        } else {
+                            // Windows come from persistent reminders: change those in the reminder editor.
+                            AssistChip(onClick = {}, label = { Text(formatSlot(slot)) })
+                        }
+                    }
+                    AssistChip(
+                        onClick = { addingTime = true },
+                        label = { Text("Add time") },
+                        leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, Modifier.size(18.dp)) },
+                    )
+                }
+                Text(
+                    "You get a notification at each time, until the chore is done for the day. Everyone sees your times on the timetable.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             if (item.isOn(today)) {
@@ -102,8 +152,14 @@ fun ChoreSheet(
                     }
                 }
                 OutlinedButton(onClick = onEdit) { Text("Edit") }
-                if (assigned) OutlinedButton(onClick = onAddReminder) { Text("Add reminder") }
+                if (assigned) OutlinedButton(onClick = onAddReminder) { Text("More reminder options") }
             }
+        }
+    }
+    if (addingTime) {
+        TimeDialog("Add time", initialMinute = 18 * 60, onDismiss = { addingTime = false }) {
+            onAddTime(it)
+            addingTime = false
         }
     }
 }

@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.delete
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.put
@@ -185,6 +186,13 @@ class SyncApiTest {
         val unassigned = reminder(home.alex).copy(choreId = choreId)
         assertEquals(listOf(shared.id), client.syncOk(home, SyncRequest(home.sam, reminders = listOf(ok, shared))).rejected)
         assertEquals(listOf(unassigned.id), client.syncOk(home, SyncRequest(home.alex, reminders = listOf(unassigned))).rejected)
+
+        // The chore timetable shows the assignee's reminder times (480 and 1200 from the helper).
+        val chores = client.get("/chores") { header(HttpHeaders.Authorization, "Bearer ${home.token}") }.body<ChoresResponse>()
+        assertEquals(listOf(480, 1200), chores.slots.filter { it.memberId == home.sam }.map { it.startMinute })
+        // Paused reminders don't show.
+        client.syncOk(home, SyncRequest(home.sam, reminders = listOf(ok.copy(active = false, updatedAt = 2_000))))
+        assertTrue(client.get("/chores") { header(HttpHeaders.Authorization, "Bearer ${home.token}") }.body<ChoresResponse>().slots.isEmpty())
     }
 
     @Test
