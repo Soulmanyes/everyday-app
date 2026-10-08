@@ -37,16 +37,16 @@ Live since 2026-10-08: household created from the owner's phone; setup code disa
 - [x] Production: deploy V2, set `SETUP_TOKEN`, owner creates the household from their phone
 
 ## Phase 3: Chore timetable
-Server is the source of truth. The app caches chores read-only, and edits need a network until Phase 4.
+Built and verified end to end on an API 37 emulator against the test stack on 2026-10-08. Server is the source of truth. The app caches chores read-only, and edits need a network until Phase 4.
 
-- [ ] Server V3 migration: chore completion type (`ANY` / `EACH`), `chore_completion` table (chore, member, day in household timezone)
-- [ ] Server: chores and assignments CRUD (any member, no PIN, at least one assignee); mark done / undo; member delete also removes their assignments
-- [ ] App: Room migration with tested upgrade for cached chores, assignments and completions
-- [ ] App: refresh on open, on the Chores tab, after writes, and every 15 min with WorkManager (new dependency)
-- [ ] App: weekly timetable view (columns per weekday, chips per assignee, done state for today)
-- [ ] App: add/edit/delete chore, choose weekdays, completion type, assign members
-- [ ] App: mark done / undo for today: ANY by anyone; EACH only your own part
-- [ ] Chore reminders: assigned members add their own reminders for a chore (any number of times); they stop for the day once the chore is done for that member; deleted when unassigned or the chore is deleted
+- [x] Server V3 migration: chore completion type (`ANY` / `EACH`), `chore_completion` table (chore, member, day in household timezone)
+- [x] Server: chores and assignments CRUD (any member, no PIN, at least one assignee); mark done / undo; member delete also removes their assignments
+- [x] App: Room migration with tested upgrade for cached chores, assignments and completions
+- [x] App: refresh on open, on the Chores tab, after writes, and every 15 min with WorkManager (new dependency)
+- [x] App: weekly timetable view (columns per weekday, chips per assignee, done state for today)
+- [x] App: add/edit/delete chore, choose weekdays, completion type, assign members
+- [x] App: mark done / undo for today: ANY by anyone; EACH only your own part
+- [x] Chore reminders: assigned members add their own reminders for a chore (any number of times); they stop for the day once the chore is done for that member; deleted when unassigned or the chore is deleted
 - No history screen (decided 2026-10-08)
 
 ## Phase 4: Sync
