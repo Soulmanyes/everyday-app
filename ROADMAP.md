@@ -24,7 +24,7 @@ Verified on an API 37 emulator on 2026-10-08. Not yet tested on a real Samsung p
 - [x] Weekly calendar screen (7 day columns), mark done / undo from the calendar
 - [x] Create / edit / delete / pause reminder screen
 - [x] Settings screen: snooze length, Sound/Vibrate/Silent for timed and persistent, battery optimization button
-- [ ] Calendar readability: overlapping reminders in the 7 narrow columns get truncated (e.g. a day view on tapping a day header)
+- [x] Calendar readability: tap a day header for a full-width day view with times on the blocks
 
 ## Phase 2: Household and login
 - [ ] Server: create a household (one-time setup command) and set the household code

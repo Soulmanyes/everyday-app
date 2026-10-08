@@ -1,5 +1,6 @@
 package app.everyday.android.ui.calendar
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -57,11 +58,14 @@ import app.everyday.android.data.ReminderWithDetails
 import app.everyday.android.reminders.Window
 import app.everyday.android.reminders.isOnWeekday
 import app.everyday.android.ui.dayShort
+import app.everyday.android.ui.formatMinute
+import app.everyday.android.ui.formatWindow
 import kotlinx.coroutines.delay
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 
 private val HOUR_HEIGHT = 56.dp
@@ -82,6 +86,8 @@ fun CalendarScreen(onEditReminder: (String?) -> Unit) {
     val reminders by vm.reminders.collectAsStateWithLifecycle()
     var weekOffset by rememberSaveable { mutableIntStateOf(0) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Day view: the focused day as an epoch day, or null for the week view.
+    var focusedEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
 
     // Ticks every minute so "today" and the now-line stay current.
     val now by produceState(LocalTime.now()) {
@@ -92,15 +98,31 @@ fun CalendarScreen(onEditReminder: (String?) -> Unit) {
     }
     val today = remember(now) { LocalDate.now() }
     val weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).plusWeeks(weekOffset.toLong())
-    val days = (0L until 7L).map { weekStart.plusDays(it) }
+    val focusedDay = focusedEpochDay?.let(LocalDate::ofEpochDay)
+    val days = if (focusedDay != null) listOf(focusedDay) else (0L until 7L).map { weekStart.plusDays(it) }
+
+    fun backToWeek() {
+        val day = focusedDay ?: return
+        // Show the week containing the day the user ended up on.
+        weekOffset = ChronoUnit.WEEKS.between(
+            today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)),
+            day.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)),
+        ).toInt()
+        focusedEpochDay = null
+    }
+    BackHandler(enabled = focusedDay != null) { backToWeek() }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            WeekHeader(weekStart, weekOffset, onChange = { weekOffset = it })
-            DayHeaders(days, today)
+            if (focusedDay != null) {
+                DayHeader(focusedDay, today, onChange = { focusedEpochDay = it.toEpochDay() }, onBackToWeek = ::backToWeek)
+            } else {
+                WeekHeader(weekStart, weekOffset, onChange = { weekOffset = it })
+                DayHeaders(days, today, onDayClick = { focusedEpochDay = it.toEpochDay() })
+            }
             AllDayRow(days, today, reminders, onSelect = { selectedId = it })
             HorizontalDivider()
-            TimeGrid(days, today, now, reminders, onSelect = { selectedId = it })
+            TimeGrid(days, today, now, reminders, detailed = focusedDay != null, onSelect = { selectedId = it })
         }
         if (reminders.isEmpty()) {
             Text(
@@ -149,13 +171,36 @@ private fun WeekHeader(weekStart: LocalDate, weekOffset: Int, onChange: (Int) ->
     }
 }
 
+/** Header for the day view: the date, arrows to move a day, and a way back to the week. */
 @Composable
-private fun DayHeaders(days: List<LocalDate>, today: LocalDate) {
+private fun DayHeader(day: LocalDate, today: LocalDate, onChange: (LocalDate) -> Unit, onBackToWeek: () -> Unit) {
+    val fmt = DateTimeFormatter.ofPattern("EEEE d MMM")
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = { onChange(day.minusDays(1)) }) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous day")
+        }
+        Text(
+            if (day == today) "Today, ${day.format(DateTimeFormatter.ofPattern("d MMM"))}" else day.format(fmt),
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onBackToWeek) { Text("Week") }
+        IconButton(onClick = { onChange(day.plusDays(1)) }) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next day")
+        }
+    }
+}
+
+@Composable
+private fun DayHeaders(days: List<LocalDate>, today: LocalDate, onDayClick: (LocalDate) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
         Spacer(Modifier.width(GUTTER))
         for (day in days) {
             val isToday = day == today
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                Modifier.weight(1f).clickable(onClickLabel = "Open day") { onDayClick(day) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 Text(dayShort(day.dayOfWeek), style = MaterialTheme.typography.labelSmall)
                 Box(
                     Modifier.size(26.dp).background(
@@ -212,6 +257,7 @@ private fun TimeGrid(
     today: LocalDate,
     now: LocalTime,
     reminders: List<ReminderWithDetails>,
+    detailed: Boolean,
     onSelect: (String) -> Unit,
 ) {
     val scroll = rememberScrollState()
@@ -244,7 +290,7 @@ private fun TimeGrid(
                 for (hour in 1 until 24) {
                     HorizontalDivider(Modifier.offset(y = HOUR_HEIGHT * hour), thickness = 0.5.dp, color = lineColor)
                 }
-                val items = itemsFor(day, reminders)
+                val items = itemsFor(day, reminders, detailed)
                 val lanes = assignLanes(items)
                 val laneCount = (lanes.maxOrNull() ?: 0) + 1
                 val laneWidth = maxWidth / laneCount
@@ -257,6 +303,8 @@ private fun TimeGrid(
                         day,
                         today,
                         Modifier.offset(x = laneWidth * lanes[i], y = top).width(laneWidth).height(height).padding(1.dp),
+                        // Blocks too short for two lines would show a clipped second line.
+                        singleLine = height < 32.dp,
                     ) { onSelect(item.reminder.reminder.id) }
                 }
                 if (day == today) {
@@ -277,6 +325,7 @@ private fun ReminderBlock(
     day: LocalDate,
     today: LocalDate,
     modifier: Modifier,
+    singleLine: Boolean = true,
     onClick: () -> Unit,
 ) {
     val persistent = r.reminder.mode == ReminderMode.PERSISTENT
@@ -300,21 +349,35 @@ private fun ReminderBlock(
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 11.sp),
             fontWeight = FontWeight.Medium,
             overflow = TextOverflow.Ellipsis,
+            maxLines = if (singleLine) 1 else Int.MAX_VALUE,
         )
     }
 }
 
 private fun minutesToDp(minutes: Int): Dp = HOUR_HEIGHT * (minutes / 60f)
 
-private fun itemsFor(day: LocalDate, reminders: List<ReminderWithDetails>): List<CalendarItem> =
+/** Calendar blocks for one day. [detailed] (day view) adds times to the labels; the week view has no room. */
+private fun itemsFor(day: LocalDate, reminders: List<ReminderWithDetails>, detailed: Boolean): List<CalendarItem> =
     reminders.filter { isOnWeekday(it.reminder.weekdays, day) }.flatMap { r ->
         when (r.reminder.mode) {
             ReminderMode.TIMED -> r.times.map {
-                CalendarItem(r, it.minuteOfDay, minOf(it.minuteOfDay + TIMED_LENGTH_MINUTES, 1440), r.reminder.message)
+                CalendarItem(
+                    r,
+                    it.minuteOfDay,
+                    minOf(it.minuteOfDay + TIMED_LENGTH_MINUTES, 1440),
+                    if (detailed) "${formatMinute(it.minuteOfDay)}  ${r.reminder.message}" else r.reminder.message,
+                )
             }
             ReminderMode.PERSISTENT -> r.windows
                 .filterNot { Window(it.startMinute, it.endMinute).isAllDay }
-                .map { CalendarItem(r, it.startMinute, it.endMinute, r.reminder.message) }
+                .map {
+                    val label = if (detailed) {
+                        "${r.reminder.message}  ${formatWindow(Window(it.startMinute, it.endMinute))}"
+                    } else {
+                        r.reminder.message
+                    }
+                    CalendarItem(r, it.startMinute, it.endMinute, label)
+                }
         }
     }.sortedWith(compareBy({ it.startMinute }, { -it.endMinute }))
 
