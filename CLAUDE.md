@@ -34,10 +34,10 @@ deploy/    docker-compose stack for the Oracle VM (Postgres, API, Caddy for HTTP
 |---|---|
 | App | Native Android, Kotlin, Jetpack Compose, Material 3. `minSdk 28` (Android 9): the oldest household phone runs Android 9. |
 | Users | One household, several members |
-| Login | **Household code + profile picker.** A phone enters the shared household code once and receives a device token. The person picks their profile once per phone (switchable in Settings), with no password. |
+| Login | **Household code + name, approved by the admin.** A phone enters the household code and the person's name, and receives a device token in a **pending** state. The admin approves the request (with the admin PIN), either as a new member with that name or **linked to an existing member** (new phone, reinstall, or someone the admin added by hand). The approved phone is **locked to that member**: there is no profile switching. The admin can also reject a request. |
 | Household setup | The **first phone creates the household** (name, household code, admin name, admin PIN), using a one-time `SETUP_TOKEN` from the server's `.env`. The server allows exactly one household. |
 | Members | Only the **admin** (the household's creator) adds, renames or removes members, and every such request must include the **admin PIN**, which the server checks. The admin can't be removed. |
-| Joining | Reminders made on a phone before it joined move to the profile picked on that phone. |
+| Joining | Reminders made on a phone before it joined move to the member the phone is approved as. |
 | Backend | Ktor (Kotlin) REST API + PostgreSQL, both in Docker on an Oracle Cloud **Ampere A1 (arm64)** VM |
 | HTTPS | Caddy reverse proxy with automatic Let's Encrypt certificates. The owner has **no domain**, so the plan is a free DuckDNS subdomain. |
 | Repo | Private GitHub repo `everyday-app` |
@@ -63,6 +63,7 @@ deploy/    docker-compose stack for the Oracle VM (Postgres, API, Caddy for HTTP
 - **Reminder recipient**: an invited member of a general reminder, with status `pending`, `accepted` or `declined`. The owner sees each invitee's status and can remove an invite.
 - **Removed members** (admin removes a member): their personal and chore reminders are deleted, and their invites to others' reminders are removed. Reminders they **shared** keep firing, read-only, for invitees who accepted. Each invitee can remove such a reminder for themselves, and once nobody has it, it is deleted.
 - **Done/snooze state** is per (reminder, member), so a shared reminder can be done for one person and not another.
+- **Join request**: a device in the `pending` state with the name typed on the phone. Pending devices can only read their own status and leave. The admin's phone notifies on each new request (on its next refresh) and Settings shows the count. The admin keeps **Add member** for people without a phone (e.g. a child assigned chores); a phone can be linked to them later through a request.
 - **Member settings** (per member, edited in the app): snooze length in minutes, and **Sound / Vibrate / Silent** chosen separately for timed and persistent reminders.
 
 Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Reminders repeat **weekly** only. Times of day are local wall-clock times in the household timezone.
@@ -109,13 +110,14 @@ Chore reminders **look like chores**: the fixed chore green and the Chores tab's
 - The **Done** button on a persistent chore reminder's notification also marks the chore done for the picked profile (ANY: for everyone; EACH: their part). Offline, it only hides the reminder.
 - After a refresh, the app deletes the picked profile's chore reminders for chores it is no longer assigned to, and for deleted chores.
 - **Chore times**: an assignee adds times straight from the chore sheet. Each is a time on that member's first timed chore reminder for the chore (created if needed; removing the last time deletes it). The server adds every assignee's active chore reminder times and windows to the chores snapshot (`slots`), so the timetable shows when each person is reminded. The picked profile's own slots come from its local reminders so they show at once.
-- "Own part" means the profile picked on that phone. Profiles are honor-system, like the rest of login.
+- "Own part" means the member the phone is approved as; the server checks it against the device.
 
 ## Server rules
 
 - Store the household code, admin PIN and device tokens **only as hashes**, never in plain text. Never log them. The code and PIN use PBKDF2 (slow); device tokens are 32 random bytes and use SHA-256.
 - Secrets travel in the JSON body or headers, **never in URLs** (URLs end up in logs).
-- Every API route except `GET /health`, `GET /status`, `POST /household` (needs `SETUP_TOKEN`) and `POST /join` requires a valid device token (`Authorization: Bearer ...`).
+- Every API route except `GET /health`, `GET /status`, `POST /household` (needs `SETUP_TOKEN`) and `POST /join` requires a valid device token (`Authorization: Bearer ...`). Except `GET /me` and `DELETE /device`, it also requires the device to be **approved**, and member-scoped requests (sync, chore done/undo) act **as the device's member**: a different `memberId` is refused.
+- Removing a member revokes their devices, which return to the join screen.
 - Member changes also need the `X-Admin-Pin` header, checked on the server.
 - Failed code/PIN/setup-token attempts are counted globally (all traffic comes through Caddy, so per-IP limits don't work). Too many failures lock those endpoints for a while.
 - A `401` tells the app its token is no longer valid, and the app returns to the join screen.

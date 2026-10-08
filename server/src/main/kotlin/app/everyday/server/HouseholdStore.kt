@@ -6,8 +6,8 @@ import java.sql.SQLException
 import java.util.UUID
 import javax.sql.DataSource
 
-/** A device's authenticated identity. */
-data class DeviceSession(val deviceId: UUID, val householdId: UUID)
+/** A device's authenticated identity. [memberId] is set once the admin has approved the phone. */
+data class DeviceSession(val deviceId: UUID, val householdId: UUID, val memberId: UUID?, val approved: Boolean)
 
 data class HouseholdRow(
     val id: UUID,
@@ -52,25 +52,90 @@ class HouseholdStore(private val db: DataSource) {
             conn.prepareStatement("UPDATE household SET admin_member_id = ? WHERE id = ?").run {
                 setObject(1, UUID.fromString(admin.id)); setObject(2, householdId); executeUpdate()
             }
-            conn.insertDevice(householdId, deviceTokenHash, deviceLabel)
+            // The creator's phone belongs to the admin from the start.
+            conn.insertDevice(householdId, deviceTokenHash, deviceLabel, UUID.fromString(admin.id), name = null)
             conn.household(householdId)!! to conn.members(householdId)
         }
     } catch (e: SQLException) {
         if (e.sqlState == UNIQUE_VIOLATION) null else throw e
     }
 
-    fun addDevice(householdId: UUID, tokenHash: String, label: String?) = db.transaction { conn ->
-        conn.insertDevice(householdId, tokenHash, label)
+    /** A joining phone: pending until the admin approves it as [name] or links it to a member. */
+    fun addPendingDevice(householdId: UUID, tokenHash: String, label: String?, name: String) = db.transaction { conn ->
+        conn.insertDevice(householdId, tokenHash, label, memberId = null, name = name)
+    }
+
+    fun joinRequests(householdId: UUID): List<JoinRequestDto> = db.transaction { conn ->
+        conn.prepareStatement(
+            "SELECT id, requested_name, label, created_at FROM device WHERE household_id = ? AND status = 'pending' AND NOT revoked ORDER BY created_at",
+        ).run {
+            setObject(1, householdId)
+            executeQuery().use { rs ->
+                buildList {
+                    while (rs.next()) {
+                        add(
+                            JoinRequestDto(
+                                id = rs.getString(1),
+                                name = rs.getString(2).orEmpty(),
+                                deviceLabel = rs.getString(3),
+                                createdAt = rs.getObject(4, java.time.OffsetDateTime::class.java).toInstant().toEpochMilli(),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Approves a pending phone: as a new member with the requested name ([memberId] null), or linked to
+     * an existing member. Returns the member, or null if there's no such request or member.
+     * Throws [NameTaken] if a new member's name is already in use.
+     */
+    fun approve(householdId: UUID, deviceId: UUID, memberId: UUID?): MemberDto? = nameMustBeFree {
+        db.transaction { conn ->
+            val name = conn.prepareStatement(
+                "SELECT requested_name FROM device WHERE id = ? AND household_id = ? AND status = 'pending' AND NOT revoked FOR UPDATE",
+            ).run {
+                setObject(1, deviceId); setObject(2, householdId)
+                executeQuery().use { rs -> if (rs.next()) rs.getString(1).orEmpty() else null }
+            } ?: return@transaction null
+            val member = if (memberId == null) {
+                conn.insertMember(householdId, name.ifBlank { "New member" }, null)
+            } else {
+                conn.members(householdId).firstOrNull { it.id == memberId.toString() } ?: return@transaction null
+            }
+            conn.prepareStatement("UPDATE device SET status = 'approved', member_id = ? WHERE id = ?").run {
+                setObject(1, UUID.fromString(member.id)); setObject(2, deviceId); executeUpdate()
+            }
+            member
+        }
+    }
+
+    /** Rejects a pending phone: its token stops working. Returns false if there was no such request. */
+    fun reject(householdId: UUID, deviceId: UUID): Boolean = db.transaction { conn ->
+        conn.prepareStatement(
+            "UPDATE device SET revoked = TRUE WHERE id = ? AND household_id = ? AND status = 'pending' AND NOT revoked",
+        ).run { setObject(1, deviceId); setObject(2, householdId); executeUpdate() > 0 }
     }
 
     /** Looks up a device by token hash and records that it was seen. Null if unknown or revoked. */
     fun authenticate(tokenHash: String): DeviceSession? = db.transaction { conn ->
         conn.prepareStatement(
-            "UPDATE device SET last_seen_at = now() WHERE token_hash = ? AND NOT revoked RETURNING id, household_id",
+            "UPDATE device SET last_seen_at = now() WHERE token_hash = ? AND NOT revoked RETURNING id, household_id, member_id, status",
         ).run {
             setString(1, tokenHash)
             executeQuery().use { rs ->
-                if (rs.next()) DeviceSession(rs.getObject(1, UUID::class.java), rs.getObject(2, UUID::class.java)) else null
+                if (!rs.next()) {
+                    null
+                } else {
+                    DeviceSession(
+                        deviceId = rs.getObject(1, UUID::class.java),
+                        householdId = rs.getObject(2, UUID::class.java),
+                        memberId = rs.getObject(3, UUID::class.java),
+                        approved = rs.getString(4) == "approved",
+                    )
+                }
             }
         }
     }
@@ -116,6 +181,10 @@ class HouseholdStore(private val db: DataSource) {
                 setObject(1, memberId); executeUpdate()
             }
             conn.prepareStatement("UPDATE reminder_recipient SET deleted = TRUE, updated_at = now() WHERE member_id = ? AND NOT deleted").run {
+                setObject(1, memberId); executeUpdate()
+            }
+            // Their phones return to the join screen.
+            conn.prepareStatement("UPDATE device SET revoked = TRUE WHERE member_id = ? AND NOT revoked").run {
                 setObject(1, memberId); executeUpdate()
             }
             conn.deleteOrphanedSharedReminders()
@@ -170,9 +239,14 @@ class HouseholdStore(private val db: DataSource) {
         return member
     }
 
-    private fun Connection.insertDevice(householdId: UUID, tokenHash: String, label: String?) {
-        prepareStatement("INSERT INTO device (household_id, token_hash, label) VALUES (?, ?, ?)").run {
-            setObject(1, householdId); setString(2, tokenHash); setString(3, label?.take(100)); executeUpdate()
+    /** A device with [memberId] is approved as that member; without one it's a pending request named [name]. */
+    private fun Connection.insertDevice(householdId: UUID, tokenHash: String, label: String?, memberId: UUID?, name: String?) {
+        prepareStatement(
+            "INSERT INTO device (household_id, token_hash, label, member_id, status, requested_name) VALUES (?, ?, ?, ?, ?, ?)",
+        ).run {
+            setObject(1, householdId); setString(2, tokenHash); setString(3, label?.take(100)); setObject(4, memberId)
+            setString(5, if (memberId != null) "approved" else "pending"); setString(6, name)
+            executeUpdate()
         }
     }
 

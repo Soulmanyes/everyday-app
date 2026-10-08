@@ -34,8 +34,10 @@ class SyncApiTest {
         api = ApiContext(HouseholdStore(db), ChoreStore(db), SyncStore(db), Secrets(iterations = 1_000), AttemptLimiter(), setupToken = "setup")
     }
 
-    /** A household with Sam (admin), Alex and Kim, and a device token. */
-    private class Home(val token: String, val sam: String, val alex: String, val kim: String)
+    /** A household with Sam (admin), Alex and Kim, each with their own approved phone. */
+    private class Home(val token: String, val sam: String, val alex: String, val kim: String, val tokens: Map<String, String>) {
+        fun tokenOf(memberId: String) = tokens[memberId] ?: token
+    }
 
     private fun api(block: suspend ApplicationTestBuilder.(HttpClient, Home) -> Unit) = testApplication {
         application { module(api) }
@@ -44,18 +46,30 @@ class SyncApiTest {
             contentType(ContentType.Application.Json)
             setBody(CreateHouseholdRequest("setup", "Home", "kitchen-table", "Europe/London", "Sam", "4821"))
         }.body<SessionResponse>()
-        suspend fun add(name: String) = client.post("/members") {
-            contentType(ContentType.Application.Json)
-            header(HttpHeaders.Authorization, "Bearer ${session.token}")
-            header(ADMIN_PIN_HEADER, "4821")
-            setBody(MemberRequest(name))
-        }.body<MemberDto>().id
-        block(client, Home(session.token, session.household.adminMemberId!!, add("Alex"), add("Kim")))
+        suspend fun phoneFor(name: String): Pair<String, String> {
+            val token = client.post("/join") {
+                contentType(ContentType.Application.Json)
+                setBody(JoinRequest("kitchen-table", name))
+            }.body<SessionResponse>().token
+            val requestId = client.get("/me") { header(HttpHeaders.Authorization, "Bearer ${session.token}") }
+                .body<HouseholdResponse>().pendingRequestIds.single()
+            val member = client.post("/join-requests/$requestId/approve") {
+                contentType(ContentType.Application.Json)
+                header(HttpHeaders.Authorization, "Bearer ${session.token}")
+                header(ADMIN_PIN_HEADER, "4821")
+                setBody(ApproveRequest())
+            }.body<MemberDto>()
+            return member.id to token
+        }
+        val sam = session.household.adminMemberId!!
+        val (alex, alexToken) = phoneFor("Alex")
+        val (kim, kimToken) = phoneFor("Kim")
+        block(client, Home(session.token, sam, alex, kim, mapOf(sam to session.token, alex to alexToken, kim to kimToken)))
     }
 
     private suspend fun HttpClient.sync(home: Home, req: SyncRequest) = post("/sync") {
         contentType(ContentType.Application.Json)
-        header(HttpHeaders.Authorization, "Bearer ${home.token}")
+        header(HttpHeaders.Authorization, "Bearer ${home.tokenOf(req.memberId)}")
         setBody(req)
     }
 
@@ -122,9 +136,9 @@ class SyncApiTest {
     }
 
     @Test
-    fun `unknown member is refused`() = api { client, home ->
-        assertEquals(HttpStatusCode.BadRequest, client.sync(home, SyncRequest(UUID.randomUUID().toString())).status)
-        assertEquals(HttpStatusCode.BadRequest, client.sync(home, SyncRequest("nope")).status)
+    fun `a phone can't sync as another member`() = api { client, home ->
+        assertEquals(HttpStatusCode.Forbidden, client.sync(home, SyncRequest(UUID.randomUUID().toString())).status)
+        assertEquals(HttpStatusCode.Forbidden, client.sync(home, SyncRequest("nope")).status)
     }
 
     @Test

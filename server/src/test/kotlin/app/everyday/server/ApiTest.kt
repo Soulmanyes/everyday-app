@@ -25,6 +25,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ApiTest {
@@ -106,19 +107,82 @@ class ApiTest {
         assertEquals(HttpStatusCode.BadRequest, client.postJson("/household", badZone).status)
     }
 
+    /** Joins as [name] and has the admin approve it, as a new member or linked to [linkTo]. Returns (token, memberId). */
+    private suspend fun HttpClient.joinApproved(adminToken: String, name: String, linkTo: String? = null): Pair<String, String> {
+        val token = postJson("/join", JoinRequest(CODE, name)).body<SessionResponse>().token
+        val request = get("/join-requests") {
+            header(HttpHeaders.Authorization, "Bearer $adminToken"); header(ADMIN_PIN_HEADER, PIN)
+        }.body<List<JoinRequestDto>>().single { it.name == name }
+        val member = postJson("/join-requests/${request.id}/approve", ApproveRequest(linkTo), adminToken, PIN).body<MemberDto>()
+        return token to member.id
+    }
+
+    private suspend fun HttpClient.me(token: String) =
+        get("/me") { header(HttpHeaders.Authorization, "Bearer $token") }.body<HouseholdResponse>()
+
     @Test
-    fun `joining needs the right household code`() = api { client ->
-        assertEquals(HttpStatusCode.NotFound, client.postJson("/join", JoinRequest(CODE)).status)
+    fun `joining needs the right household code and a name`() = api { client ->
+        assertEquals(HttpStatusCode.NotFound, client.postJson("/join", JoinRequest(CODE, "Alex")).status)
         client.createHousehold()
-        assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest("not-the-code")).status)
+        assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest("not-the-code", "Alex")).status)
+        assertEquals(HttpStatusCode.BadRequest, client.postJson("/join", JoinRequest(CODE, " ")).status)
 
-        val joined = client.postJson("/join", JoinRequest(CODE, "Tablet"))
+        val joined = client.postJson("/join", JoinRequest(CODE, "Alex", "Tablet"))
         assertEquals(HttpStatusCode.OK, joined.status)
-        val token = joined.body<SessionResponse>().token
+        assertEquals("pending", joined.body<SessionResponse>().deviceStatus)
+    }
 
-        val me = client.get("/me") { header(HttpHeaders.Authorization, "Bearer $token") }
-        assertEquals(HttpStatusCode.OK, me.status)
-        assertEquals("Home", me.body<HouseholdResponse>().household.name)
+    @Test
+    fun `a joining phone waits for the admin, who approves it as a new member`() = api { client ->
+        val admin = client.createHousehold()
+        val token = client.postJson("/join", JoinRequest(CODE, "Alex", "Tablet")).body<SessionResponse>().token
+
+        // Pending: it can see its status, but nothing else.
+        val pending = client.me(token)
+        assertEquals("pending", pending.deviceStatus)
+        assertNull(pending.memberId)
+        assertEquals(HttpStatusCode.Forbidden, client.get("/chores") { header(HttpHeaders.Authorization, "Bearer $token") }.status)
+        // The admin's phone learns about the request; the request list needs the PIN.
+        assertEquals(1, client.me(admin.token).pendingRequestIds.size)
+        assertEquals(HttpStatusCode.Forbidden, client.get("/join-requests") { header(HttpHeaders.Authorization, "Bearer ${admin.token}") }.status)
+        // A pending phone can't approve itself, even with the PIN.
+        val requestId = client.me(admin.token).pendingRequestIds.single()
+        assertEquals(HttpStatusCode.Forbidden, client.postJson("/join-requests/$requestId/approve", ApproveRequest(), token, PIN).status)
+
+        val alex = client.postJson("/join-requests/$requestId/approve", ApproveRequest(), admin.token, PIN).body<MemberDto>()
+        assertEquals("Alex", alex.displayName)
+        val approved = client.me(token)
+        assertEquals("approved", approved.deviceStatus)
+        assertEquals(alex.id, approved.memberId)
+        assertTrue(client.me(admin.token).pendingRequestIds.isEmpty())
+    }
+
+    @Test
+    fun `a request can be linked to an existing member, or rejected`() = api { client ->
+        val admin = client.createHousehold()
+        val kim = client.addMember(admin.token, "Kim")
+        val (_, linked) = client.joinApproved(admin.token, "Kimmy", linkTo = kim)
+        assertEquals(kim, linked)
+        assertEquals(listOf("Sam", "Kim"), client.me(admin.token).members.map { it.displayName })
+
+        val token = client.postJson("/join", JoinRequest(CODE, "Stranger")).body<SessionResponse>().token
+        val id = client.me(admin.token).pendingRequestIds.single()
+        assertEquals(HttpStatusCode.NoContent, client.postJson("/join-requests/$id/reject", ApproveRequest(), admin.token, PIN).status)
+        assertEquals(HttpStatusCode.Unauthorized, client.get("/me") { header(HttpHeaders.Authorization, "Bearer $token") }.status)
+    }
+
+    @Test
+    fun `a phone acts only as its own member, and removing the member signs the phone out`() = api { client ->
+        val admin = client.createHousehold()
+        val (token, alex) = client.joinApproved(admin.token, "Alex")
+        val sam = admin.household.adminMemberId!!
+        assertEquals(HttpStatusCode.Forbidden, client.postJson("/sync", SyncRequest(sam), token).status)
+        assertEquals(HttpStatusCode.OK, client.postJson("/sync", SyncRequest(alex), token).status)
+
+        client.delete("/members/$alex") {
+            header(HttpHeaders.Authorization, "Bearer ${admin.token}"); header(ADMIN_PIN_HEADER, PIN)
+        }
+        assertEquals(HttpStatusCode.Unauthorized, client.get("/me") { header(HttpHeaders.Authorization, "Bearer $token") }.status)
     }
 
     @Test
@@ -176,10 +240,10 @@ class ApiTest {
     @Test
     fun `too many wrong codes lock joining, even with the right code`() = api { client ->
         client.createHousehold()
-        repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest("wrong-code")).status) }
-        assertEquals(HttpStatusCode.TooManyRequests, client.postJson("/join", JoinRequest(CODE)).status)
+        repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest("wrong-code", "Alex")).status) }
+        assertEquals(HttpStatusCode.TooManyRequests, client.postJson("/join", JoinRequest(CODE, "Alex")).status)
         now = now.plusSeconds(16 * 60)
-        assertEquals(HttpStatusCode.OK, client.postJson("/join", JoinRequest(CODE)).status)
+        assertEquals(HttpStatusCode.OK, client.postJson("/join", JoinRequest(CODE, "Alex")).status)
     }
 
     private suspend fun HttpClient.putChore(token: String, id: String, req: ChoreRequest): HttpResponse = put("/chores/$id") {
@@ -246,12 +310,13 @@ class ApiTest {
         val session = client.createHousehold()
         val token = session.token
         val sam = session.household.adminMemberId!!
-        val alex = client.addMember(token, "Alex")
+        val (alexToken, alex) = client.joinApproved(token, "Alex")
         val id = UUID.randomUUID().toString()
         client.putChore(token, id, chore(sam))
 
-        // Alex isn't assigned but can still mark it done.
-        val done = client.postJson("/chores/$id/done", ChoreDoneRequest(alex), token).body<ChoresResponse>()
+        // Alex isn't assigned but can still mark it done; not as someone else, though.
+        assertEquals(HttpStatusCode.Forbidden, client.postJson("/chores/$id/done", ChoreDoneRequest(sam), alexToken).status)
+        val done = client.postJson("/chores/$id/done", ChoreDoneRequest(alex), alexToken).body<ChoresResponse>()
         assertEquals(listOf(ChoreCompletionDto(id, alex, "2026-10-08")), done.completions)
         // A second mark doesn't add another completion.
         assertEquals(1, client.postJson("/chores/$id/done", ChoreDoneRequest(sam), token).body<ChoresResponse>().completions.size)
@@ -264,18 +329,18 @@ class ApiTest {
         val session = client.createHousehold()
         val token = session.token
         val sam = session.household.adminMemberId!!
-        val alex = client.addMember(token, "Alex")
-        val kim = client.addMember(token, "Kim")
+        val (alexToken, alex) = client.joinApproved(token, "Alex")
+        val (kimToken, kim) = client.joinApproved(token, "Kim")
         val id = UUID.randomUUID().toString()
         client.putChore(token, id, chore(sam, alex, completion = ChoreCompletion.EACH))
 
-        assertEquals(HttpStatusCode.BadRequest, client.postJson("/chores/$id/done", ChoreDoneRequest(kim), token).status)
+        assertEquals(HttpStatusCode.BadRequest, client.postJson("/chores/$id/done", ChoreDoneRequest(kim), kimToken).status)
         client.postJson("/chores/$id/done", ChoreDoneRequest(sam), token)
-        val both = client.postJson("/chores/$id/done", ChoreDoneRequest(alex), token).body<ChoresResponse>()
+        val both = client.postJson("/chores/$id/done", ChoreDoneRequest(alex), alexToken).body<ChoresResponse>()
         assertEquals(setOf(sam, alex), both.completions.map { it.memberId }.toSet())
 
         // Undo only removes the caller's own part.
-        val undone = client.postJson("/chores/$id/undo", ChoreDoneRequest(alex), token).body<ChoresResponse>()
+        val undone = client.postJson("/chores/$id/undo", ChoreDoneRequest(alex), alexToken).body<ChoresResponse>()
         assertEquals(listOf(sam), undone.completions.map { it.memberId })
 
         // Switching the type starts today over.

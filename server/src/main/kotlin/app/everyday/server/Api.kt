@@ -18,7 +18,7 @@ data class CreateHouseholdRequest(
 )
 
 @Serializable
-data class JoinRequest(val householdCode: String, val deviceLabel: String? = null)
+data class JoinRequest(val householdCode: String, val name: String = "", val deviceLabel: String? = null)
 
 @Serializable
 data class HouseholdDto(val id: String, val name: String, val timezone: String, val adminMemberId: String?)
@@ -26,12 +26,36 @@ data class HouseholdDto(val id: String, val name: String, val timezone: String, 
 @Serializable
 data class MemberDto(val id: String, val displayName: String, val color: String? = null)
 
-/** Returned when a phone creates or joins the household. The token is shown only once. */
+/**
+ * Returned when a phone creates or joins the household. The token is shown only once. A joining
+ * phone is `pending` until the admin approves it; then [memberId] is the member it belongs to.
+ */
 @Serializable
-data class SessionResponse(val token: String, val household: HouseholdDto, val members: List<MemberDto>)
+data class SessionResponse(
+    val token: String,
+    val household: HouseholdDto,
+    val members: List<MemberDto>,
+    val deviceStatus: String = "approved",
+    val memberId: String? = null,
+)
 
 @Serializable
-data class HouseholdResponse(val household: HouseholdDto, val members: List<MemberDto>)
+data class HouseholdResponse(
+    val household: HouseholdDto,
+    val members: List<MemberDto>,
+    val deviceStatus: String = "approved",
+    val memberId: String? = null,
+    /** Pending join request ids; only sent to the admin's phone, so it can notify. */
+    val pendingRequestIds: List<String> = emptyList(),
+)
+
+/** A phone waiting for the admin's approval. */
+@Serializable
+data class JoinRequestDto(val id: String, val name: String, val deviceLabel: String? = null, val createdAt: Long)
+
+/** Approve as a new member named as requested ([memberId] null), or link the phone to an existing member. */
+@Serializable
+data class ApproveRequest(val memberId: String? = null)
 
 @Serializable
 data class MemberRequest(val displayName: String, val color: String? = null)

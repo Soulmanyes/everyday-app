@@ -62,23 +62,56 @@ fun Application.configureRouting(api: ApiContext?) {
                 deviceTokenHash = Secrets.tokenHash(token),
                 deviceLabel = req.deviceLabel,
             ) ?: throw ApiException(HttpStatusCode.Conflict, "A household already exists on this server.")
-            call.respond(HttpStatusCode.Created, SessionResponse(token, household.toDto(), members))
+            call.respond(HttpStatusCode.Created, SessionResponse(token, household.toDto(), members, memberId = household.adminMemberId?.toString()))
         }
 
         post("/join") {
             val req = call.receive<JoinRequest>()
+            val name = validName(req.name, "Your name", 40)
             api.ensureNotLocked()
             val household = api.store.getHousehold()
                 ?: throw ApiException(HttpStatusCode.NotFound, "No household has been set up yet.")
             api.checkSecret(api.secrets.verify(req.householdCode, household.codeHash), "Wrong household code.")
             val token = api.secrets.newToken()
-            api.store.addDevice(household.id, Secrets.tokenHash(token), req.deviceLabel)
-            call.respond(SessionResponse(token, household.toDto(), api.store.members(household.id)))
+            api.store.addPendingDevice(household.id, Secrets.tokenHash(token), req.deviceLabel, name)
+            call.respond(SessionResponse(token, household.toDto(), api.store.members(household.id), deviceStatus = "pending"))
         }
 
+        /** Works for pending phones too, so they can see when they've been approved. */
         get("/me") {
-            val household = api.household(call)
-            call.respond(HouseholdResponse(household.toDto(), api.store.members(household.id)))
+            val session = api.authenticate(call)
+            val household = api.store.getHousehold(session.householdId) ?: throw unauthorized()
+            val isAdmin = session.approved && session.memberId == household.adminMemberId
+            call.respond(
+                HouseholdResponse(
+                    household = household.toDto(),
+                    members = api.store.members(household.id),
+                    deviceStatus = if (session.approved) "approved" else "pending",
+                    memberId = session.memberId?.toString(),
+                    pendingRequestIds = if (isAdmin) api.store.joinRequests(household.id).map { it.id } else emptyList(),
+                ),
+            )
+        }
+
+        get("/join-requests") {
+            val household = api.requireAdmin(call)
+            call.respond(api.store.joinRequests(household.id))
+        }
+
+        /** Approves a phone as a new member (body without memberId) or as an existing member. */
+        post("/join-requests/{id}/approve") {
+            val household = api.requireAdmin(call)
+            val id = uuidParam(call, "request")
+            val memberId = call.receive<ApproveRequest>().memberId?.let { parseUuid(it) ?: badRequest("Bad member id.") }
+            val member = withNameCheck { api.store.approve(household.id, id, memberId) }
+                ?: throw ApiException(HttpStatusCode.NotFound, "No such request or member.")
+            call.respond(member)
+        }
+
+        post("/join-requests/{id}/reject") {
+            val household = api.requireAdmin(call)
+            if (!api.store.reject(household.id, uuidParam(call, "request"))) throw ApiException(HttpStatusCode.NotFound, "No such request.")
+            call.respond(HttpStatusCode.NoContent)
         }
 
         /** Leaving the household: the device's token stops working. */
@@ -123,8 +156,10 @@ fun Application.configureRouting(api: ApiContext?) {
 
         /** Pushes the phone's changed rows for one member and returns everything that member can see. */
         post("/sync") {
-            val household = api.household(call)
-            when (val result = api.sync.sync(household.id, call.receive<SyncRequest>())) {
+            val (household, me) = api.member(call)
+            val req = call.receive<SyncRequest>()
+            if (req.memberId != me.toString()) throw notYours()
+            when (val result = api.sync.sync(household.id, req)) {
                 is SyncStore.Result.Ok -> call.respond(result.response)
                 SyncStore.Result.UnknownMember -> badRequest("Unknown member.")
             }
@@ -158,16 +193,18 @@ fun Application.configureRouting(api: ApiContext?) {
         }
 
         post("/chores/{id}/done") {
-            val household = api.household(call)
+            val (household, me) = api.member(call)
             val id = uuidParam(call, "chore")
             val member = parseUuid(call.receive<ChoreDoneRequest>().memberId) ?: badRequest("Bad member id.")
+            if (member != me) throw notYours()
             call.respondChores(api.chores.markDone(household.id, id, member, api.today(household)))
         }
 
         post("/chores/{id}/undo") {
-            val household = api.household(call)
+            val (household, me) = api.member(call)
             val id = uuidParam(call, "chore")
             val member = parseUuid(call.receive<ChoreDoneRequest>().memberId) ?: badRequest("Bad member id.")
+            if (member != me) throw notYours()
             call.respondChores(api.chores.undoDone(household.id, id, member, api.today(household)))
         }
     }
@@ -184,8 +221,7 @@ private fun ApiContext.authenticate(call: ApplicationCall): DeviceSession {
 
 /** Authenticates the device and checks the admin PIN header. Returns the household. */
 private fun ApiContext.requireAdmin(call: ApplicationCall): HouseholdRow {
-    val session = authenticate(call)
-    val household = store.getHousehold(session.householdId) ?: throw unauthorized()
+    val household = household(call)
     val pin = call.request.headers[ADMIN_PIN_HEADER].orEmpty()
     checkSecret(pin.isNotEmpty() && secrets.verify(pin, household.adminPinHash), "Wrong admin PIN.")
     return household
@@ -214,8 +250,20 @@ private fun uuidParam(call: ApplicationCall, what: String): UUID =
 
 private fun parseUuid(value: String): UUID? = runCatching { UUID.fromString(value) }.getOrNull()
 
-private fun ApiContext.household(call: ApplicationCall): HouseholdRow =
-    store.getHousehold(authenticate(call).householdId) ?: throw unauthorized()
+/** The household of an approved phone. Pending phones are refused. */
+private fun ApiContext.household(call: ApplicationCall): HouseholdRow = member(call).first
+
+/** The household and member of an approved phone: member-scoped requests act as this member. */
+private fun ApiContext.member(call: ApplicationCall): Pair<HouseholdRow, UUID> {
+    val session = authenticate(call)
+    val memberId = session.memberId?.takeIf { session.approved } ?: throw notApproved()
+    val household = store.getHousehold(session.householdId) ?: throw unauthorized()
+    return household to memberId
+}
+
+private fun notApproved() = ApiException(HttpStatusCode.Forbidden, "This phone is waiting for the admin to approve it.")
+
+private fun notYours() = ApiException(HttpStatusCode.Forbidden, "This phone can only act as its own member.")
 
 /** Today's date in the household timezone; chore completions are per day there, not per UTC day. */
 private fun ApiContext.today(household: HouseholdRow): LocalDate = LocalDate.ofInstant(clock(), ZoneId.of(household.timezone))
