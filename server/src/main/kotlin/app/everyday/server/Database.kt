@@ -2,9 +2,9 @@ package app.everyday.server
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
-import io.ktor.server.application.Application
 import org.flywaydb.core.Flyway
-import org.jetbrains.exposed.v1.jdbc.Database
+import java.sql.Connection
+import javax.sql.DataSource
 
 data class DatabaseConfig(val url: String, val user: String, val password: String) {
     companion object {
@@ -19,8 +19,8 @@ data class DatabaseConfig(val url: String, val user: String, val password: Strin
     }
 }
 
-/** Connects to Postgres, applies pending Flyway migrations, and registers the pool with Exposed. */
-fun Application.configureDatabase(config: DatabaseConfig) {
+/** Creates the connection pool and applies pending Flyway migrations. */
+fun createDataSource(config: DatabaseConfig): HikariDataSource {
     val dataSource = HikariDataSource(
         HikariConfig().apply {
             jdbcUrl = config.url
@@ -29,7 +29,21 @@ fun Application.configureDatabase(config: DatabaseConfig) {
             maximumPoolSize = 5
         }
     )
+    migrate(dataSource)
+    return dataSource
+}
+
+fun migrate(dataSource: DataSource) {
     Flyway.configure().dataSource(dataSource).load().migrate()
-    Database.connect(dataSource)
-    monitor.subscribe(io.ktor.server.application.ApplicationStopped) { dataSource.close() }
+}
+
+/** Runs [block] in a transaction, committing on success and rolling back on any exception. */
+fun <T> DataSource.transaction(block: (Connection) -> T): T = connection.use { conn ->
+    conn.autoCommit = false
+    try {
+        block(conn).also { conn.commit() }
+    } catch (e: Throwable) {
+        conn.rollback()
+        throw e
+    }
 }

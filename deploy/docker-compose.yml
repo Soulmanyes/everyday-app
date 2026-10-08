@@ -24,6 +24,8 @@ services:
       DATABASE_USER: ${POSTGRES_USER}
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
       PORT: "8080"
+      # One-time code for creating the household. Remove it from .env once the household exists.
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
     depends_on:
       db:
         condition: service_healthy

@@ -1,0 +1,10 @@
+# Throwaway test stack on the VM, separate from production:
+#   docker compose -p everyday-test -f docker-compose.yml -f docker-compose.test.yml up -d --build db api
+# The project name gives it its own containers and database volume. The API is published on the
+# VM's loopback only (reach it through an SSH tunnel), and Caddy is not started.
+services:
+  api:
+    environment:
+      SETUP_TOKEN: test-setup-code
+    ports:
+      - "127.0.0.1:18080:8080"

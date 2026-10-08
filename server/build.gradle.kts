@@ -25,8 +25,7 @@ dependencies {
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.serialization.kotlinx.json)
-    implementation(libs.exposed.core)
-    implementation(libs.exposed.jdbc)
+    implementation(libs.ktor.server.status.pages)
     implementation(libs.flyway.core)
     implementation(libs.flyway.postgresql)
     implementation(libs.postgresql)
@@ -35,6 +34,9 @@ dependencies {
 
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test)
+    testImplementation(libs.ktor.client.content.negotiation)
+    testImplementation(libs.embedded.postgres)
+    testImplementation(platform(libs.embedded.postgres.binaries.bom))
 }
 
 tasks.test {
