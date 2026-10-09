@@ -1,6 +1,6 @@
 # Idea: a timetable of events, with optional reminders
 
-Status: **decided 2026-10-09, in progress** (Phase 6, 1.2.0). Roadmap entry: Phase 6 in `ROADMAP.md`.
+Status: **shipped in 1.2.0** (Phase 6, 2026-10-09). Roadmap entry: Phase 6 in `ROADMAP.md`.
 
 ## Goal
 
