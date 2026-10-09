@@ -58,7 +58,7 @@ private val SNOOZE_OPTIONS = listOf(5, 10, 15, 30, 60)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onManageMembers: () -> Unit, onOpenShared: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onManageMembers: () -> Unit) {
     val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
     val household: HouseholdViewModel = viewModel(factory = HouseholdViewModel.Factory)
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -92,7 +92,7 @@ fun SettingsScreen(onBack: () -> Unit, onManageMembers: () -> Unit, onOpenShared
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            HouseholdSection(household, onManageMembers, onOpenShared)
+            HouseholdSection(household, onManageMembers)
             HorizontalDivider()
 
             val followPhone by context.app.prefs.followPhoneTheme.collectAsStateWithLifecycle()
@@ -221,7 +221,7 @@ private fun Status(title: String, ok: Boolean, okText: String, badText: String, 
 }
 
 @Composable
-private fun HouseholdSection(vm: HouseholdViewModel, onManageMembers: () -> Unit, onOpenShared: () -> Unit) {
+private fun HouseholdSection(vm: HouseholdViewModel, onManageMembers: () -> Unit) {
     val session by vm.session.collectAsStateWithLifecycle()
     val members by vm.members.collectAsStateWithLifecycle()
     var confirmLeave by remember { mutableStateOf(false) }
@@ -257,7 +257,6 @@ private fun HouseholdSection(vm: HouseholdViewModel, onManageMembers: () -> Unit
             }
             OutlinedButton(onClick = { confirmLeave = true }) { Text("Leave") }
         }
-        OutlinedButton(onClick = onOpenShared) { Text("Reminders shared with me") }
         vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
     if (confirmLeave) {

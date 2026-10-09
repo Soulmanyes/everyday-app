@@ -41,7 +41,52 @@ data class MemberSettingsEntity(
 
 enum class ReminderMode { TIMED, PERSISTENT }
 
-@Entity(tableName = "reminder", indices = [Index("ownerMemberId")])
+/**
+ * Something on the timetable (Phase 6): weekly on [weekdays], or once on [onDate] (ISO date), exactly
+ * one of the two. No [startMinute] means all day; [endMinute] is optional. Personal unless it has
+ * [EventMemberEntity] rows; only the owner edits it.
+ */
+@Entity(tableName = "event", indices = [Index("ownerMemberId")])
+data class EventEntity(
+    @PrimaryKey val id: String,
+    val ownerMemberId: String,
+    val title: String,
+    val notes: String? = null,
+    /** Bit 0 = Monday ... bit 6 = Sunday; 0 for a one-off event. */
+    val weekdays: Int = 0,
+    val onDate: String? = null,
+    val startMinute: Int? = null,
+    val endMinute: Int? = null,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val deleted: Boolean = false,
+    /** Changed on this phone since the last sync. */
+    val dirty: Boolean = false,
+)
+
+/** A member a shared event is shared with. [hidden] is that member's own "Hide" (or "Decline"). */
+@Entity(
+    tableName = "event_member",
+    primaryKeys = ["eventId", "memberId"],
+    foreignKeys = [ForeignKey(EventEntity::class, ["id"], ["eventId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("memberId")],
+)
+data class EventMemberEntity(
+    val eventId: String,
+    val memberId: String,
+    val hidden: Boolean = false,
+    val updatedAt: Long = 0,
+    /** This member hid or showed the event on this phone since the last sync. */
+    val dirty: Boolean = false,
+)
+
+/**
+ * A reminder on an event ([eventId]) or a chore ([choreId]). Event reminders take their title and days
+ * from the event: TIMED ones have times (fixed, or relative to the start), PERSISTENT ones show all day
+ * ([leadMinutes] null) or from [leadMinutes] before the start until the end. Chore reminders keep their
+ * own [message], [weekdays], times and windows.
+ */
+@Entity(tableName = "reminder", indices = [Index("ownerMemberId"), Index("eventId")])
 data class ReminderEntity(
     @PrimaryKey val id: String,
     val ownerMemberId: String,
@@ -54,10 +99,12 @@ data class ReminderEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val deleted: Boolean = false,
-    /** "Remind me too": whether the owner of a shared reminder gets it as well. */
+    /** Unused since Room 6 (Phase 6); SQLite on Android 9 can't drop a column. */
     @ColumnInfo(defaultValue = "1") val ownerReceives: Boolean = true,
     /** Changed on this phone since the last sync. */
     @ColumnInfo(defaultValue = "0") val dirty: Boolean = false,
+    val eventId: String? = null,
+    val leadMinutes: Int? = null,
 )
 
 @Entity(
@@ -68,7 +115,9 @@ data class ReminderEntity(
 data class ReminderTimeEntity(
     @PrimaryKey val id: String,
     val reminderId: String,
+    /** A minute of the day, or with [relative] the minutes before the event starts. */
     val minuteOfDay: Int,
+    @ColumnInfo(defaultValue = "0") val relative: Boolean = false,
 )
 
 @Entity(
@@ -98,23 +147,5 @@ data class ReminderStateEntity(
     val snoozeUntil: Long? = null,
     val updatedAt: Long = 0,
     /** Changed on this phone since the last sync. */
-    val dirty: Boolean = false,
-)
-
-enum class RecipientStatus { PENDING, ACCEPTED, DECLINED }
-
-/** A member invited to a shared reminder, with their answer. */
-@Entity(
-    tableName = "reminder_recipient",
-    primaryKeys = ["reminderId", "memberId"],
-    foreignKeys = [ForeignKey(ReminderEntity::class, ["id"], ["reminderId"], onDelete = ForeignKey.CASCADE)],
-    indices = [Index("memberId")],
-)
-data class ReminderRecipientEntity(
-    val reminderId: String,
-    val memberId: String,
-    val status: RecipientStatus = RecipientStatus.PENDING,
-    val updatedAt: Long = 0,
-    /** This member changed their own answer on this phone since the last sync. */
     val dirty: Boolean = false,
 )

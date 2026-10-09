@@ -40,7 +40,7 @@ class ChoresViewModel(
      * where other members' slots come from the server.
      */
     val mySlots = reminders.observeReminders().map { list ->
-        list.filter { it.isOwn && it.reminder.choreId != null && it.reminder.active }.flatMap { r ->
+        list.filter { it.reminder.choreId != null && it.reminder.active }.flatMap { r ->
             val choreId = r.reminder.choreId!!
             when (r.reminder.mode) {
                 ReminderMode.TIMED -> r.times.map { ChoreSlotEntity(choreId, r.reminder.ownerMemberId, it.minuteOfDay) }

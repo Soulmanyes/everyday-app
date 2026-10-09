@@ -1,10 +1,11 @@
 package app.everyday.android.sync
 
+import app.everyday.android.data.EventEntity
+import app.everyday.android.data.EventMemberEntity
+import app.everyday.android.data.EventWithMembers
 import app.everyday.android.data.MemberSettingsEntity
-import app.everyday.android.data.RecipientStatus
 import app.everyday.android.data.ReminderEntity
 import app.everyday.android.data.ReminderMode
-import app.everyday.android.data.ReminderRecipientEntity
 import app.everyday.android.data.ReminderStateEntity
 import app.everyday.android.data.ReminderWithDetails
 import org.junit.Assert.assertEquals
@@ -19,14 +20,20 @@ class SyncMergeTest {
     private fun entity(id: String, owner: String = me, updatedAt: Long = 100, dirty: Boolean = false, message: String = "m") =
         ReminderEntity(id, owner, message, ReminderMode.TIMED, 127, createdAt = 1, updatedAt = updatedAt, dirty = dirty)
 
-    private fun local(e: ReminderEntity, recipients: List<ReminderRecipientEntity> = emptyList()) =
-        ReminderWithDetails(e, emptyList(), emptyList(), emptyList(), recipients)
+    private fun local(e: ReminderEntity) = ReminderWithDetails(e, emptyList(), emptyList(), emptyList())
 
-    private fun server(e: ReminderEntity, recipients: List<ReminderRecipientEntity> = emptyList()) =
-        SyncedReminder(e, listOf(480), emptyList(), recipients)
+    private fun server(e: ReminderEntity) = SyncedReminder(e, listOf(SyncedTime(480)), emptyList())
 
-    private fun snapshot(vararg r: SyncedReminder, states: List<ReminderStateEntity> = emptyList(), settings: MemberSettingsEntity? = null, rejected: Set<String> = emptySet()) =
-        SyncSnapshot(r.toList(), states, settings, rejected)
+    private fun event(id: String, owner: String = me, updatedAt: Long = 100, dirty: Boolean = false, title: String = "e") =
+        EventEntity(id, owner, title, weekdays = 127, createdAt = 1, updatedAt = updatedAt, dirty = dirty)
+
+    private fun snapshot(
+        vararg r: SyncedReminder,
+        events: List<SyncedEvent> = emptyList(),
+        states: List<ReminderStateEntity> = emptyList(),
+        settings: MemberSettingsEntity? = null,
+        rejected: Set<String> = emptySet(),
+    ) = SyncSnapshot(events, r.toList(), states, settings, rejected)
 
     private fun plan(
         local: List<ReminderWithDetails>,
@@ -34,7 +41,8 @@ class SyncMergeTest {
         pushed: Pushed = Pushed(),
         states: List<ReminderStateEntity> = emptyList(),
         settings: MemberSettingsEntity? = null,
-    ) = SyncMerge.plan(me, local, states, settings, pushed, server)
+        events: List<EventWithMembers> = emptyList(),
+    ) = SyncMerge.plan(me, events, local, states, settings, pushed, server)
 
     @Test
     fun `server version is saved clean`() {
@@ -66,9 +74,8 @@ class SyncMergeTest {
     }
 
     @Test
-    fun `a shared reminder I'm no longer invited to is removed from this phone`() {
-        val shared = local(entity("s", owner = "alex"), listOf(ReminderRecipientEntity("s", me, RecipientStatus.ACCEPTED, 10)))
-        assertEquals(listOf("s"), plan(listOf(shared), snapshot()).deleteLocal)
+    fun `reminders that aren't mine are removed from this phone`() {
+        assertEquals(listOf("s"), plan(listOf(local(entity("s", owner = "alex"))), snapshot()).deleteLocal)
     }
 
     @Test
@@ -89,17 +96,37 @@ class SyncMergeTest {
     }
 
     @Test
-    fun `my answer changed during the sync survives the server's copy`() {
-        val mine = ReminderRecipientEntity("s", me, RecipientStatus.DECLINED, updatedAt = 300, dirty = true)
-        val srv = server(
-            entity("s", owner = "alex"),
-            listOf(ReminderRecipientEntity("s", me, RecipientStatus.ACCEPTED, 200), ReminderRecipientEntity("s", "kim", RecipientStatus.PENDING, 1)),
+    fun `events follow last write wins, and shared events that are gone are removed`() {
+        val mine = EventWithMembers(event("mine", dirty = true, updatedAt = 300), emptyList())
+        val shared = EventWithMembers(event("shared", owner = "alex"), listOf(EventMemberEntity("shared", me)))
+        val unshared = EventWithMembers(event("unshared", owner = "alex"), listOf(EventMemberEntity("unshared", me)))
+        val p = plan(
+            emptyList(),
+            snapshot(events = listOf(SyncedEvent(event("mine", updatedAt = 200), emptyList()), SyncedEvent(event("shared", owner = "alex", title = "new"), emptyList()))),
+            Pushed(events = mapOf("mine" to 200)),
+            events = listOf(mine, shared, unshared),
         )
-        val p = plan(listOf(local(entity("s", owner = "alex"), listOf(mine))), snapshot(srv), Pushed(answers = mapOf("s" to 200)))
-        val recipients = p.saveReminders.single().recipients.associateBy { it.memberId }
-        assertEquals(RecipientStatus.DECLINED, recipients.getValue(me).status)
-        assertTrue(recipients.getValue(me).dirty)
-        assertFalse(recipients.getValue("kim").dirty)
+        // "mine" was edited again during the sync, so the server's copy is skipped.
+        assertEquals(listOf("new"), p.saveEvents.map { it.event.title })
+        assertEquals(listOf("unshared"), p.deleteEvents)
+        // My own events are never removed for being missing.
+        assertTrue(plan(emptyList(), snapshot(), events = listOf(mine)).deleteEvents.isEmpty())
+    }
+
+    @Test
+    fun `hiding an event during the sync survives the server's copy`() {
+        val mine = EventMemberEntity("s", me, hidden = true, updatedAt = 300, dirty = true)
+        val srv = SyncedEvent(event("s", owner = "alex"), listOf(EventMemberEntity("s", me, hidden = false, updatedAt = 200), EventMemberEntity("s", "kim")))
+        val p = plan(
+            emptyList(),
+            snapshot(events = listOf(srv)),
+            Pushed(hidden = mapOf("s" to 200)),
+            events = listOf(EventWithMembers(event("s", owner = "alex"), listOf(mine))),
+        )
+        val members = p.saveEvents.single().members.associateBy { it.memberId }
+        assertTrue(members.getValue(me).hidden)
+        assertTrue(members.getValue(me).dirty)
+        assertFalse(members.getValue("kim").dirty)
     }
 
     @Test

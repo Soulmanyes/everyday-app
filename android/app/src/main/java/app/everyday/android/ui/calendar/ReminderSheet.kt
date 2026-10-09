@@ -28,7 +28,7 @@ import app.everyday.android.ui.formatWeekdays
 import app.everyday.android.ui.formatWindow
 import java.time.LocalDate
 
-/** Details and quick actions for a reminder tapped on the calendar. */
+/** Details and quick actions for a chore reminder tapped on the calendar. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ReminderSheet(
@@ -38,9 +38,6 @@ fun ReminderSheet(
     onEdit: () -> Unit,
     onToggleActive: () -> Unit,
     onToggleDone: (Boolean) -> Unit,
-    /** Display names by member id, for shared reminders. */
-    memberNames: Map<String, String>,
-    onOptOut: () -> Unit,
 ) {
     val r = item.reminder
     val persistent = r.mode == ReminderMode.PERSISTENT
@@ -58,7 +55,7 @@ fun ReminderSheet(
                 Text(r.message, style = MaterialTheme.typography.titleLarge)
             }
             Text(
-                if (r.choreId != null) "Chore reminder · only for you, can't be shared" else "Reminder · can be shared",
+                "Chore reminder · only for you",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -69,34 +66,13 @@ fun ReminderSheet(
             )
             Text(schedule, style = MaterialTheme.typography.bodyLarge)
             if (!r.active) Text("Paused", color = MaterialTheme.colorScheme.error)
-            if (!item.isOwn) {
-                Text(
-                    "Shared by ${memberNames[r.ownerMemberId] ?: "a removed member"}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else if (item.recipients.isNotEmpty()) {
-                Text(
-                    "Shared with " + item.recipients.joinToString(", ") { memberNames[it.memberId] ?: "a removed member" } +
-                        if (!r.ownerReceives) " · not reminding you" else "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
             FlowRow(
                 Modifier.padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                // Only the owner edits or pauses; an invitee's own switch is opting out.
-                if (item.isOwn) {
-                    Button(onClick = onEdit) { Text("Edit") }
-                    OutlinedButton(onClick = onToggleActive) { Text(if (r.active) "Pause" else "Resume") }
-                } else {
-                    OutlinedButton(onClick = onOptOut) {
-                        Text(if (r.ownerMemberId in memberNames) "Opt out" else "Remove for me")
-                    }
-                }
+                Button(onClick = onEdit) { Text("Edit") }
+                OutlinedButton(onClick = onToggleActive) { Text(if (r.active) "Pause" else "Resume") }
                 if (persistent && r.active && isOnWeekday(r.weekdays, today)) {
                     OutlinedButton(onClick = { onToggleDone(!doneToday) }) {
                         Text(if (doneToday) "Undo done" else "Done today")

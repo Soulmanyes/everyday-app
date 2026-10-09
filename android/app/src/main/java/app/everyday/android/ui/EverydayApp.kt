@@ -47,7 +47,7 @@ import app.everyday.android.ui.household.MembersScreen
 import app.everyday.android.ui.household.WaitingScreen
 import app.everyday.android.ui.household.SetupFlow
 import app.everyday.android.ui.settings.SettingsScreen
-import app.everyday.android.ui.shared.SharedScreen
+import app.everyday.android.ui.event.EventEditorScreen
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     Reminders("Reminders", ReminderIcon),
@@ -58,10 +58,11 @@ private object Routes {
     const val MAIN = "main"
     const val SETTINGS = "settings"
     const val MEMBERS = "members"
-    const val SHARED = "shared"
     const val EDIT = "edit?id={id}&choreId={choreId}"
     fun edit(id: String?) = if (id == null) "edit" else "edit?id=$id"
     fun newChoreReminder(choreId: String) = "edit?choreId=$choreId"
+    const val EVENT = "event?id={id}"
+    fun event(id: String?) = if (id == null) "event" else "event?id=$id"
     const val CHORE = "chore?id={id}"
     fun chore(id: String?) = if (id == null) "chore" else "chore?id=$id"
 }
@@ -84,8 +85,8 @@ private fun MainNav(household: HouseholdViewModel) {
         composable(Routes.MAIN) {
             MainScreen(
                 onOpenSettings = { nav.navigate(Routes.SETTINGS) },
-                onEditReminder = { id -> nav.navigate(Routes.edit(id)) },
-                onOpenShared = { nav.navigate(Routes.SHARED) },
+                onEditEvent = { id -> nav.navigate(Routes.event(id)) },
+                onEditChoreReminder = { id -> nav.navigate(Routes.edit(id)) },
                 onEditChore = { id -> nav.navigate(Routes.chore(id)) },
                 onAddChoreReminder = { choreId -> nav.navigate(Routes.newChoreReminder(choreId)) },
             )
@@ -104,6 +105,12 @@ private fun MainNav(household: HouseholdViewModel) {
             )
         }
         composable(
+            Routes.EVENT,
+            arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true }),
+        ) { entry ->
+            EventEditorScreen(eventId = entry.arguments?.getString("id"), onDone = { nav.popBackStack() })
+        }
+        composable(
             Routes.CHORE,
             arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true }),
         ) { entry ->
@@ -113,11 +120,7 @@ private fun MainNav(household: HouseholdViewModel) {
             SettingsScreen(
                 onBack = { nav.popBackStack() },
                 onManageMembers = { nav.navigate(Routes.MEMBERS) },
-                onOpenShared = { nav.navigate(Routes.SHARED) },
             )
-        }
-        composable(Routes.SHARED) {
-            SharedScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.MEMBERS) {
             MembersScreen(household, onBack = { nav.popBackStack() })
@@ -129,8 +132,8 @@ private fun MainNav(household: HouseholdViewModel) {
 @Composable
 private fun MainScreen(
     onOpenSettings: () -> Unit,
-    onEditReminder: (String?) -> Unit,
-    onOpenShared: () -> Unit,
+    onEditEvent: (String?) -> Unit,
+    onEditChoreReminder: (String) -> Unit,
     onEditChore: (String?) -> Unit,
     onAddChoreReminder: (String) -> Unit,
 ) {
@@ -172,7 +175,7 @@ private fun MainScreen(
             }
             Box(Modifier.fillMaxSize()) {
                 when (tab) {
-                    Tab.Reminders -> CalendarScreen(onEditReminder = onEditReminder, onOpenShared = onOpenShared)
+                    Tab.Reminders -> CalendarScreen(onEditEvent = onEditEvent, onEditChoreReminder = onEditChoreReminder)
                     Tab.Chores -> ChoresScreen(onEditChore = onEditChore, onAddReminder = onAddChoreReminder)
                 }
             }

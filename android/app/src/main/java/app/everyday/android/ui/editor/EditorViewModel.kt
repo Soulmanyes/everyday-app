@@ -16,13 +16,7 @@ import app.everyday.android.data.ReminderRepository
 import app.everyday.android.reminders.MINUTES_PER_DAY
 import app.everyday.android.reminders.ReminderEngine
 import app.everyday.android.reminders.Window
-import app.everyday.android.data.MemberEntity
-import app.everyday.android.data.RecipientStatus
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 val ALL_DAY = Window(0, MINUTES_PER_DAY)
@@ -35,8 +29,6 @@ class EditorViewModel(
     private val chores: ChoreRepository,
     private val engine: ReminderEngine,
     private val requestSync: () -> Unit,
-    /** Household members other than the owner, who can be invited. */
-    val members: StateFlow<List<MemberEntity>>,
 ) : ViewModel() {
     var draft by mutableStateOf(ReminderDraft())
         private set
@@ -54,7 +46,6 @@ class EditorViewModel(
         viewModelScope.launch {
             if (reminderId != null) {
                 repository.getDraft(reminderId)?.let { draft = it }
-                answers = repository.getAnswers(reminderId)
             } else if (newChoreId != null) {
                 // A new chore reminder starts with the chore's title and days.
                 chore(newChoreId)?.let { c ->
@@ -72,14 +63,6 @@ class EditorViewModel(
         draft = transform(draft)
         error = null
     }
-
-    fun toggleRecipient(memberId: String) = update {
-        it.copy(recipientIds = if (memberId in it.recipientIds) it.recipientIds - memberId else it.recipientIds + memberId)
-    }
-
-    /** Invite answers of the saved reminder, for the owner to see. */
-    var answers by mutableStateOf<Map<String, RecipientStatus>>(emptyMap())
-        private set
 
     fun toggleDay(bit: Int) = update { it.copy(weekdays = it.weekdays xor (1 shl bit)) }
 
@@ -146,9 +129,6 @@ class EditorViewModel(
                     app.choreRepository,
                     app.engine,
                     app.sync::requestSync,
-                    app.repository.observeMembers()
-                        .map { list -> list.filter { it.id != app.session.current.memberId } }
-                        .stateIn(app.mainScope, SharingStarted.WhileSubscribed(5_000), emptyList()),
                 )
             }
         }

@@ -25,3 +25,6 @@ fun kindIcon(choreId: String?): ImageVector = if (choreId != null) ChoreIcon els
  */
 fun ColorScheme.choreColors(): Pair<Color, Color> =
     if (background.luminance() < 0.5f) Color(0xFF2E4A33) to Color(0xFFCDEBD0) else Color(0xFFCDEBD0) to Color(0xFF1B4D24)
+
+/** Events are the Reminders tab's own kind; chores and chore reminders use the house icon. */
+val EventIcon: ImageVector = ReminderIcon
