@@ -169,7 +169,7 @@ fun CalendarScreen(onEditEvent: (String?) -> Unit, onEditChoreReminder: (String)
                 onDismiss = { selectedKey = null },
                 onEdit = { selectedKey = null; onEditEvent(id) },
                 onDelete = { selectedKey = null; vm.deleteEvent(id) },
-                onHide = { selectedKey = null; vm.hideEvent(id) },
+                onLeave = { selectedKey = null; vm.leaveEvent(id) },
                 onAddTime = { minute, relative -> vm.addEventTime(id, minute, relative) },
                 onRemoveTime = { minute, relative -> vm.removeEventTime(id, minute, relative) },
                 onSetPersistent = { vm.setPersistent(id, it) },

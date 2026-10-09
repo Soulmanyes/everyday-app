@@ -64,7 +64,10 @@ data class EventEntity(
     val dirty: Boolean = false,
 )
 
-/** A member a shared event is shared with. [hidden] is that member's own "Hide" (or "Decline"). */
+/**
+ * A member a shared event is shared with. [hidden] means this phone's member left (or declined) and it
+ * hasn't synced yet; once it has, the server drops them and the event goes from this phone.
+ */
 @Entity(
     tableName = "event_member",
     primaryKeys = ["eventId", "memberId"],
@@ -76,7 +79,7 @@ data class EventMemberEntity(
     val memberId: String,
     val hidden: Boolean = false,
     val updatedAt: Long = 0,
-    /** This member hid or showed the event on this phone since the last sync. */
+    /** This member left the event on this phone since the last sync. */
     val dirty: Boolean = false,
 )
 

@@ -114,13 +114,13 @@ class SyncMergeTest {
     }
 
     @Test
-    fun `hiding an event during the sync survives the server's copy`() {
+    fun `leaving an event during the sync survives the server's copy`() {
         val mine = EventMemberEntity("s", me, hidden = true, updatedAt = 300, dirty = true)
-        val srv = SyncedEvent(event("s", owner = "alex"), listOf(EventMemberEntity("s", me, hidden = false, updatedAt = 200), EventMemberEntity("s", "kim")))
+        val srv = SyncedEvent(event("s", owner = "alex"), listOf(EventMemberEntity("s", me, updatedAt = 200), EventMemberEntity("s", "kim")))
         val p = plan(
             emptyList(),
             snapshot(events = listOf(srv)),
-            Pushed(hidden = mapOf("s" to 200)),
+            Pushed(leaves = mapOf("s" to 200)),
             events = listOf(EventWithMembers(event("s", owner = "alex"), listOf(mine))),
         )
         val members = p.saveEvents.single().members.associateBy { it.memberId }

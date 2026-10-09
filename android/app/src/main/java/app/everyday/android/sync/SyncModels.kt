@@ -31,14 +31,14 @@ data class SyncSnapshot(
     val reminders: List<SyncedReminder>,
     val states: List<ReminderStateEntity>,
     val settings: MemberSettingsEntity?,
-    /** Reminder ids, "event:<id>", "hidden:<eventId>", "state:<reminderId>" or "settings". */
+    /** Reminder ids, "event:<id>", "leave:<eventId>", "state:<reminderId>" or "settings". */
     val rejected: Set<String>,
 )
 
 /** The updatedAt of each row as it was pushed, to tell whether it changed again during the sync. */
 data class Pushed(
     val events: Map<String, Long> = emptyMap(),
-    val hidden: Map<String, Long> = emptyMap(),
+    val leaves: Map<String, Long> = emptyMap(),
     val reminders: Map<String, Long> = emptyMap(),
     val states: Map<String, Long> = emptyMap(),
     val settings: Long? = null,

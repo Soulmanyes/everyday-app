@@ -44,11 +44,11 @@ class ReminderReceiver : BroadcastReceiver() {
         withTimeoutOrNull(8_000) { runCatching { app.chores.markDone(choreId) } }
     }
 
-    /** "Decline" on "Sam added you to …": hides the shared event for the picked profile. */
+    /** "Decline" on "Sam added you to …": removes the picked profile from the shared event. */
     private suspend fun onDecline(context: Context, eventId: String) {
         val app = context.app
         Notifier(context).cancelAddedToEvent(eventId)
-        app.repository.setHidden(eventId, true)
+        app.repository.leaveEvent(eventId)
         app.engine.recompute()
         app.sync.requestSync()
     }

@@ -48,7 +48,8 @@ Turn the Reminders tab into a **timetable of events**, like the Chores tab:
 2. **Every reminder belongs to an event** (or a chore). No standalone reminders: "take meds 08:00"
    is an event "Meds" with a reminder. An event is either **personal** (only the creator sees it)
    or **shared with chosen members**. Shared events show on their timetables at once: no invite to
-   accept or decline, and no "Remind me too". A member can hide a shared event for themselves.
+   accept, and no "Remind me too". A member can leave (or decline) a shared event, which removes them
+   from it; the owner can add them again.
 3. **Only the creator** edits or deletes an event (title, days/date, time, who it's shared with).
    Others only add or remove their own reminders on it.
 4. **Each person's reminders on an event** can be any mix of:
@@ -75,8 +76,9 @@ Defaults settled with the owner:
    Sound and vibrate for timed reminders, Silent for persistent.
 2. A shared event shows **only my own** reminder times.
 3. Being added to a shared event posts **one notification** ("Sam added you to Swimming") with a
-   **Decline** button; Decline (also in the app) hides the event for me.
-4. **Hiding or declining** a shared event deletes my reminders on it.
+   **Decline** button. Decline (or "Leave event" in the app) **removes me from the event**; the owner
+   sees it and can add me again, which notifies me again (decided 2026-10-09, replacing "hide").
+4. **Leaving or declining** a shared event deletes my reminders on it.
 5. No end time: "from X before" runs until the start. All-day events offer only persistent all day
    and fixed clock times.
 6. **Pause is per person**: each person pauses their own reminders.
@@ -87,8 +89,9 @@ Defaults settled with the owner:
 ### Data model (server `V7`, Room 5 -> 6)
 - `event`: id, owner, title, notes, `weekdays` (weekly) **or** `on_date` (one-off), `start_minute`
   and `end_minute` (both null = all day; end optional), created/updated, deleted.
-- `event_member`: (event, member), `hidden`, updated_at, deleted. The owner is not a row; no rows =
-  personal. Replaces `reminder_recipient` (dropped after conversion, with `owner_receives`).
+- `event_member`: (event, member), updated_at, deleted. The owner is not a row; no rows = personal.
+  Leaving tombstones the row; a stale member list from the owner's phone can't add back someone who
+  left after it. Replaces `reminder_recipient` (dropped after conversion, with `owner_receives`).
 - `reminder.event_id` (next to `chore_id`). An event reminder takes its days from the event.
   Per person per event: at most one **timed** reminder (fixed times, plus "X before" times stored in
   `reminder_time` with `relative = true`) and one **persistent** one (`lead_minutes` null = all day,
@@ -121,7 +124,7 @@ Defaults settled with the owner:
 - Reminders tab: weekly timetable of events with previous/next week; my reminder times on each event.
 - Event editor (owner): title, notes, weekly days or a date, time or all day, shared with.
 - Event sheet: details, "Your reminders" (quick times and "X before", persistent all day / from X
-  before), Hide (shared with me), Edit/Delete (owner). The Shared screen and invites go away.
+  before), Leave (shared with me), Edit/Delete (owner). The Shared screen and invites go away.
 - Settings: Sound / Vibrate / Sound and vibrate / Silent.
 
 ## Questions as first noted

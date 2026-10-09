@@ -51,7 +51,7 @@ class CalendarViewModel(
 
     fun setEventActive(eventId: String, active: Boolean) = change { repository.setEventActive(eventId, active) }
 
-    fun hideEvent(eventId: String) = change { repository.setHidden(eventId, true) }
+    fun leaveEvent(eventId: String) = change { repository.leaveEvent(eventId) }
 
     fun deleteEvent(eventId: String) = change { repository.deleteEvent(eventId) }
 

@@ -31,12 +31,13 @@ CREATE TABLE event (
 
 CREATE INDEX event_owner_idx ON event (owner_member_id);
 
--- Members a shared event is shared with (the owner has no row; no rows = personal). Only the owner
--- adds and removes rows (removed ones are tombstoned); a member sets only their own `hidden`.
+-- Members a shared event is shared with (the owner has no row; no rows = personal). The owner adds and
+-- removes rows; a member can only remove themselves (leave, or decline). Removed rows are tombstoned.
+-- updated_at is when the row was last added or removed, so a stale list from the owner's phone can't
+-- add back someone who left after it was made.
 CREATE TABLE event_member (
     event_id    UUID        NOT NULL REFERENCES event (id) ON DELETE CASCADE,
     member_id   UUID        NOT NULL REFERENCES member (id) ON DELETE CASCADE,
-    hidden      BOOLEAN     NOT NULL DEFAULT FALSE,
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted     BOOLEAN     NOT NULL DEFAULT FALSE,
     PRIMARY KEY (event_id, member_id)

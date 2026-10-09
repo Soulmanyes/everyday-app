@@ -176,12 +176,12 @@ class ReminderRepository(
         reminders.softDeleteMineOnEvent(id, currentMemberId(), clock())
     }
 
-    /** Hides (or shows again) a shared event for the current profile. Hiding deletes its reminders on it. */
-    suspend fun setHidden(eventId: String, hidden: Boolean) = db.withTransaction {
+    /** The current profile leaves (or declines) a shared event: it's removed from it, with its reminders on it. */
+    suspend fun leaveEvent(eventId: String) = db.withTransaction {
         val me = currentMemberId()
         val row = reminders.getEventMember(eventId, me) ?: return@withTransaction
-        reminders.upsertEventMembers(listOf(row.copy(hidden = hidden, updatedAt = clock(), dirty = true)))
-        if (hidden) reminders.softDeleteMineOnEvent(eventId, me, clock())
+        reminders.upsertEventMembers(listOf(row.copy(hidden = true, updatedAt = clock(), dirty = true)))
+        reminders.softDeleteMineOnEvent(eventId, me, clock())
     }
 
     private suspend fun saveEventReminder(reminder: ReminderEntity, times: List<Pair<Int, Boolean>>, now: Long) {

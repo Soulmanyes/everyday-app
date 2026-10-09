@@ -28,7 +28,7 @@ class SyncStore(private val db: DataSource) {
         val rejected = mutableListOf<String>()
         // Events first, so a new event and the reminders on it can arrive in the same sync.
         req.events.forEach { e -> conn.attempt(rejected, "event:${e.id}") { pushEvent(householdId, me, e) } }
-        req.hidden.forEach { h -> conn.attempt(rejected, "hidden:${h.eventId}") { pushHidden(me, h) } }
+        req.leave.forEach { l -> conn.attempt(rejected, "leave:${l.eventId}") { pushLeave(me, l) } }
         req.reminders.forEach { r -> conn.attempt(rejected, r.id) { pushReminder(householdId, me, r) } }
         req.states.forEach { s -> conn.attempt(rejected, "state:${s.reminderId}") { pushState(me, s) } }
         req.settings?.let { s -> conn.attempt(rejected, "settings") { pushSettings(me, s) } }
@@ -69,7 +69,8 @@ class SyncStore(private val db: DataSource) {
         if (e.weekdays !in 0..127 || (onDate == null) == (e.weekdays == 0)) reject("pick days or a date")
         if (e.startMinute != null && e.startMinute !in 0..1439) reject("bad start")
         if (e.endMinute != null && (e.startMinute == null || e.endMinute !in 1..1440 || e.endMinute <= e.startMinute)) reject("bad end")
-        val members = e.members.map { parseId(it.memberId) ?: reject("bad member id") }.toSet()
+        val added = e.members.associate { (parseId(it.memberId) ?: reject("bad member id")) to it.updatedAt }
+        val members = added.keys
         val title = e.title.trim()
         val notes = e.notes?.trim()?.takeIf { it.isNotEmpty() }
         if (!e.deleted) {
@@ -101,8 +102,8 @@ class SyncStore(private val db: DataSource) {
             return
         }
 
-        // Members: new ones are added, removed ones are tombstoned together with their reminders on it,
-        // existing ones keep their own `hidden`.
+        // Members: new ones are added, removed ones are tombstoned together with their reminders on it.
+        // Someone who left is only added back if the owner added them after they left.
         val removed = createArrayOf("uuid", members.toTypedArray())
         prepareStatement(
             """
@@ -116,35 +117,29 @@ class SyncStore(private val db: DataSource) {
         prepareStatement(
             """
             INSERT INTO event_member (event_id, member_id, updated_at) VALUES (?, ?, ?)
-            ON CONFLICT (event_id, member_id) DO UPDATE SET deleted = FALSE, hidden = FALSE, updated_at = EXCLUDED.updated_at
-            WHERE event_member.deleted
+            ON CONFLICT (event_id, member_id) DO UPDATE SET deleted = FALSE, updated_at = EXCLUDED.updated_at
+            WHERE event_member.deleted AND event_member.updated_at < EXCLUDED.updated_at
             """.trimIndent(),
         ).run {
-            members.forEach { setObject(1, id); setObject(2, it); setObject(3, e.updatedAt.toTime()); addBatch() }
+            added.forEach { (member, at) -> setObject(1, id); setObject(2, member); setObject(3, at.toTime()); addBatch() }
             executeBatch()
         }
     }
 
-    /** A member hides (or shows again) an event shared with them. Hiding deletes their reminders on it. */
-    private fun Connection.pushHidden(me: UUID, h: HiddenSyncDto) {
-        val eventId = parseId(h.eventId) ?: reject("bad id")
-        val updated = prepareStatement(
-            "UPDATE event_member SET hidden = ?, updated_at = ? WHERE event_id = ? AND member_id = ? AND NOT deleted AND updated_at < ?",
-        ).run {
-            setBoolean(1, h.hidden); setObject(2, h.updatedAt.toTime()); setObject(3, eventId); setObject(4, me)
-            setObject(5, h.updatedAt.toTime()); executeUpdate()
+    /** A member leaves (or declines) an event shared with them, which deletes their reminders on it. */
+    private fun Connection.pushLeave(me: UUID, l: LeaveSyncDto) {
+        val eventId = parseId(l.eventId) ?: reject("bad id")
+        val row = prepareStatement("SELECT deleted, updated_at FROM event_member WHERE event_id = ? AND member_id = ? FOR UPDATE").run {
+            setObject(1, eventId); setObject(2, me)
+            executeQuery().use { rs -> if (rs.next()) rs.getBoolean(1) to rs.millis(2) else null }
+        } ?: reject("not shared with you")
+        // Already gone, or added again after this phone left: nothing to do.
+        if (row.first || row.second >= l.updatedAt) return
+        prepareStatement("UPDATE event_member SET deleted = TRUE, updated_at = ? WHERE event_id = ? AND member_id = ?").run {
+            setObject(1, l.updatedAt.toTime()); setObject(2, eventId); setObject(3, me); executeUpdate()
         }
-        if (updated == 0) {
-            val shared = prepareStatement("SELECT 1 FROM event_member WHERE event_id = ? AND member_id = ? AND NOT deleted").run {
-                setObject(1, eventId); setObject(2, me); executeQuery().use { it.next() }
-            }
-            if (!shared) reject("not shared with you")
-            return // An older write loses.
-        }
-        if (h.hidden) {
-            prepareStatement("UPDATE reminder SET deleted = TRUE, updated_at = ? WHERE event_id = ? AND owner_member_id = ? AND NOT deleted").run {
-                setObject(1, h.updatedAt.toTime()); setObject(2, eventId); setObject(3, me); executeUpdate()
-            }
+        prepareStatement("UPDATE reminder SET deleted = TRUE, updated_at = ? WHERE event_id = ? AND owner_member_id = ? AND NOT deleted").run {
+            setObject(1, l.updatedAt.toTime()); setObject(2, eventId); setObject(3, me); executeUpdate()
         }
     }
 
@@ -216,13 +211,13 @@ class SyncStore(private val db: DataSource) {
     }
 
     /**
-     * The start minute of an event [me] can put reminders on (theirs, or shared with them and not hidden),
-     * empty for an all-day event, or null if they can't.
+     * The start minute of an event [me] can put reminders on (theirs, or shared with them), empty for an
+     * all-day event, or null if they can't.
      */
     private fun Connection.eventStart(me: UUID, eventId: UUID): Optional<Int>? = prepareStatement(
         """
         SELECT e.start_minute FROM event e WHERE e.id = ? AND NOT e.deleted AND (e.owner_member_id = ? OR EXISTS (
-            SELECT 1 FROM event_member em WHERE em.event_id = e.id AND em.member_id = ? AND NOT em.deleted AND NOT em.hidden))
+            SELECT 1 FROM event_member em WHERE em.event_id = e.id AND em.member_id = ? AND NOT em.deleted))
         """.trimIndent(),
     ).run {
         setObject(1, eventId); setObject(2, me); setObject(3, me)
@@ -288,8 +283,7 @@ class SyncStore(private val db: DataSource) {
     ).run { setObject(1, choreId); setObject(2, memberId); setObject(3, householdId); executeQuery().use { it.next() } }
 
     private fun Connection.snapshot(me: UUID, rejected: List<String>): SyncResponse {
-        // Events I own, and events shared with me (including tombstones of either, and hidden ones, so my
-        // phone learns about them).
+        // Events I own (with tombstones), and events shared with me.
         val eventIds = mutableListOf<UUID>()
         val events = prepareStatement(
             """
@@ -326,11 +320,11 @@ class SyncStore(private val db: DataSource) {
             }
         }
         val members = prepareStatement(
-            "SELECT event_id, member_id, hidden, updated_at FROM event_member WHERE event_id = ANY (?) AND NOT deleted ORDER BY member_id",
+            "SELECT event_id, member_id, updated_at FROM event_member WHERE event_id = ANY (?) AND NOT deleted ORDER BY member_id",
         ).run {
             setArray(1, createArrayOf("uuid", eventIds.toTypedArray()))
             executeQuery().use { rs ->
-                buildList { while (rs.next()) add(rs.getString(1) to EventMemberDto(rs.getString(2), rs.getBoolean(3), rs.millis(4))) }
+                buildList { while (rs.next()) add(rs.getString(1) to EventMemberDto(rs.getString(2), rs.millis(3))) }
             }
         }.groupBy({ it.first }, { it.second })
 
@@ -423,8 +417,8 @@ class SyncStore(private val db: DataSource) {
 }
 
 /**
- * A removed member's shared events live on, read-only, for members who still show them. Once nobody
- * does, they are deleted, and reminders on deleted events go with them.
+ * A removed member's shared events live on, read-only, for the members still on them. Once everyone
+ * has left, they are deleted, and reminders on deleted events go with them.
  */
 fun Connection.deleteOrphanedEvents() {
     prepareStatement(
@@ -433,7 +427,7 @@ fun Connection.deleteOrphanedEvents() {
         FROM member m
         WHERE m.id = e.owner_member_id AND m.deleted AND NOT e.deleted AND NOT EXISTS (
             SELECT 1 FROM event_member em JOIN member mm ON mm.id = em.member_id
-            WHERE em.event_id = e.id AND NOT em.deleted AND NOT em.hidden AND NOT mm.deleted)
+            WHERE em.event_id = e.id AND NOT em.deleted AND NOT mm.deleted)
         """.trimIndent(),
     ).executeUpdate()
     prepareStatement(

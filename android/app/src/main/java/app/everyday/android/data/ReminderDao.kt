@@ -10,7 +10,7 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
-/** Events [memberId] sees: their own, and shared ones they haven't hidden. */
+/** Events [memberId] sees: their own, and shared ones they haven't left. */
 private const val VISIBLE_EVENTS = """
     SELECT * FROM event WHERE deleted = 0 AND (ownerMemberId = :memberId
     OR id IN (SELECT eventId FROM event_member WHERE memberId = :memberId AND hidden = 0))
@@ -162,9 +162,9 @@ interface ReminderDao {
     @Query("SELECT * FROM event WHERE ownerMemberId = :memberId AND dirty = 1")
     suspend fun getDirtyOwnedEvents(memberId: String): List<EventWithMembers>
 
-    /** [memberId]'s own hide/show changes on shared events. */
-    @Query("SELECT * FROM event_member WHERE memberId = :memberId AND dirty = 1")
-    suspend fun getDirtyHidden(memberId: String): List<EventMemberEntity>
+    /** Shared events [memberId] left on this phone, not synced yet. */
+    @Query("SELECT * FROM event_member WHERE memberId = :memberId AND dirty = 1 AND hidden = 1")
+    suspend fun getDirtyLeaves(memberId: String): List<EventMemberEntity>
 
     @Transaction
     @Query("SELECT * FROM event WHERE id = :id")

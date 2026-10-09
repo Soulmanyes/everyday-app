@@ -59,7 +59,7 @@ fun EventSheet(
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onHide: () -> Unit,
+    onLeave: () -> Unit,
     onAddTime: (minute: Int, relative: Boolean) -> Unit,
     onRemoveTime: (minute: Int, relative: Boolean) -> Unit,
     onSetPersistent: (Persistent) -> Unit,
@@ -72,6 +72,7 @@ fun EventSheet(
     var addingBefore by remember { mutableStateOf(false) }
     var pickingLead by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var confirmLeave by remember { mutableStateOf(false) }
     fun name(id: String) = memberNames[id] ?: "a removed member"
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -165,7 +166,7 @@ fun EventSheet(
                     Button(onClick = onEdit) { Text("Edit") }
                     OutlinedButton(onClick = { confirmDelete = true }) { Text("Delete") }
                 } else {
-                    OutlinedButton(onClick = onHide) { Text("Hide for me") }
+                    OutlinedButton(onClick = { confirmLeave = true }) { Text("Leave event") }
                 }
                 if (item.reminders.isNotEmpty()) {
                     OutlinedButton(onClick = { onSetActive(item.paused) }) { Text(if (item.paused) "Resume my reminders" else "Pause my reminders") }
@@ -197,6 +198,15 @@ fun EventSheet(
             onSetPersistent(Persistent.Before(it))
             pickingLead = false
         }
+    }
+    if (confirmLeave) {
+        AlertDialog(
+            onDismissRequest = { confirmLeave = false },
+            title = { Text("Leave event?") },
+            text = { Text("It's removed from your timetable, with your reminders on it. ${name(e.ownerMemberId)} can add you again.") },
+            confirmButton = { TextButton(onClick = { confirmLeave = false; onLeave() }) { Text("Leave") } },
+            dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Cancel") } },
+        )
     }
     if (confirmDelete) {
         AlertDialog(

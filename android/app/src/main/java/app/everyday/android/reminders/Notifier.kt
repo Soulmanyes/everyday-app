@@ -113,7 +113,7 @@ class Notifier(private val context: Context) {
         NotificationManagerCompat.from(context).notify(PERSISTENT_TAG, NOTIFICATION_ID, builder.build())
     }
 
-    /** "Sam added you to Swimming", once: opens the app to add reminders, or Decline hides the event. */
+    /** "Sam added you to Swimming", once: opens the app to add reminders, or Decline removes you from it. */
     @SuppressLint("MissingPermission") // checked by canPost()
     fun showAddedToEvent(eventId: String, title: String, ownerName: String?) {
         if (!canPost()) return

@@ -133,14 +133,13 @@ data class ChoreSlotDto(val choreId: String, val memberId: String, val startMinu
 @Serializable
 data class WindowDto(val startMinute: Int, val endMinute: Int)
 
-/** A member an event is shared with. [hidden] is set by that member only ("Hide" or "Decline"). */
+/** A member an event is shared with, and when the owner added them (phone clock). */
 @Serializable
-data class EventMemberDto(val memberId: String, val hidden: Boolean = false, val updatedAt: Long = 0)
+data class EventMemberDto(val memberId: String, val updatedAt: Long = 0)
 
 /**
  * Something on the timetable: weekly on [weekdays], or once on [onDate] (ISO date), exactly one of the two.
- * No [startMinute] means all day; [endMinute] is optional. In a push from the owner only the member ids of
- * [members] are read.
+ * No [startMinute] means all day; [endMinute] is optional.
  */
 @Serializable
 data class EventSyncDto(
@@ -193,9 +192,9 @@ data class StateSyncDto(val reminderId: String, val doneOn: String? = null, val 
 @Serializable
 data class SettingsSyncDto(val snoozeMinutes: Int, val timedSound: String, val persistentSound: String, val updatedAt: Long)
 
-/** A member hiding (or showing again) a shared event for themselves. */
+/** A member leaving (or declining) an event shared with them. */
 @Serializable
-data class HiddenSyncDto(val eventId: String, val hidden: Boolean, val updatedAt: Long)
+data class LeaveSyncDto(val eventId: String, val updatedAt: Long)
 
 @Serializable
 data class SyncRequest(
@@ -204,7 +203,7 @@ data class SyncRequest(
     val reminders: List<ReminderSyncDto> = emptyList(),
     val states: List<StateSyncDto> = emptyList(),
     val settings: SettingsSyncDto? = null,
-    val hidden: List<HiddenSyncDto> = emptyList(),
+    val leave: List<LeaveSyncDto> = emptyList(),
 )
 
 /**

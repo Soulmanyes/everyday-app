@@ -47,7 +47,7 @@ object SyncMerge {
             val l = localEventById[s.event.id]
             when {
                 l != null && changedSincePush(l.event.dirty, l.event.updatedAt, pushed.events[l.event.id]) -> null
-                else -> s.keepMyHidden(l, memberId, pushed)
+                else -> s.keepMyLeave(l, memberId, pushed)
             }
         }
         val deleteEvents = localEvents.filter { l ->
@@ -96,11 +96,11 @@ object SyncMerge {
     /** Dirty and not the version that was pushed (or not pushed at all): edited during the sync. */
     private fun changedSincePush(dirty: Boolean, updatedAt: Long, pushedAt: Long?) = dirty && pushedAt != updatedAt
 
-    /** Keeps this member's own hide/show of a shared event if they changed it again during the sync. */
-    private fun SyncedEvent.keepMyHidden(local: EventWithMembers?, memberId: String, pushed: Pushed): SyncedEvent {
+    /** Keeps this member's leaving of a shared event if it happened during the sync (not pushed yet). */
+    private fun SyncedEvent.keepMyLeave(local: EventWithMembers?, memberId: String, pushed: Pushed): SyncedEvent {
         val clean = copy(event = event.copy(dirty = false), members = members.map { it.copy(dirty = false) })
         val mine = local?.members?.firstOrNull { it.memberId == memberId } ?: return clean
-        if (!changedSincePush(mine.dirty, mine.updatedAt, pushed.hidden[event.id])) return clean
+        if (!changedSincePush(mine.dirty, mine.updatedAt, pushed.leaves[event.id])) return clean
         return clean.copy(members = clean.members.filter { it.memberId != memberId } + mine)
     }
 }

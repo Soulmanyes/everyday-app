@@ -18,8 +18,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Syncs the picked profile's events, reminders, done/snooze state, settings and hidden events with
- * the server (see CLAUDE.md, "Sync"). Room stays the source for alarms; offline, changes stay
+ * Syncs the picked profile's events, reminders, done/snooze state, settings and the events it left
+ * with the server (see CLAUDE.md, "Sync"). Room stays the source for alarms; offline, changes stay
  * dirty and go up on the next sync.
  */
 class SyncManager(
@@ -46,20 +46,20 @@ class SyncManager(
         val members = db.memberDao()
 
         val events = reminders.getDirtyOwnedEvents(me).map { it.toSynced() }
-        val hidden = reminders.getDirtyHidden(me)
+        val leaves = reminders.getDirtyLeaves(me)
         val dirty = reminders.getDirtyOwned(me).map { it.toSynced() }
         val states = reminders.getDirtyStates(me)
         val settings = members.getSettings(me)?.takeIf { it.dirty }
         val pushed = Pushed(
             events = events.associate { it.event.id to it.event.updatedAt },
-            hidden = hidden.associate { it.eventId to it.updatedAt },
+            leaves = leaves.associate { it.eventId to it.updatedAt },
             reminders = dirty.associate { it.reminder.id to it.reminder.updatedAt },
             states = states.associate { it.reminderId to it.updatedAt },
             settings = settings?.updatedAt,
         )
 
         val snapshot = try {
-            ApiClient(state.serverUrl, state.token).sync(me, events, hidden, dirty, states, settings)
+            ApiClient(state.serverUrl, state.token).sync(me, events, leaves, dirty, states, settings)
         } catch (e: ApiError) {
             if (e.isUnauthorized) {
                 session.clear()
@@ -90,7 +90,7 @@ class SyncManager(
 
     /**
      * Posts "Sam added you to …" once for each event newly shared with this profile, and clears the
-     * notification once the event is hidden or gone. The first time (after updating to events), the
+     * notification once the event is left or gone. The first time (after updating to events), the
      * events already shared are taken as announced, so converted reminders don't all notify.
      */
     private suspend fun announceSharedEvents(me: String) {

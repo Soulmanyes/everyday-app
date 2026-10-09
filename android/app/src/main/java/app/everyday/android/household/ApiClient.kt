@@ -152,7 +152,7 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
     suspend fun sync(
         memberId: String,
         events: List<SyncedEvent>,
-        hidden: List<EventMemberEntity>,
+        leaves: List<EventMemberEntity>,
         reminders: List<SyncedReminder>,
         states: List<ReminderStateEntity>,
         settings: MemberSettingsEntity?,
@@ -160,7 +160,7 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
         val body = JSONObject()
             .put("memberId", memberId)
             .put("events", JSONArray(events.map { it.toJson() }))
-            .put("hidden", JSONArray(hidden.map { JSONObject().put("eventId", it.eventId).put("hidden", it.hidden).put("updatedAt", it.updatedAt) }))
+            .put("leave", JSONArray(leaves.map { JSONObject().put("eventId", it.eventId).put("updatedAt", it.updatedAt) }))
             .put("reminders", JSONArray(reminders.map { it.toJson() }))
             .put("states", JSONArray(states.map { it.toJson() }))
         settings?.let {
@@ -271,7 +271,7 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
         .put("onDate", event.onDate ?: JSONObject.NULL)
         .put("startMinute", event.startMinute ?: JSONObject.NULL)
         .put("endMinute", event.endMinute ?: JSONObject.NULL)
-        .put("members", JSONArray(members.map { JSONObject().put("memberId", it.memberId) }))
+        .put("members", JSONArray(members.map { JSONObject().put("memberId", it.memberId).put("updatedAt", it.updatedAt) }))
         .put("createdAt", event.createdAt)
         .put("updatedAt", event.updatedAt)
         .put("deleted", event.deleted)
@@ -328,7 +328,7 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
                     deleted = e.optBoolean("deleted", false),
                 ),
                 members = e.optArray("members").objects().map {
-                    EventMemberEntity(id, it.getString("memberId"), it.optBoolean("hidden", false), it.optLong("updatedAt", 0))
+                    EventMemberEntity(id, it.getString("memberId"), updatedAt = it.optLong("updatedAt", 0))
                 },
             )
         }

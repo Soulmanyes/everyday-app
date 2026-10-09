@@ -188,21 +188,31 @@ class SyncApiTest {
     }
 
     @Test
-    fun `hiding a shared event deletes my reminders on it, and hidden events take no reminders`() = api { client, home ->
-        val e = event(home.sam, home.alex)
+    fun `leaving a shared event removes me and my reminders on it, until the owner adds me again`() = api { client, home ->
+        val e = event(home.sam, home.alex, home.kim)
         client.syncOk(home, SyncRequest(home.sam, events = listOf(e)))
         val r = reminder(home.alex, e.id)
         client.syncOk(home, SyncRequest(home.alex, reminders = listOf(r)))
 
-        val hidden = client.syncOk(home, SyncRequest(home.alex, hidden = listOf(HiddenSyncDto(e.id, true, 2_000))))
-        assertTrue(hidden.events.single().members.single().hidden)
-        assertTrue(hidden.reminders.single().deleted)
+        val left = client.syncOk(home, SyncRequest(home.alex, leave = listOf(LeaveSyncDto(e.id, 2_000))))
+        assertTrue(left.events.isEmpty())
+        assertTrue(left.reminders.single().deleted)
+        assertEquals(listOf(home.kim), client.syncOk(home, SyncRequest(home.sam)).events.single().members.map { it.memberId })
         val again = reminder(home.alex, e.id)
         assertEquals(listOf(again.id), client.syncOk(home, SyncRequest(home.alex, reminders = listOf(again))).rejected)
-        // Kim isn't a member, so can't hide it.
-        assertEquals(listOf("hidden:${e.id}"), client.syncOk(home, SyncRequest(home.kim, hidden = listOf(HiddenSyncDto(e.id, true, 2_000)))).rejected)
-        // Showing it again.
-        assertTrue(!client.syncOk(home, SyncRequest(home.alex, hidden = listOf(HiddenSyncDto(e.id, false, 3_000)))).events.single().members.single().hidden)
+        // Someone it was never shared with can't leave it.
+        val other = event(home.sam)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(other)))
+        assertEquals(listOf("leave:${other.id}"), client.syncOk(home, SyncRequest(home.kim, leave = listOf(LeaveSyncDto(other.id, 2_000)))).rejected)
+
+        // A stale list from the owner's phone (Alex added at 1_000, before leaving at 2_000) doesn't add Alex back...
+        val stale = e.copy(title = "Swim", updatedAt = 3_000, members = listOf(EventMemberDto(home.alex, 1_000), EventMemberDto(home.kim, 1_000)))
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(stale)))
+        assertTrue(client.syncOk(home, SyncRequest(home.alex)).events.isEmpty())
+        // ...but adding Alex again does.
+        val readded = stale.copy(updatedAt = 4_000, members = listOf(EventMemberDto(home.alex, 4_000), EventMemberDto(home.kim, 1_000)))
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(readded)))
+        assertEquals("Swim", client.syncOk(home, SyncRequest(home.alex)).events.single().title)
     }
 
     @Test
@@ -266,7 +276,7 @@ class SyncApiTest {
     }
 
     @Test
-    fun `a removed member's shared event lives on until every member hides it`() = api { client, home ->
+    fun `a removed member's shared event lives on until every member leaves it`() = api { client, home ->
         val personal = event(home.alex)
         val shared = event(home.alex, home.sam, home.kim)
         client.syncOk(home, SyncRequest(home.alex, events = listOf(personal, shared), reminders = listOf(reminder(home.alex, shared.id))))
@@ -284,11 +294,14 @@ class SyncApiTest {
         assertTrue(!sam.events.single { it.id == shared.id }.deleted)
         assertTrue(sam.events.single { it.id == samsShared.id }.members.isEmpty())
 
-        // Sam and Kim hide it; then it's deleted, with Sam's reminder on it.
-        client.syncOk(home, SyncRequest(home.sam, hidden = listOf(HiddenSyncDto(shared.id, true, 3_000))))
-        assertTrue(!client.syncOk(home, SyncRequest(home.kim)).events.single().deleted)
-        val last = client.syncOk(home, SyncRequest(home.kim, hidden = listOf(HiddenSyncDto(shared.id, true, 3_000))))
-        assertTrue(last.events.single().deleted)
+        // Sam and Kim leave it; then it's deleted.
+        client.syncOk(home, SyncRequest(home.sam, leave = listOf(LeaveSyncDto(shared.id, 3_000))))
         assertNull(client.syncOk(home, SyncRequest(home.sam)).reminders.firstOrNull { it.id == samReminder.id && !it.deleted })
+        assertTrue(client.syncOk(home, SyncRequest(home.kim)).events.isNotEmpty())
+        client.syncOk(home, SyncRequest(home.kim, leave = listOf(LeaveSyncDto(shared.id, 3_000))))
+        val orphan = db.connection.use { conn ->
+            conn.createStatement().executeQuery("SELECT deleted FROM event WHERE id = '${shared.id}'").use { it.next(); it.getBoolean(1) }
+        }
+        assertTrue(orphan)
     }
 }
