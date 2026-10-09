@@ -70,6 +70,10 @@ Design agreed 2026-10-08 (see CLAUDE.md, "Sync (Phase 4)"). Built and verified e
 - [x] Join by name with admin approval (or linking to an existing member); phones locked to their member
 
 ## Later / ideas (to discuss before building)
+- [ ] Members pick their own **dot colour** (shown on chores and events), from at least 10 colours, with each colour taken by only one member. Notes:
+  - `member.color` already exists on the server (unused); add a unique index per household for members who aren't deleted.
+  - Today the app hands out 8 colours in household order (`MEMBER_COLORS` in `ui/chores/ChoresScreen.kt`), with no greens because chore cards are green. Grow the palette to 10+ colours that stay distinct from that green in light and dark mode.
+  - A member sets their own colour in Settings with no PIN; colours already taken show as unavailable. Members without a colour (e.g. added by hand) keep an automatic one until someone picks.
 - [ ] Reminders tab as a timetable of **events** (shown without notifying), where each person can optionally add their own reminders to an event, like chore times. Notes: [docs/ideas/events-timetable.md](docs/ideas/events-timetable.md)
 - [ ] Allow others to create their own households on this server (today: exactly one household, creation disabled once set up). Needs: dropping the singleton, scoping every query and the join code lookup to a household, a way to create one without the server's `SETUP_TOKEN`, and abuse limits. Notes: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
 - [ ] Optional per-member PIN (the admin PIN exists from Phase 2)
