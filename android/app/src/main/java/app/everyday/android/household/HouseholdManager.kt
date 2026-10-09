@@ -3,6 +3,7 @@ package app.everyday.android.household
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
+import app.everyday.android.data.MemberEntity
 import app.everyday.android.data.ReminderRepository
 import androidx.core.content.edit
 import app.everyday.android.reminders.Notifier
@@ -88,6 +89,18 @@ class HouseholdManager(
         refresh()
     }
 
+    /** The admin sets a member's colour (with the PIN). */
+    suspend fun setMemberColor(pin: String, id: String, name: String, color: String) {
+        client().renameMember(pin, id, name, color)
+        refresh()
+    }
+
+    /** The current member picks their own colour; throws if someone else has it. */
+    suspend fun setMyColor(color: String) {
+        client().setMyColor(color)
+        refresh()
+    }
+
     suspend fun removeMember(pin: String, id: String) {
         client().removeMember(pin, id)
         refresh()
@@ -109,7 +122,7 @@ class HouseholdManager(
     }
 
     private suspend fun apply(household: HouseholdInfo) {
-        repository.cacheMembers(household.members.map { it.id to it.displayName })
+        repository.cacheMembers(household.members.map { MemberEntity(it.id, it.displayName, 0, color = it.color) })
         val memberId = household.memberId?.takeIf { household.approved }
         // Approved just now: reminders made on this phone before joining become this member's.
         val newlyApproved = memberId != null && session.current.memberId != memberId

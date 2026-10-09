@@ -194,9 +194,9 @@ class ReminderRepository(
     fun observeMembers() = members.observeMembers()
 
     /** Replaces the cached household members with the server's list. */
-    suspend fun cacheMembers(list: List<Pair<String, String>>) = db.withTransaction {
-        members.upsertMembers(list.map { (id, name) -> MemberEntity(id, name, clock()) })
-        members.markOthersDeleted(list.map { it.first })
+    suspend fun cacheMembers(list: List<MemberEntity>) = db.withTransaction {
+        members.upsertMembers(list.map { it.copy(updatedAt = clock()) })
+        members.markOthersDeleted(list.map { it.id })
     }
 
     /** Gives the reminders and settings made before joining to [memberId], then removes the local profile. */

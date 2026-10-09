@@ -12,6 +12,7 @@ import app.everyday.android.household.Session
 import app.everyday.android.household.SessionState
 import app.everyday.android.reminders.ReminderEngine
 import app.everyday.android.sync.SyncManager
+import app.everyday.android.ui.AppPrefs
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -35,6 +36,7 @@ class EverydayApplication : Application() {
     /** For flows shared beyond one screen. */
     val mainScope = MainScope()
     val updates = UpdateChecker()
+    val prefs by lazy { AppPrefs(this) }
     val sync by lazy { SyncManager(this, session, database, engine) }
 
     override fun onCreate() {

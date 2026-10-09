@@ -21,6 +21,8 @@ data class MemberEntity(
     val displayName: String,
     val updatedAt: Long,
     val deleted: Boolean = false,
+    /** Palette key of the member's dot colour, from the server (household-wide). */
+    val color: String? = null,
 )
 
 enum class SoundMode { SOUND, VIBRATE, SILENT }

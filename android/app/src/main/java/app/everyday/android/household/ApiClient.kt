@@ -25,7 +25,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.time.LocalDate
 
-data class Member(val id: String, val displayName: String)
+data class Member(val id: String, val displayName: String, val color: String? = null)
 
 data class HouseholdInfo(
     val name: String,
@@ -113,8 +113,11 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
     suspend fun addMember(pin: String, name: String): Member =
         call("POST", "/members", JSONObject().put("displayName", name), pin).toMember()
 
-    suspend fun renameMember(pin: String, id: String, name: String): Member =
-        call("PUT", "/members/$id", JSONObject().put("displayName", name), pin).toMember()
+    /** [color] null keeps the member's colour. */
+    suspend fun renameMember(pin: String, id: String, name: String, color: String? = null): Member =
+        call("PUT", "/members/$id", JSONObject().put("displayName", name).put("color", color ?: JSONObject.NULL), pin).toMember()
+
+    suspend fun setMyColor(color: String): Member = call("PUT", "/me/color", JSONObject().put("color", color)).toMember()
 
     suspend fun removeMember(pin: String, id: String) {
         call("DELETE", "/members/$id", adminPin = pin)
@@ -227,7 +230,7 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
 
     private fun JSONArray.toMembers() = (0 until length()).map { getJSONObject(it).toMember() }
 
-    private fun JSONObject.toMember() = Member(getString("id"), getString("displayName"))
+    private fun JSONObject.toMember() = Member(getString("id"), getString("displayName"), optStringOrNull("color"))
 
     private fun JSONObject.toChoreSnapshot(): ChoreSnapshot {
         val chores = getJSONArray("chores").objects()

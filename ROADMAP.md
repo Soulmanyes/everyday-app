@@ -75,12 +75,14 @@ Design agreed 2026-10-08 (see CLAUDE.md, "Sync (Phase 4)"). Built and verified e
 Each phase is built on `dev` and works on its own. When it's done, the owner is asked whether to merge it into `main`. If approved, the version goes up and `deploy/publish-release.sh` publishes it. Phases raise the middle number (Phase 5 = 1.1.0, Phase 6 = 1.2.0, …), and fixes between phases raise the last (1.1.1).
 
 ## Phase 5: Look & feel, and backups (1.1.0)
-- [ ] Dark theme by default; Settings checkbox **"Follow phone theme"** (off by default) switches to the phone's light/dark setting. Per phone, not synced. Today the app always follows the phone (`EverydayTheme` in `ui/Theme.kt`).
-- [ ] Members pick their own **dot colour** (shown on chores, and later events) from at least 10 colours, one member per colour:
+Built on `dev` and verified on an API 37 emulator against the test stack on 2026-10-09; backups running on the VM and this PC.
+
+- [x] Dark theme by default; Settings checkbox **"Follow phone theme"** (off by default) switches to the phone's light/dark setting. Per phone, not synced. Today the app always follows the phone (`EverydayTheme` in `ui/Theme.kt`).
+- [x] Members pick their own **dot colour** (shown on chores, and later events) from at least 10 colours, one member per colour:
   - **Household-wide, not per phone**: stored on the server (`member.color` exists, unused) and sent with the member list; unique per household for members who aren't deleted.
   - The palette grows from 8 (`MEMBER_COLORS` in `ui/chores/ChoresScreen.kt`, no greens because chore cards are green) to 10+ colours that stay distinct from that green in light and dark mode.
   - Set in Settings without a PIN; taken colours show as unavailable. Members who haven't picked (e.g. added by hand) get a free colour **assigned by the server**, so phones no longer work out colours themselves.
-- [ ] Scheduled database backups (server only): daily `pg_dump`, keeping 30 daily and 12 monthly, plus a copy off the VM (where: decide in Phase 5). About 4 KB per backup today.
+- [x] Scheduled database backups (server only): daily `pg_dump`, keeping 30 daily and 12 monthly, plus a copy pulled to the owner's PC daily (decided 2026-10-09). About 4 KB per backup today.
 
 ## Phase 6: Events timetable (1.2.0)
 - [ ] Reminders tab becomes a timetable of **events** (shown without notifying); each person can add their own reminders to an event, like chore times. Absorbs the old "shared household calendar / events" idea. Notes and open questions: [docs/ideas/events-timetable.md](docs/ideas/events-timetable.md)

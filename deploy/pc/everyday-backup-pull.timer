@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily copy of Everyday database backups from the VM
+
+[Timer]
+# Runs once a day; if the PC was off, it runs soon after the next start.
+OnCalendar=*-*-* 12:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
