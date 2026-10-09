@@ -70,6 +70,7 @@ Design agreed 2026-10-08 (see CLAUDE.md, "Sync (Phase 4)"). Built and verified e
 - [x] Join by name with admin approval (or linking to an existing member); phones locked to their member
 
 ## Later / ideas (to discuss before building)
+- [ ] Reminders tab as a timetable of **events** (shown without notifying), where each person can optionally add their own reminders to an event, like chore times. Notes: [docs/ideas/events-timetable.md](docs/ideas/events-timetable.md)
 - [ ] Allow others to create their own households on this server (today: exactly one household, creation disabled once set up). Needs: dropping the singleton, scoping every query and the join code lookup to a household, a way to create one without the server's `SETUP_TOKEN`, and abuse limits. Notes: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
 - [ ] Optional per-member PIN (the admin PIN exists from Phase 2)
 - [ ] Chore rotation (assignees rotate each week automatically)
