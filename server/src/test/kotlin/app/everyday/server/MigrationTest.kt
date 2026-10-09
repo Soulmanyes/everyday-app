@@ -65,4 +65,32 @@ class MigrationTest {
         }
         assertEquals(listOf("bal" to "blue", "Gone" to null, "Test Alex" to "red"), colors)
     }
+
+    @Test
+    fun `V7 moves SOUND to SOUND_VIBRATE and allows the new value`() {
+        db.connection.use { it.createStatement().execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;") }
+        Flyway.configure().dataSource(db).target("6").load().migrate()
+        db.connection.use { conn ->
+            conn.createStatement().execute(
+                """
+                INSERT INTO household (id, name, code_hash, timezone, admin_pin_hash)
+                    VALUES ('00000000-0000-0000-0000-000000000001', 'Home', 'x', 'Europe/London', 'y');
+                INSERT INTO member (id, household_id, display_name, created_at) VALUES
+                    ('00000000-0000-0000-0000-0000000000aa', '00000000-0000-0000-0000-000000000001', 'bal', '2026-10-08 21:00:00+00'),
+                    ('00000000-0000-0000-0000-0000000000bb', '00000000-0000-0000-0000-000000000001', 'Alex', '2026-10-08 22:00:00+00');
+                INSERT INTO member_settings (member_id, timed_sound, persistent_sound) VALUES
+                    ('00000000-0000-0000-0000-0000000000aa', 'SOUND', 'SOUND'),
+                    ('00000000-0000-0000-0000-0000000000bb', 'VIBRATE', 'SILENT');
+                """.trimIndent(),
+            )
+        }
+        migrate(db)
+        db.connection.use { conn ->
+            val rows = conn.createStatement().executeQuery(
+                "SELECT s.timed_sound, s.persistent_sound FROM member_settings s JOIN member m ON m.id = s.member_id ORDER BY m.created_at",
+            ).use { rs -> buildList { while (rs.next()) add(rs.getString(1) to rs.getString(2)) } }
+            assertEquals(listOf("SOUND_VIBRATE" to "SOUND_VIBRATE", "VIBRATE" to "SILENT"), rows)
+            conn.createStatement().execute("UPDATE member_settings SET timed_sound = 'SOUND', persistent_sound = 'SOUND_VIBRATE'")
+        }
+    }
 }

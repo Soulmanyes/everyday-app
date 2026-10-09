@@ -127,10 +127,10 @@ fun SettingsScreen(onBack: () -> Unit, onManageMembers: () -> Unit, onOpenShared
                     }
                 }
             }
-            Setting("Timed reminders", "How a timed reminder alerts you") {
+            Setting("Timed reminders", "How a timed reminder alerts you (Both = sound and vibrate)") {
                 SoundPicker(s.timedSound) { mode -> vm.update { it.copy(timedSound = mode) } }
             }
-            Setting("Persistent reminders", "How a persistent reminder alerts you when its window starts") {
+            Setting("Persistent reminders", "How a persistent reminder alerts you when its window starts (Both = sound and vibrate)") {
                 SoundPicker(s.persistentSound) { mode -> vm.update { it.copy(persistentSound = mode) } }
             }
 
@@ -196,6 +196,7 @@ private fun SoundPicker(selected: SoundMode, onSelect: (SoundMode) -> Unit) {
                     when (mode) {
                         SoundMode.SOUND -> "Sound"
                         SoundMode.VIBRATE -> "Vibrate"
+                        SoundMode.SOUND_VIBRATE -> "Both"
                         SoundMode.SILENT -> "Silent"
                     },
                 )

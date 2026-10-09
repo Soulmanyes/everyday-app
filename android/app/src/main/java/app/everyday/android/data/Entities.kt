@@ -25,13 +25,14 @@ data class MemberEntity(
     val color: String? = null,
 )
 
-enum class SoundMode { SOUND, VIBRATE, SILENT }
+/** SOUND is sound only (Phase 6); SOUND_VIBRATE is what SOUND used to be. */
+enum class SoundMode { SOUND, VIBRATE, SOUND_VIBRATE, SILENT }
 
 @Entity(tableName = "member_settings")
 data class MemberSettingsEntity(
     @PrimaryKey val memberId: String,
     val snoozeMinutes: Int = 10,
-    val timedSound: SoundMode = SoundMode.SOUND,
+    val timedSound: SoundMode = SoundMode.SOUND_VIBRATE,
     val persistentSound: SoundMode = SoundMode.SILENT,
     val updatedAt: Long = 0,
     /** Changed on this phone since the last sync. */

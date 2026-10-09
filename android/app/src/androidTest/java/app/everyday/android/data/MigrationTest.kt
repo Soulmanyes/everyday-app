@@ -99,6 +99,21 @@ class MigrationTest {
         }
     }
 
+    @Test
+    fun migrate5To6MovesSoundToSoundAndVibrate() {
+        helper.createDatabase(DB, 5).apply {
+            execSQL("INSERT INTO member_settings (memberId, snoozeMinutes, timedSound, persistentSound, updatedAt, dirty) VALUES ('m1', 15, 'SOUND', 'SOUND', 3, 0)")
+            execSQL("INSERT INTO member_settings (memberId, snoozeMinutes, timedSound, persistentSound, updatedAt, dirty) VALUES ('m2', 15, 'VIBRATE', 'SILENT', 3, 0)")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(DB, 6, true, MIGRATION_5_6)
+        db.query("SELECT timedSound, persistentSound, dirty FROM member_settings ORDER BY memberId").use {
+            it.moveToNext(); assertEquals(listOf("SOUND_VIBRATE", "SOUND_VIBRATE", 0), listOf(it.getString(0), it.getString(1), it.getInt(2)))
+            it.moveToNext(); assertEquals(listOf("VIBRATE", "SILENT", 0), listOf(it.getString(0), it.getString(1), it.getInt(2)))
+        }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

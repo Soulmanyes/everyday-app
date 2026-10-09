@@ -297,7 +297,7 @@ class SyncStore(private val db: DataSource) {
 
     private companion object {
         val MODES = setOf("TIMED", "PERSISTENT")
-        val SOUNDS = setOf("SOUND", "VIBRATE", "SILENT")
+        val SOUNDS = setOf("SOUND", "VIBRATE", "SOUND_VIBRATE", "SILENT")
         val STATUSES = setOf("pending", "accepted", "declined")
     }
 }

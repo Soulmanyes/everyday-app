@@ -22,7 +22,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ReminderRecipientEntity::class,
         ChoreSlotEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
     // 1 -> 2 and 3 -> 4 add chore cache tables, 4 -> 5 the member colour. MigrationTest checks reminders survive every step.
     autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
@@ -34,7 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "everyday.db").addMigrations(MIGRATION_2_3).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "everyday.db").addMigrations(MIGRATION_2_3, MIGRATION_5_6).build()
     }
 }
 
@@ -71,5 +71,16 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
                 "FOREIGN KEY(`reminderId`) REFERENCES `reminder`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_reminder_recipient_memberId` ON `reminder_recipient` (`memberId`)")
+    }
+}
+
+/**
+ * 5 -> 6 (Phase 6): SOUND becomes sound only, so members on SOUND (which also vibrated) move to
+ * SOUND_VIBRATE. Not marked dirty: the server makes the same change in V7.
+ */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("UPDATE `member_settings` SET `timedSound` = 'SOUND_VIBRATE' WHERE `timedSound` = 'SOUND'")
+        db.execSQL("UPDATE `member_settings` SET `persistentSound` = 'SOUND_VIBRATE' WHERE `persistentSound` = 'SOUND'")
     }
 }

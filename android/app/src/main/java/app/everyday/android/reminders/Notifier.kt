@@ -21,19 +21,26 @@ import app.everyday.android.data.SoundMode
  * one ongoing notification with the tag [PERSISTENT_TAG].
  *
  * A channel's sound can't change after it is created, so there is one channel per
- * {timed, persistent} x {sound, vibrate, silent}, and the member's setting picks the channel.
+ * {timed, persistent} x [SoundMode], and the member's setting picks the channel. The ids carry a
+ * version: when a channel's behaviour changes it needs a new id, because recreating a deleted
+ * channel under its old id brings back its old settings.
  */
 class Notifier(private val context: Context) {
     private val manager = context.getSystemService(NotificationManager::class.java)
 
     fun ensureChannels() {
+        // 1.1.0 channels without a version; their "sound" one also vibrated.
+        for (mode in ReminderMode.entries) for (old in listOf("sound", "vibrate", "silent")) {
+            manager.deleteNotificationChannel("${mode.name.lowercase()}_$old")
+        }
         manager.createNotificationChannel(
             NotificationChannel(INVITE_CHANNEL, "Shared reminder invites", NotificationManager.IMPORTANCE_DEFAULT),
         )
         for (mode in ReminderMode.entries) for (sound in SoundMode.entries) {
             val channel = NotificationChannel(channelId(mode, sound), channelName(mode, sound), importance(mode, sound))
             when (sound) {
-                SoundMode.SOUND -> channel.enableVibration(true)
+                SoundMode.SOUND -> channel.enableVibration(false)
+                SoundMode.SOUND_VIBRATE -> channel.enableVibration(true)
                 SoundMode.VIBRATE -> {
                     channel.setSound(null, null)
                     channel.enableVibration(true)
@@ -174,17 +181,19 @@ class Notifier(private val context: Context) {
         private const val INVITE_CHANNEL = "invites"
         private const val JOIN_TAG = "JOIN_REQUESTS"
         private const val MAX_DONE_ACTIONS = 3
+        private const val CHANNEL_VERSION = "v2"
         private const val DONE_LABEL_LENGTH = 18
 
         fun tag(mode: ReminderMode, reminderId: String) = "${mode.name}:$reminderId"
 
-        fun channelId(mode: ReminderMode, sound: SoundMode) = "${mode.name.lowercase()}_${sound.name.lowercase()}"
+        fun channelId(mode: ReminderMode, sound: SoundMode) = "${mode.name.lowercase()}_${sound.name.lowercase()}_$CHANNEL_VERSION"
 
         private fun channelName(mode: ReminderMode, sound: SoundMode): String {
             val kind = if (mode == ReminderMode.TIMED) "Timed reminders" else "Persistent reminders"
             val how = when (sound) {
                 SoundMode.SOUND -> "sound"
                 SoundMode.VIBRATE -> "vibrate"
+                SoundMode.SOUND_VIBRATE -> "sound and vibrate"
                 SoundMode.SILENT -> "silent"
             }
             return "$kind ($how)"
