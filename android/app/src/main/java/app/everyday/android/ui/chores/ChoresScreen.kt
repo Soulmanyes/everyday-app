@@ -168,21 +168,44 @@ private fun ChoresContent(
         ) { Icon(Icons.Default.Add, contentDescription = "Add chore") }
     }
 
-    val selected = chores.firstOrNull { it.chore.id == selectedId }
-    if (selected != null) {
+    chores.firstOrNull { it.chore.id == selectedId }?.let { selected ->
+        ChoreDetailsSheet(vm, selected, today, onDismiss = { selectedId = null }, onEditChore = onEditChore, onAddReminder = onAddReminder)
+    }
+}
+
+/** [ChoreSheet] wired to [vm], with member colours and slots: shown from the Chores tab and the month view. */
+@Composable
+fun ChoreDetailsSheet(
+    vm: ChoresViewModel,
+    chore: ChoreWithDetails,
+    today: LocalDate,
+    onDismiss: () -> Unit,
+    onEditChore: (String) -> Unit,
+    onAddReminder: (String) -> Unit,
+) {
+    val members by vm.members.collectAsStateWithLifecycle()
+    val session by vm.session.collectAsStateWithLifecycle()
+    val mySlots by vm.mySlots.collectAsStateWithLifecycle()
+    val myId = session.memberId
+    val colors = members.associate { it.id to memberColorOf(it.color, it.id) }
+    val slots: (ChoreWithDetails, String) -> List<ChoreSlotEntity> = { c, m ->
+        if (m == myId) mySlots[c.chore.id].orEmpty() else c.slots.filter { it.memberId == m }
+    }
+    val id = chore.chore.id
+    CompositionLocalProvider(LocalMemberColors provides colors, LocalChoreSlots provides slots) {
         ChoreSheet(
-            item = selected,
+            item = chore,
             today = today,
-            membersById = membersById,
+            membersById = members.associateBy { it.id },
             myId = myId,
             busy = vm.busy,
-            onDismiss = { selectedId = null },
-            onEdit = { selectedId = null; onEditChore(selected.chore.id) },
-            onMarkDone = { vm.markDone(selected.chore.id) },
-            onUndo = { vm.undoDone(selected.chore.id) },
-            onAddReminder = { selectedId = null; onAddReminder(selected.chore.id) },
-            onAddTime = { minute -> vm.addTime(selected.chore, minute) },
-            onRemoveTime = { minute -> vm.removeTime(selected.chore.id, minute) },
+            onDismiss = onDismiss,
+            onEdit = { onDismiss(); onEditChore(id) },
+            onMarkDone = { vm.markDone(id) },
+            onUndo = { vm.undoDone(id) },
+            onAddReminder = { onDismiss(); onAddReminder(id) },
+            onAddTime = { minute -> vm.addTime(chore.chore, minute) },
+            onRemoveTime = { minute -> vm.removeTime(id, minute) },
         )
     }
 }

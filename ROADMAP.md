@@ -99,8 +99,8 @@ Clarifies Phase 6 (decided 2026-10-09). App only: no server or schema change. Bu
 ## Phase 7: Monthly view (1.4.0)
 Decided 2026-10-09. Replaces the old Phase 7 (chore rotation and points, now dropped).
 
-- [ ] New **monthly view** screen: a month grid of chores and events.
-- [ ] Choose whose chores and events show: **everyone**, or a selection of members.
+- [x] New **monthly view**: a **Week | Month** switch on the Events tab. The month grid lists up to 3 items a day (events first, then chores) and "+N"; tapping a day opens a sheet listing it, where each item opens its event or chore sheet. The week and day views stay "just me" (decided 2026-10-09).
+- [x] Choose whose chores and events show: **everyone**, or a selection of members. Month view only, remembered on this phone. A chore shows if any assignee is picked, an event if its owner or anyone it's shared with is.
 - [ ] Personal events can show to other members as **"Busy"** (times only, no title or notes) or not at all. The owner chooses per event; the default is **Busy**, for new and existing personal events. Needs a server and schema change: today other members' personal events never reach a phone.
 - [ ] Events shared with me show in full, as on the Events tab.
 

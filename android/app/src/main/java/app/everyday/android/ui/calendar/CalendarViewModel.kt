@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.everyday.android.EverydayApplication
+import app.everyday.android.data.ChoreRepository
+import app.everyday.android.ui.AppPrefs
 import app.everyday.android.data.Persistent
 import app.everyday.android.data.ReminderRepository
 import app.everyday.android.reminders.ReminderEngine
@@ -16,6 +18,8 @@ import kotlinx.coroutines.launch
 
 class CalendarViewModel(
     private val repository: ReminderRepository,
+    choreRepository: ChoreRepository,
+    private val prefs: AppPrefs,
     private val engine: ReminderEngine,
     private val requestSync: () -> Unit,
 ) : ViewModel() {
@@ -26,6 +30,15 @@ class CalendarViewModel(
     val choreReminders = repository.observeReminders()
         .map { list -> list.filter { it.reminder.choreId != null } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Household chores (from the cache), for the month view. */
+    val chores = choreRepository.observeChores()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Whose chores and events the month view shows, remembered on this phone. */
+    val monthFilter = prefs.monthFilter
+
+    fun setMonthFilter(filter: MonthFilter) = prefs.setMonthFilter(filter)
+
     val members = repository.observeMembers()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -59,7 +72,7 @@ class CalendarViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as EverydayApplication
-                CalendarViewModel(app.repository, app.engine, app.sync::requestSync)
+                CalendarViewModel(app.repository, app.choreRepository, app.prefs, app.engine, app.sync::requestSync)
             }
         }
     }

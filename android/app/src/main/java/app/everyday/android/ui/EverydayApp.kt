@@ -177,7 +177,12 @@ private fun MainScreen(
             }
             Box(Modifier.fillMaxSize()) {
                 when (tab) {
-                    Tab.Events -> CalendarScreen(onEditEvent = onEditEvent, onEditChoreReminder = onEditChoreReminder)
+                    Tab.Events -> CalendarScreen(
+                        onEditEvent = onEditEvent,
+                        onEditChoreReminder = onEditChoreReminder,
+                        onEditChore = onEditChore,
+                        onAddChoreReminder = onAddChoreReminder,
+                    )
                     Tab.Chores -> ChoresScreen(onEditChore = onEditChore, onAddReminder = onAddChoreReminder)
                     Tab.Reminders -> RemindersScreen(onEditEvent = onEditEvent, onEditChoreReminder = onEditChoreReminder)
                 }

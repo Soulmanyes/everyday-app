@@ -25,7 +25,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.everyday.android.data.ChoreWithDetails
 import app.everyday.android.data.EventView
 import app.everyday.android.data.MemberEntity
 import app.everyday.android.data.ReminderMode
@@ -61,6 +66,8 @@ import app.everyday.android.reminders.MINUTES_PER_DAY
 import app.everyday.android.reminders.Window
 import app.everyday.android.reminders.isOnWeekday
 import app.everyday.android.ui.choreColors
+import app.everyday.android.ui.chores.ChoreDetailsSheet
+import app.everyday.android.ui.chores.ChoresViewModel
 import app.everyday.android.ui.dayShort
 import app.everyday.android.ui.ChoreIcon
 import app.everyday.android.ui.ReminderIcon
@@ -70,6 +77,7 @@ import kotlinx.coroutines.delay
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
@@ -101,7 +109,12 @@ private data class CalendarItem(
 )
 
 @Composable
-fun CalendarScreen(onEditEvent: (String?) -> Unit, onEditChoreReminder: (String) -> Unit) {
+fun CalendarScreen(
+    onEditEvent: (String?) -> Unit,
+    onEditChoreReminder: (String) -> Unit,
+    onEditChore: (String) -> Unit,
+    onAddChoreReminder: (String) -> Unit,
+) {
     val vm: CalendarViewModel = viewModel(factory = CalendarViewModel.Factory)
     val events by vm.events.collectAsStateWithLifecycle()
     val choreReminders by vm.choreReminders.collectAsStateWithLifecycle()
@@ -111,6 +124,13 @@ fun CalendarScreen(onEditEvent: (String?) -> Unit, onEditChoreReminder: (String)
     var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
     // Day view: the focused day as an epoch day, or null for the week view.
     var focusedEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
+    // Month view (Phase 7): the shown month as "yyyy-MM", the day whose sheet is open, and the item picked there.
+    var monthMode by rememberSaveable { mutableStateOf(false) }
+    var shownMonth by rememberSaveable { mutableStateOf<String?>(null) }
+    var monthDayEpoch by rememberSaveable { mutableStateOf<Long?>(null) }
+    var monthItemKey by rememberSaveable { mutableStateOf<String?>(null) }
+    val chores by vm.chores.collectAsStateWithLifecycle()
+    val monthFilter by vm.monthFilter.collectAsStateWithLifecycle()
 
     // Ticks every minute so "today" and the now-line stay current.
     val now by produceState(LocalTime.now()) {
@@ -135,9 +155,26 @@ fun CalendarScreen(onEditEvent: (String?) -> Unit, onEditChoreReminder: (String)
     }
     BackHandler(enabled = focusedDay != null) { backToWeek() }
 
+    val month = shownMonth?.let(YearMonth::parse) ?: YearMonth.from(today)
+
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            if (focusedDay != null) {
+            if (focusedDay == null) {
+                ViewSwitch(monthMode, onChange = { monthMode = it })
+            }
+            if (monthMode && focusedDay == null) {
+                MonthView(
+                    month = month,
+                    today = today,
+                    events = events,
+                    chores = chores,
+                    members = members,
+                    filter = monthFilter,
+                    onMonthChange = { shownMonth = it.toString() },
+                    onFilterChange = vm::setMonthFilter,
+                    onDayClick = { monthDayEpoch = it.toEpochDay() },
+                )
+            } else if (focusedDay != null) {
                 DayHeader(focusedDay, today, onChange = { focusedEpochDay = it.toEpochDay() }, onBackToWeek = ::backToWeek)
             } else {
                 WeekHeader(weekStart, weekOffset, onChange = { weekOffset = it })
@@ -147,7 +184,7 @@ fun CalendarScreen(onEditEvent: (String?) -> Unit, onEditChoreReminder: (String)
             HorizontalDivider()
             TimeGrid(days, today, now, entries, detailed = focusedDay != null, onSelect = { selectedKey = it })
         }
-        if (entries.isEmpty()) {
+        if (entries.isEmpty() && !monthMode) {
             Text(
                 "Nothing on your timetable yet.\nTap + to add an event.",
                 modifier = Modifier.align(Alignment.Center),
@@ -175,6 +212,75 @@ fun CalendarScreen(onEditEvent: (String?) -> Unit, onEditChoreReminder: (String)
             )
         }
         null -> {}
+    }
+
+    MonthSheets(
+        vm = vm,
+        events = events,
+        chores = chores,
+        members = members,
+        filter = effectiveFilter(monthFilter, members),
+        today = today,
+        day = monthDayEpoch?.let(LocalDate::ofEpochDay),
+        itemKey = monthItemKey,
+        onDayDismiss = { monthDayEpoch = null },
+        onSelect = { monthItemKey = it },
+        onItemDismiss = { monthItemKey = null },
+        onEditEvent = onEditEvent,
+        onEditChore = onEditChore,
+        onAddChoreReminder = onAddChoreReminder,
+    )
+}
+
+/** Week | Month switch at the top of the Events tab. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ViewSwitch(month: Boolean, onChange: (Boolean) -> Unit) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        listOf(false to "Week", true to "Month").forEachIndexed { i, (value, label) ->
+            SegmentedButton(
+                selected = month == value,
+                onClick = { onChange(value) },
+                shape = SegmentedButtonDefaults.itemShape(i, 2),
+            ) { Text(label) }
+        }
+    }
+}
+
+/**
+ * The month view's sheets: the tapped day's list, and over it the event or chore picked there. The day
+ * sheet stays open underneath, so closing an item returns to the day.
+ */
+@Composable
+private fun MonthSheets(
+    vm: CalendarViewModel,
+    events: List<EventView>,
+    chores: List<ChoreWithDetails>,
+    members: List<MemberEntity>,
+    filter: MonthFilter,
+    today: LocalDate,
+    day: LocalDate?,
+    itemKey: String?,
+    onDayDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    onItemDismiss: () -> Unit,
+    onEditEvent: (String) -> Unit,
+    onEditChore: (String) -> Unit,
+    onAddChoreReminder: (String) -> Unit,
+) {
+    if (day == null) return
+    val items = monthItemsOn(day, events, chores, filter)
+    val selected = items.firstOrNull { it.key == itemKey }
+    if (selected == null) {
+        MonthDaySheet(day, items, members, onDismiss = onDayDismiss, onSelect = { onSelect(it.key) })
+        return
+    }
+    when (selected) {
+        is MonthItem.Event -> EventDetailsSheet(vm, selected.view, today, members, onDismiss = onItemDismiss, onEditEvent = onEditEvent)
+        is MonthItem.Chore -> {
+            val choresVm: ChoresViewModel = viewModel(factory = ChoresViewModel.Factory)
+            ChoreDetailsSheet(choresVm, selected.details, today, onDismiss = onItemDismiss, onEditChore = onEditChore, onAddReminder = onAddChoreReminder)
+        }
     }
 }
 
