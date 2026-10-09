@@ -4,6 +4,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.delete
@@ -30,6 +31,7 @@ class ApiContext(
     /** One-time token needed to create the household; null disables creation. */
     val setupToken: String?,
     val clock: () -> Instant = Instant::now,
+    val rateLimits: RateLimits = RateLimits(),
 )
 
 const val ADMIN_PIN_HEADER = "X-Admin-Pin"
@@ -41,48 +43,51 @@ fun Application.configureRouting(api: ApiContext?) {
 
         get("/status") { call.respond(StatusResponse(api.store.householdExists())) }
 
-        post("/household") {
-            val req = call.receive<CreateHouseholdRequest>()
-            val setupToken = api.setupToken
-                ?: throw ApiException(HttpStatusCode.Forbidden, "Creating a household is disabled on this server.")
-            api.checkSecret(Secrets.constantTimeEquals(req.setupToken.trim(), setupToken), "Wrong setup code.")
-            val name = validName(req.householdName, "Household name", 60)
-            val adminName = validName(req.adminName, "Your name", 40)
-            validCode(req.householdCode)
-            validPin(req.adminPin)
-            val zone = runCatching { ZoneId.of(req.timezone) }.getOrNull() ?: badRequest("Unknown timezone.")
+        // Per-IP limits on top of the global wrong-attempt lockout (see RateLimits).
+        rateLimit(SECRETS_LIMIT) {
+            post("/household") {
+                val req = call.receive<CreateHouseholdRequest>()
+                val setupToken = api.setupToken
+                    ?: throw ApiException(HttpStatusCode.Forbidden, "Creating a household is disabled on this server.")
+                api.checkSecret(Secrets.constantTimeEquals(req.setupToken.trim(), setupToken), "Wrong setup code.")
+                val name = validName(req.householdName, "Household name", 60)
+                val adminName = validName(req.adminName, "Your name", 40)
+                validCode(req.householdCode)
+                validPin(req.adminPin)
+                val zone = runCatching { ZoneId.of(req.timezone) }.getOrNull() ?: badRequest("Unknown timezone.")
 
-            val token = api.secrets.newToken()
-            val (household, members) = api.store.createHousehold(
-                name = name,
-                timezone = zone.id,
-                codeHash = api.secrets.hash(req.householdCode),
-                adminName = adminName,
-                adminPinHash = api.secrets.hash(req.adminPin),
-                deviceTokenHash = Secrets.tokenHash(token),
-                deviceLabel = req.deviceLabel,
-            ) ?: throw ApiException(HttpStatusCode.Conflict, "A household already exists on this server.")
-            call.respond(HttpStatusCode.Created, SessionResponse(token, household.toDto(), members, memberId = household.adminMemberId?.toString()))
-        }
-
-        post("/join") {
-            val req = call.receive<JoinRequest>()
-            api.ensureNotLocked()
-            val household = api.store.getHousehold()
-                ?: throw ApiException(HttpStatusCode.NotFound, "No household has been set up yet.")
-            api.checkSecret(api.secrets.verify(req.householdCode, household.codeHash), "Wrong household code.")
-            val token = api.secrets.newToken()
-            // The admin on a new phone (or after reinstalling): nobody else could approve it.
-            if (!req.adminPin.isNullOrEmpty()) {
-                api.checkSecret(api.secrets.verify(req.adminPin, household.adminPinHash), "Wrong admin PIN.")
-                val adminId = household.adminMemberId ?: throw ApiException(HttpStatusCode.Conflict, "The household has no admin.")
-                api.store.addAdminDevice(household.id, Secrets.tokenHash(token), req.deviceLabel, adminId)
-                call.respond(SessionResponse(token, household.toDto(), api.store.members(household.id), memberId = adminId.toString()))
-                return@post
+                val token = api.secrets.newToken()
+                val (household, members) = api.store.createHousehold(
+                    name = name,
+                    timezone = zone.id,
+                    codeHash = api.secrets.hash(req.householdCode),
+                    adminName = adminName,
+                    adminPinHash = api.secrets.hash(req.adminPin),
+                    deviceTokenHash = Secrets.tokenHash(token),
+                    deviceLabel = req.deviceLabel,
+                ) ?: throw ApiException(HttpStatusCode.Conflict, "A household already exists on this server.")
+                call.respond(HttpStatusCode.Created, SessionResponse(token, household.toDto(), members, memberId = household.adminMemberId?.toString()))
             }
-            val name = validName(req.name, "Your name", 40)
-            api.store.addPendingDevice(household.id, Secrets.tokenHash(token), req.deviceLabel, name)
-            call.respond(SessionResponse(token, household.toDto(), api.store.members(household.id), deviceStatus = "pending"))
+
+            post("/join") {
+                val req = call.receive<JoinRequest>()
+                api.ensureNotLocked()
+                val household = api.store.getHousehold()
+                    ?: throw ApiException(HttpStatusCode.NotFound, "No household has been set up yet.")
+                api.checkSecret(api.secrets.verify(req.householdCode, household.codeHash), "Wrong household code.")
+                val token = api.secrets.newToken()
+                // The admin on a new phone (or after reinstalling): nobody else could approve it.
+                if (!req.adminPin.isNullOrEmpty()) {
+                    api.checkSecret(api.secrets.verify(req.adminPin, household.adminPinHash), "Wrong admin PIN.")
+                    val adminId = household.adminMemberId ?: throw ApiException(HttpStatusCode.Conflict, "The household has no admin.")
+                    api.store.addAdminDevice(household.id, Secrets.tokenHash(token), req.deviceLabel, adminId)
+                    call.respond(SessionResponse(token, household.toDto(), api.store.members(household.id), memberId = adminId.toString()))
+                    return@post
+                }
+                val name = validName(req.name, "Your name", 40)
+                api.store.addPendingDevice(household.id, Secrets.tokenHash(token), req.deviceLabel, name)
+                call.respond(SessionResponse(token, household.toDto(), api.store.members(household.id), deviceStatus = "pending"))
+            }
         }
 
         /** Works for pending phones too, so they can see when they've been approved. */
@@ -109,27 +114,6 @@ fun Application.configureRouting(api: ApiContext?) {
             call.respond(member)
         }
 
-        get("/join-requests") {
-            val household = api.requireAdmin(call)
-            call.respond(api.store.joinRequests(household.id))
-        }
-
-        /** Approves a phone as a new member (body without memberId) or as an existing member. */
-        post("/join-requests/{id}/approve") {
-            val household = api.requireAdmin(call)
-            val id = uuidParam(call, "request")
-            val memberId = call.receive<ApproveRequest>().memberId?.let { parseUuid(it) ?: badRequest("Bad member id.") }
-            val member = withNameCheck { api.store.approve(household.id, id, memberId) }
-                ?: throw ApiException(HttpStatusCode.NotFound, "No such request or member.")
-            call.respond(member)
-        }
-
-        post("/join-requests/{id}/reject") {
-            val household = api.requireAdmin(call)
-            if (!api.store.reject(household.id, uuidParam(call, "request"))) throw ApiException(HttpStatusCode.NotFound, "No such request.")
-            call.respond(HttpStatusCode.NoContent)
-        }
-
         /** Leaving the household: the device's token stops working. */
         delete("/device") {
             val session = api.authenticate(call)
@@ -137,37 +121,60 @@ fun Application.configureRouting(api: ApiContext?) {
             call.respond(HttpStatusCode.NoContent)
         }
 
-        /** Lets the app check the admin PIN before showing member management. */
-        post("/admin/verify") {
-            api.requireAdmin(call)
-            call.respond(HttpStatusCode.NoContent)
-        }
-
-        post("/members") {
-            val household = api.requireAdmin(call)
-            val req = call.receive<MemberRequest>()
-            val member = withNameCheck {
-                api.store.addMember(household.id, validName(req.displayName, "Name", 40), req.color?.let(::validColor))
+        rateLimit(ADMIN_LIMIT) {
+            get("/join-requests") {
+                val household = api.requireAdmin(call)
+                call.respond(api.store.joinRequests(household.id))
             }
-            call.respond(HttpStatusCode.Created, member)
-        }
 
-        put("/members/{id}") {
-            val household = api.requireAdmin(call)
-            val id = memberId(call)
-            val req = call.receive<MemberRequest>()
-            val member = withNameCheck {
-                api.store.updateMember(household.id, id, validName(req.displayName, "Name", 40), req.color?.let(::validColor))
-            } ?: throw ApiException(HttpStatusCode.NotFound, "No such member.")
-            call.respond(member)
-        }
+            /** Approves a phone as a new member (body without memberId) or as an existing member. */
+            post("/join-requests/{id}/approve") {
+                val household = api.requireAdmin(call)
+                val id = uuidParam(call, "request")
+                val memberId = call.receive<ApproveRequest>().memberId?.let { parseUuid(it) ?: badRequest("Bad member id.") }
+                val member = withNameCheck { api.store.approve(household.id, id, memberId) }
+                    ?: throw ApiException(HttpStatusCode.NotFound, "No such request or member.")
+                call.respond(member)
+            }
 
-        delete("/members/{id}") {
-            val household = api.requireAdmin(call)
-            val id = memberId(call)
-            if (id == household.adminMemberId) badRequest("The admin can't be removed.")
-            if (!api.store.deleteMember(household.id, id)) throw ApiException(HttpStatusCode.NotFound, "No such member.")
-            call.respond(HttpStatusCode.NoContent)
+            post("/join-requests/{id}/reject") {
+                val household = api.requireAdmin(call)
+                if (!api.store.reject(household.id, uuidParam(call, "request"))) throw ApiException(HttpStatusCode.NotFound, "No such request.")
+                call.respond(HttpStatusCode.NoContent)
+            }
+
+            /** Lets the app check the admin PIN before showing member management. */
+            post("/admin/verify") {
+                api.requireAdmin(call)
+                call.respond(HttpStatusCode.NoContent)
+            }
+
+            post("/members") {
+                val household = api.requireAdmin(call)
+                val req = call.receive<MemberRequest>()
+                val member = withNameCheck {
+                    api.store.addMember(household.id, validName(req.displayName, "Name", 40), req.color?.let(::validColor))
+                }
+                call.respond(HttpStatusCode.Created, member)
+            }
+
+            put("/members/{id}") {
+                val household = api.requireAdmin(call)
+                val id = memberId(call)
+                val req = call.receive<MemberRequest>()
+                val member = withNameCheck {
+                    api.store.updateMember(household.id, id, validName(req.displayName, "Name", 40), req.color?.let(::validColor))
+                } ?: throw ApiException(HttpStatusCode.NotFound, "No such member.")
+                call.respond(member)
+            }
+
+            delete("/members/{id}") {
+                val household = api.requireAdmin(call)
+                val id = memberId(call)
+                if (id == household.adminMemberId) badRequest("The admin can't be removed.")
+                if (!api.store.deleteMember(household.id, id)) throw ApiException(HttpStatusCode.NotFound, "No such member.")
+                call.respond(HttpStatusCode.NoContent)
+            }
         }
 
         /** The 1.1.0 sync, before events. Not 401: that would send old phones back to the join screen. */

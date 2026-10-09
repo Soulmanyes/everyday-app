@@ -119,7 +119,8 @@ The app is **dark by default**; "Follow phone theme" in Settings (per phone, `Ap
 - Every API route except `GET /health`, `GET /status`, `POST /household` (needs `SETUP_TOKEN`) and `POST /join` requires a valid device token (`Authorization: Bearer ...`). Except `GET /me` and `DELETE /device`, it also requires the device to be **approved**, and member-scoped requests (sync, chore done/undo) act **as the device's member**: a different `memberId` is refused.
 - Removing a member revokes their devices, which return to the join screen.
 - Member changes also need the `X-Admin-Pin` header, checked on the server.
-- Failed code/PIN/setup-token attempts are counted globally (all traffic comes through Caddy, so per-IP limits don't work). Too many failures lock those endpoints for a while.
+- Failed code/PIN/setup-token attempts are counted globally (the API sees every request coming from Caddy). Too many failures lock those endpoints for a while.
+- **Rate limits per client IP** (Ktor `RateLimit`, `RateLimits.kt`): 10/min on `/household` and `/join`, 30/min on admin-PIN routes, 300/min on all requests. The IP is the first `X-Forwarded-For` address: Caddy replaces any value the client sends, and the API port isn't published, so it can be trusted. A limited request gets `429` with an `error` message, which the app shows like any other error (never the `401` path).
 - A `401` tells the app its token is no longer valid, and the app returns to the join screen.
 - Chore routes need only the device token. Chore IDs are client-generated UUIDs. Validate a non-empty title, weekdays 1..127, at least one assignee, and that every assignee is an existing member who isn't deleted. For EACH, only an assignee can have a completion. For ANY, allow at most one completion per day (checked in the API, because the type lives on `chore`). Today's date comes from `household.timezone`, never from UTC `CURRENT_DATE`.
 - Deleting a member is a soft delete, so `ON DELETE CASCADE` doesn't fire. Member deletion must also soft-delete that member's chore assignments, their reminders, and their `event_member` rows, then delete their events nobody is on any more.
@@ -172,6 +173,8 @@ docker compose up -d --build
 ```
 
 Versions are pinned in each build's `gradle/libs.versions.toml`.
+
+**CI** (`.github/workflows/ci.yml`): on pushes to `dev` and `main` and on PRs, GitHub Actions builds and tests the server (`./gradlew build`) and the app (`assembleDebug testDebugUnitTest`, debug APK kept 7 days as an artifact). The Room migration test needs an emulator and isn't run in CI. **Dependabot** (`.github/dependabot.yml`) opens weekly PRs into `dev` for the Gradle catalogs and the workflow's actions; it skips `kotlinx-serialization` (pinned for room-testing) and Postgres 18 test binaries (production runs 17).
 
 ## Releases and the dev app
 

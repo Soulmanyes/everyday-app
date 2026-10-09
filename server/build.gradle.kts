@@ -26,6 +26,7 @@ dependencies {
     implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.ktor.server.status.pages)
+    implementation(libs.ktor.server.rate.limit)
     implementation(libs.flyway.core)
     implementation(libs.flyway.postgresql)
     implementation(libs.postgresql)
