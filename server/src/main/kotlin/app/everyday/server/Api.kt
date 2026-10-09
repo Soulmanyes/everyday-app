@@ -128,29 +128,59 @@ data class ChoresResponse(
 @Serializable
 data class ChoreSlotDto(val choreId: String, val memberId: String, val startMinute: Int, val endMinute: Int? = null)
 
-// Sync (Phase 4). Times are epoch millis from the phone's clock; last write wins on updatedAt.
+// Sync (Phase 4, events in Phase 6). Times are epoch millis from the phone's clock; last write wins on updatedAt.
 
 @Serializable
 data class WindowDto(val startMinute: Int, val endMinute: Int)
 
-/** A recipient of a shared reminder. In a push from the owner only [memberId] is read. */
+/** A member an event is shared with. [hidden] is set by that member only ("Hide" or "Decline"). */
 @Serializable
-data class RecipientDto(val memberId: String, val status: String = "pending", val updatedAt: Long = 0)
+data class EventMemberDto(val memberId: String, val hidden: Boolean = false, val updatedAt: Long = 0)
 
+/**
+ * Something on the timetable: weekly on [weekdays], or once on [onDate] (ISO date), exactly one of the two.
+ * No [startMinute] means all day; [endMinute] is optional. In a push from the owner only the member ids of
+ * [members] are read.
+ */
+@Serializable
+data class EventSyncDto(
+    val id: String,
+    val ownerMemberId: String,
+    val title: String,
+    val notes: String? = null,
+    val weekdays: Int = 0,
+    val onDate: String? = null,
+    val startMinute: Int? = null,
+    val endMinute: Int? = null,
+    val members: List<EventMemberDto> = emptyList(),
+    val createdAt: Long,
+    val updatedAt: Long,
+    val deleted: Boolean = false,
+)
+
+/** A reminder time: a minute of the day, or with [relative] the minutes before the event starts. */
+@Serializable
+data class TimeDto(val minute: Int, val relative: Boolean = false)
+
+/**
+ * A reminder on an event ([eventId]) or a chore ([choreId]). Event reminders take their days and title from
+ * the event: TIMED ones have [times], PERSISTENT ones run all day ([leadMinutes] null) or from [leadMinutes]
+ * before the start until the end. Chore reminders keep their own [message], [weekdays], times and [windows].
+ */
 @Serializable
 data class ReminderSyncDto(
     val id: String,
     val ownerMemberId: String,
+    val eventId: String? = null,
     val choreId: String? = null,
-    val message: String,
+    val message: String = "",
     /** TIMED or PERSISTENT. */
     val mode: String,
-    val weekdays: Int,
+    val weekdays: Int = 0,
     val active: Boolean = true,
-    val ownerReceives: Boolean = true,
-    val times: List<Int> = emptyList(),
+    val times: List<TimeDto> = emptyList(),
     val windows: List<WindowDto> = emptyList(),
-    val recipients: List<RecipientDto> = emptyList(),
+    val leadMinutes: Int? = null,
     val createdAt: Long,
     val updatedAt: Long,
     val deleted: Boolean = false,
@@ -163,25 +193,27 @@ data class StateSyncDto(val reminderId: String, val doneOn: String? = null, val 
 @Serializable
 data class SettingsSyncDto(val snoozeMinutes: Int, val timedSound: String, val persistentSound: String, val updatedAt: Long)
 
-/** An invitee opting in (accepted) or out (declined) of a shared reminder. */
+/** A member hiding (or showing again) a shared event for themselves. */
 @Serializable
-data class RecipientStatusDto(val reminderId: String, val status: String, val updatedAt: Long)
+data class HiddenSyncDto(val eventId: String, val hidden: Boolean, val updatedAt: Long)
 
 @Serializable
 data class SyncRequest(
     val memberId: String,
+    val events: List<EventSyncDto> = emptyList(),
     val reminders: List<ReminderSyncDto> = emptyList(),
     val states: List<StateSyncDto> = emptyList(),
     val settings: SettingsSyncDto? = null,
-    val recipientStatuses: List<RecipientStatusDto> = emptyList(),
+    val hidden: List<HiddenSyncDto> = emptyList(),
 )
 
 /**
- * Everything the member can see after the push: reminders they own or were invited to (with
- * tombstones), their state rows and settings. [rejected] lists pushed ids the server refused.
+ * Everything the member can see after the push: events they own or that are shared with them, and their
+ * own reminders (both with tombstones), state rows and settings. [rejected] lists pushed ids the server refused.
  */
 @Serializable
 data class SyncResponse(
+    val events: List<EventSyncDto>,
     val reminders: List<ReminderSyncDto>,
     val states: List<StateSyncDto>,
     val settings: SettingsSyncDto?,

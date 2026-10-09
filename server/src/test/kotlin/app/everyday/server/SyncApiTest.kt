@@ -67,7 +67,7 @@ class SyncApiTest {
         block(client, Home(session.token, sam, alex, kim, mapOf(sam to session.token, alex to alexToken, kim to kimToken)))
     }
 
-    private suspend fun HttpClient.sync(home: Home, req: SyncRequest) = post("/sync") {
+    private suspend fun HttpClient.sync(home: Home, req: SyncRequest) = post("/v2/sync") {
         contentType(ContentType.Application.Json)
         header(HttpHeaders.Authorization, "Bearer ${home.tokenOf(req.memberId)}")
         setBody(req)
@@ -79,159 +79,216 @@ class SyncApiTest {
         return response.body()
     }
 
-    private fun reminder(owner: String, updatedAt: Long = 1_000, id: String = UUID.randomUUID().toString(), vararg recipients: String) =
+    private fun event(owner: String, vararg members: String, updatedAt: Long = 1_000, id: String = UUID.randomUUID().toString()) =
+        EventSyncDto(
+            id = id,
+            ownerMemberId = owner,
+            title = "Swimming",
+            weekdays = 0b0000010,
+            startMinute = 17 * 60,
+            endMinute = 18 * 60,
+            members = members.map { EventMemberDto(it) },
+            createdAt = 1_000,
+            updatedAt = updatedAt,
+        )
+
+    private fun reminder(owner: String, eventId: String, updatedAt: Long = 1_000, id: String = UUID.randomUUID().toString()) =
         ReminderSyncDto(
             id = id,
             ownerMemberId = owner,
-            message = "Water plants",
+            eventId = eventId,
             mode = "TIMED",
-            weekdays = 127,
-            times = listOf(480, 1200),
-            recipients = recipients.map { RecipientDto(it) },
+            times = listOf(TimeDto(480), TimeDto(30, relative = true)),
             createdAt = 1_000,
             updatedAt = updatedAt,
         )
 
     @Test
-    fun `reminders push and come back in the snapshot`() = api { client, home ->
-        val r = reminder(home.sam)
-        val out = client.syncOk(home, SyncRequest(home.sam, reminders = listOf(r)))
-        assertTrue(out.rejected.isEmpty())
-        val back = out.reminders.single()
-        assertEquals(r.id, back.id)
-        assertEquals(listOf(480, 1200), back.times)
-        assertEquals(1_000, back.updatedAt)
-        // Alex sees nothing of Sam's personal reminder.
-        assertTrue(client.syncOk(home, SyncRequest(home.alex)).reminders.isEmpty())
+    fun `the 1_1_0 sync route tells old phones to update`() = api { client, home ->
+        val response = client.post("/sync") {
+            contentType(ContentType.Application.Json)
+            header(HttpHeaders.Authorization, "Bearer ${home.token}")
+            setBody(SyncRequest(home.sam))
+        }
+        assertEquals(HttpStatusCode.Gone, response.status)
     }
 
     @Test
-    fun `an older write loses`() = api { client, home ->
-        val r = reminder(home.sam, updatedAt = 2_000)
-        client.syncOk(home, SyncRequest(home.sam, reminders = listOf(r)))
-        val stale = r.copy(message = "Old text", updatedAt = 1_500)
-        assertEquals("Water plants", client.syncOk(home, SyncRequest(home.sam, reminders = listOf(stale))).reminders.single().message)
-        val newer = r.copy(message = "New text", times = listOf(600), updatedAt = 2_500)
-        val out = client.syncOk(home, SyncRequest(home.sam, reminders = listOf(newer))).reminders.single()
-        assertEquals("New text", out.message)
-        assertEquals(listOf(600), out.times)
+    fun `events and reminders push and come back in the snapshot`() = api { client, home ->
+        val e = event(home.sam)
+        val r = reminder(home.sam, e.id)
+        val out = client.syncOk(home, SyncRequest(home.sam, events = listOf(e), reminders = listOf(r)))
+        assertEquals(emptyList(), out.rejected)
+        assertEquals(listOf(e), out.events)
+        assertEquals(listOf(TimeDto(480), TimeDto(30, relative = true)), out.reminders.single().times)
+        // Personal: nobody else sees it.
+        val alex = client.syncOk(home, SyncRequest(home.alex))
+        assertTrue(alex.events.isEmpty() && alex.reminders.isEmpty())
     }
 
     @Test
-    fun `a bad row is rejected while the rest of the batch applies`() = api { client, home ->
-        val good = reminder(home.sam)
-        val badWindow = reminder(home.sam).copy(mode = "PERSISTENT", times = emptyList(), windows = listOf(WindowDto(600, 500)))
-        val notMine = reminder(home.alex)
-        val out = client.syncOk(home, SyncRequest(home.sam, reminders = listOf(badWindow, good, notMine)))
-        assertEquals(setOf(badWindow.id, notMine.id), out.rejected.toSet())
-        assertEquals(listOf(good.id), out.reminders.map { it.id })
+    fun `last write wins on events, and bad events are rejected on their own`() = api { client, home ->
+        val e = event(home.sam, updatedAt = 2_000)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e)))
+        assertEquals("Swimming", client.syncOk(home, SyncRequest(home.sam, events = listOf(e.copy(title = "Old", updatedAt = 1_500)))).events.single().title)
+        assertEquals("Gym", client.syncOk(home, SyncRequest(home.sam, events = listOf(e.copy(title = "Gym", updatedAt = 3_000)))).events.single().title)
+
+        val dated = event(home.sam).copy(weekdays = 0, onDate = "2026-10-20", startMinute = null, endMinute = null)
+        val both = event(home.sam).copy(onDate = "2026-10-20")
+        val neither = event(home.sam).copy(weekdays = 0)
+        val endOnly = event(home.sam).copy(startMinute = null)
+        val notMine = event(home.alex)
+        val out = client.syncOk(home, SyncRequest(home.sam, events = listOf(dated, both, neither, endOnly, notMine)))
+        assertEquals(listOf(both, neither, endOnly, notMine).map { "event:${it.id}" }, out.rejected)
+        assertEquals("2026-10-20", out.events.single { it.id == dated.id }.onDate)
     }
 
     @Test
-    fun `tombstones sync and keep the reminder deleted`() = api { client, home ->
-        val r = reminder(home.sam)
-        client.syncOk(home, SyncRequest(home.sam, reminders = listOf(r)))
-        val gone = client.syncOk(home, SyncRequest(home.sam, reminders = listOf(r.copy(deleted = true, updatedAt = 3_000))))
-        assertTrue(gone.reminders.single().deleted)
+    fun `reminder rules`() = api { client, home ->
+        val timed = event(home.sam)
+        val allDay = event(home.sam).copy(startMinute = null, endMinute = null)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(timed, allDay)))
+
+        val noEvent = reminder(home.sam, timed.id).copy(eventId = null)
+        val relativeOnAllDay = reminder(home.sam, allDay.id)
+        val fixedOnAllDay = reminder(home.sam, allDay.id).copy(times = listOf(TimeDto(480)))
+        val allDayPersistent = reminder(home.sam, allDay.id).copy(mode = "PERSISTENT", times = emptyList())
+        val leadOnAllDay = allDayPersistent.copy(id = UUID.randomUUID().toString(), leadMinutes = 30)
+        val lead = reminder(home.sam, timed.id).copy(mode = "PERSISTENT", times = emptyList(), leadMinutes = 30)
+        val otherEvent = reminder(home.alex, timed.id)
+        val out = client.syncOk(home, SyncRequest(home.sam, reminders = listOf(noEvent, relativeOnAllDay, fixedOnAllDay, allDayPersistent, leadOnAllDay, lead)))
+        assertEquals(listOf(noEvent.id, relativeOnAllDay.id, leadOnAllDay.id), out.rejected)
+        assertEquals(30, out.reminders.single { it.id == lead.id }.leadMinutes)
+        // Alex can't put a reminder on Sam's personal event.
+        assertEquals(listOf(otherEvent.id), client.syncOk(home, SyncRequest(home.alex, reminders = listOf(otherEvent))).rejected)
+        // An older write loses.
+        val stale = lead.copy(leadMinutes = 60, updatedAt = 500)
+        assertEquals(30, client.syncOk(home, SyncRequest(home.sam, reminders = listOf(stale))).reminders.single { it.id == lead.id }.leadMinutes)
     }
 
     @Test
-    fun `a phone can't sync as another member`() = api { client, home ->
-        assertEquals(HttpStatusCode.Forbidden, client.sync(home, SyncRequest(UUID.randomUUID().toString())).status)
-        assertEquals(HttpStatusCode.Forbidden, client.sync(home, SyncRequest("nope")).status)
-    }
+    fun `shared events show for their members, who see only their own reminders`() = api { client, home ->
+        val e = event(home.sam, home.alex)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e), reminders = listOf(reminder(home.sam, e.id))))
+        val alexEvent = client.syncOk(home, SyncRequest(home.alex)).events.single()
+        assertEquals(listOf(home.alex), alexEvent.members.map { it.memberId })
+        assertTrue(client.syncOk(home, SyncRequest(home.kim)).events.isEmpty())
 
-    @Test
-    fun `sharing invites members who opt in or out, and only the owner edits`() = api { client, home ->
-        val r = reminder(home.sam, 1_000, UUID.randomUUID().toString(), home.alex, home.kim)
-        val owner = client.syncOk(home, SyncRequest(home.sam, reminders = listOf(r))).reminders.single()
-        assertEquals(setOf(home.alex to "pending", home.kim to "pending"), owner.recipients.map { it.memberId to it.status }.toSet())
-
-        // Alex sees the invite and accepts; Alex can't edit the reminder.
-        assertEquals(r.id, client.syncOk(home, SyncRequest(home.alex)).reminders.single().id)
-        val accepted = client.syncOk(
-            home,
-            SyncRequest(
-                home.alex,
-                recipientStatuses = listOf(RecipientStatusDto(r.id, "accepted", 2_000)),
-                reminders = listOf(r.copy(message = "Hijacked", updatedAt = 5_000)),
-            ),
+        val alexReminder = reminder(home.alex, e.id)
+        val alex = client.syncOk(home, SyncRequest(home.alex, reminders = listOf(alexReminder)))
+        assertEquals(listOf(alexReminder.id), alex.reminders.map { it.id })
+        assertEquals(1, client.syncOk(home, SyncRequest(home.sam)).reminders.size)
+        // Only the owner edits the event.
+        assertEquals(listOf("event:${e.id}"), client.syncOk(home, SyncRequest(home.alex, events = listOf(e.copy(title = "Mine", updatedAt = 9_000)))).rejected)
+        // States only for your own reminders.
+        assertEquals(
+            listOf("state:${alexReminder.id}"),
+            client.syncOk(home, SyncRequest(home.sam, states = listOf(StateSyncDto(alexReminder.id, doneOn = "2026-10-08", updatedAt = 2_000)))).rejected,
         )
-        assertEquals(listOf(r.id), accepted.rejected)
-        assertEquals("Water plants", accepted.reminders.single().message)
-        assertEquals("accepted", accepted.reminders.single().recipients.first { it.memberId == home.alex }.status)
-
-        // Owner removes Kim's invite; Kim no longer sees the reminder.
-        client.syncOk(home, SyncRequest(home.sam, reminders = listOf(r.copy(recipients = listOf(RecipientDto(home.alex)), updatedAt = 3_000))))
-        assertTrue(client.syncOk(home, SyncRequest(home.kim)).reminders.isEmpty())
-        // Alex's answer survived the owner's edit.
-        val alexView = client.syncOk(home, SyncRequest(home.alex)).reminders.single()
-        assertEquals(listOf(home.alex to "accepted"), alexView.recipients.map { it.memberId to it.status })
     }
 
     @Test
-    fun `state and settings are per member with last write wins`() = api { client, home ->
-        val r = reminder(home.sam, 1_000, UUID.randomUUID().toString(), home.alex)
-        client.syncOk(home, SyncRequest(home.sam, reminders = listOf(r)))
-        client.syncOk(home, SyncRequest(home.sam, states = listOf(StateSyncDto(r.id, doneOn = "2026-10-08", updatedAt = 2_000))))
-        // Alex, an invitee, has their own state; Kim, not invited, is rejected.
-        val alex = client.syncOk(home, SyncRequest(home.alex, states = listOf(StateSyncDto(r.id, snoozeUntil = 9_000, updatedAt = 2_000))))
-        assertNull(alex.states.single().doneOn)
-        assertEquals(listOf("state:${r.id}"), client.syncOk(home, SyncRequest(home.kim, states = listOf(StateSyncDto(r.id, updatedAt = 1)))).rejected)
+    fun `hiding a shared event deletes my reminders on it, and hidden events take no reminders`() = api { client, home ->
+        val e = event(home.sam, home.alex)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e)))
+        val r = reminder(home.alex, e.id)
+        client.syncOk(home, SyncRequest(home.alex, reminders = listOf(r)))
 
+        val hidden = client.syncOk(home, SyncRequest(home.alex, hidden = listOf(HiddenSyncDto(e.id, true, 2_000))))
+        assertTrue(hidden.events.single().members.single().hidden)
+        assertTrue(hidden.reminders.single().deleted)
+        val again = reminder(home.alex, e.id)
+        assertEquals(listOf(again.id), client.syncOk(home, SyncRequest(home.alex, reminders = listOf(again))).rejected)
+        // Kim isn't a member, so can't hide it.
+        assertEquals(listOf("hidden:${e.id}"), client.syncOk(home, SyncRequest(home.kim, hidden = listOf(HiddenSyncDto(e.id, true, 2_000)))).rejected)
+        // Showing it again.
+        assertTrue(!client.syncOk(home, SyncRequest(home.alex, hidden = listOf(HiddenSyncDto(e.id, false, 3_000)))).events.single().members.single().hidden)
+    }
+
+    @Test
+    fun `removing a member from an event, or deleting it, deletes their reminders on it`() = api { client, home ->
+        val e = event(home.sam, home.alex, home.kim)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e)))
+        val alexReminder = reminder(home.alex, e.id)
+        val kimReminder = reminder(home.kim, e.id)
+        client.syncOk(home, SyncRequest(home.alex, reminders = listOf(alexReminder)))
+        client.syncOk(home, SyncRequest(home.kim, reminders = listOf(kimReminder)))
+
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e.copy(members = listOf(EventMemberDto(home.kim)), updatedAt = 2_000))))
+        val alex = client.syncOk(home, SyncRequest(home.alex))
+        assertTrue(alex.events.isEmpty())
+        assertTrue(alex.reminders.single().deleted)
+        assertTrue(!client.syncOk(home, SyncRequest(home.kim)).reminders.single().deleted)
+
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e.copy(deleted = true, updatedAt = 3_000))))
+        val kim = client.syncOk(home, SyncRequest(home.kim))
+        assertTrue(kim.events.single().deleted)
+        assertTrue(kim.reminders.single().deleted)
+    }
+
+    @Test
+    fun `state and settings follow last write wins`() = api { client, home ->
+        val e = event(home.sam)
+        val r = reminder(home.sam, e.id)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e), reminders = listOf(r)))
+        client.syncOk(home, SyncRequest(home.sam, states = listOf(StateSyncDto(r.id, doneOn = "2026-10-08", updatedAt = 2_000))))
         val stale = client.syncOk(home, SyncRequest(home.sam, states = listOf(StateSyncDto(r.id, doneOn = null, updatedAt = 1_500))))
         assertEquals("2026-10-08", stale.states.single().doneOn)
 
-        val settings = client.syncOk(home, SyncRequest(home.sam, settings = SettingsSyncDto(25, "VIBRATE", "SILENT", 5_000))).settings!!
-        assertEquals(25, settings.snoozeMinutes)
+        val settings = client.syncOk(home, SyncRequest(home.sam, settings = SettingsSyncDto(25, "SOUND_VIBRATE", "SOUND", 5_000))).settings!!
+        assertEquals(listOf(25, "SOUND_VIBRATE", "SOUND"), listOf(settings.snoozeMinutes, settings.timedSound, settings.persistentSound))
         assertEquals(listOf("settings"), client.syncOk(home, SyncRequest(home.sam, settings = SettingsSyncDto(0, "LOUD", "SILENT", 6_000))).rejected)
     }
 
     @Test
-    fun `chore reminders can't be shared and need the owner assigned`() = api { client, home ->
+    fun `chore reminders need the owner assigned`() = api { client, home ->
         val choreId = UUID.randomUUID().toString()
         client.put("/chores/$choreId") {
             contentType(ContentType.Application.Json)
             header(HttpHeaders.Authorization, "Bearer ${home.token}")
             setBody(ChoreRequest("Bins", weekdays = 127, completion = ChoreCompletion.ANY, assigneeIds = listOf(home.sam)))
         }
-        val ok = reminder(home.sam).copy(choreId = choreId)
-        val shared = reminder(home.sam, 1_000, UUID.randomUUID().toString(), home.alex).copy(choreId = choreId)
-        val unassigned = reminder(home.alex).copy(choreId = choreId)
-        assertEquals(listOf(shared.id), client.syncOk(home, SyncRequest(home.sam, reminders = listOf(ok, shared))).rejected)
+        val choreReminder = ReminderSyncDto(
+            id = UUID.randomUUID().toString(), ownerMemberId = home.sam, choreId = choreId, message = "Bins", mode = "TIMED",
+            weekdays = 127, times = listOf(TimeDto(480), TimeDto(1200)), createdAt = 1_000, updatedAt = 1_000,
+        )
+        val relative = choreReminder.copy(id = UUID.randomUUID().toString(), times = listOf(TimeDto(30, relative = true)))
+        val unassigned = choreReminder.copy(id = UUID.randomUUID().toString(), ownerMemberId = home.alex)
+        assertEquals(listOf(relative.id), client.syncOk(home, SyncRequest(home.sam, reminders = listOf(choreReminder, relative))).rejected)
         assertEquals(listOf(unassigned.id), client.syncOk(home, SyncRequest(home.alex, reminders = listOf(unassigned))).rejected)
 
-        // The chore timetable shows the assignee's reminder times (480 and 1200 from the helper).
+        // The chore timetable shows the assignee's reminder times.
         val chores = client.get("/chores") { header(HttpHeaders.Authorization, "Bearer ${home.token}") }.body<ChoresResponse>()
         assertEquals(listOf(480, 1200), chores.slots.filter { it.memberId == home.sam }.map { it.startMinute })
         // Paused reminders don't show.
-        client.syncOk(home, SyncRequest(home.sam, reminders = listOf(ok.copy(active = false, updatedAt = 2_000))))
+        client.syncOk(home, SyncRequest(home.sam, reminders = listOf(choreReminder.copy(active = false, updatedAt = 2_000))))
         assertTrue(client.get("/chores") { header(HttpHeaders.Authorization, "Bearer ${home.token}") }.body<ChoresResponse>().slots.isEmpty())
     }
 
     @Test
-    fun `a removed member's shared reminder lives on until every invitee removes it`() = api { client, home ->
-        val personal = reminder(home.alex)
-        val shared = reminder(home.alex, 1_000, UUID.randomUUID().toString(), home.sam, home.kim)
-        client.syncOk(home, SyncRequest(home.alex, reminders = listOf(personal, shared)))
-        client.syncOk(home, SyncRequest(home.sam, recipientStatuses = listOf(RecipientStatusDto(shared.id, "accepted", 2_000))))
-        // Sam's invite to Alex is removed along with Alex.
-        val samsShared = reminder(home.sam, 1_000, UUID.randomUUID().toString(), home.alex)
-        client.syncOk(home, SyncRequest(home.sam, reminders = listOf(samsShared)))
+    fun `a removed member's shared event lives on until every member hides it`() = api { client, home ->
+        val personal = event(home.alex)
+        val shared = event(home.alex, home.sam, home.kim)
+        client.syncOk(home, SyncRequest(home.alex, events = listOf(personal, shared), reminders = listOf(reminder(home.alex, shared.id))))
+        val samsShared = event(home.sam, home.alex)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(samsShared)))
+        val samReminder = reminder(home.sam, shared.id)
+        client.syncOk(home, SyncRequest(home.sam, reminders = listOf(samReminder)))
 
         client.delete("/members/${home.alex}") {
             header(HttpHeaders.Authorization, "Bearer ${home.token}")
             header(ADMIN_PIN_HEADER, "4821")
         }
 
-        val samView = client.syncOk(home, SyncRequest(home.sam)).reminders.associateBy { it.id }
-        assertTrue(!samView.getValue(shared.id).deleted)
-        assertTrue(samView.getValue(samsShared.id).recipients.isEmpty())
+        val sam = client.syncOk(home, SyncRequest(home.sam))
+        assertTrue(!sam.events.single { it.id == shared.id }.deleted)
+        assertTrue(sam.events.single { it.id == samsShared.id }.members.isEmpty())
 
-        // Sam and Kim remove it for themselves (decline); then it's deleted.
-        client.syncOk(home, SyncRequest(home.sam, recipientStatuses = listOf(RecipientStatusDto(shared.id, "declined", 3_000))))
-        assertTrue(!client.syncOk(home, SyncRequest(home.kim)).reminders.single().deleted)
-        val last = client.syncOk(home, SyncRequest(home.kim, recipientStatuses = listOf(RecipientStatusDto(shared.id, "declined", 3_000))))
-        assertTrue(last.reminders.single().deleted)
+        // Sam and Kim hide it; then it's deleted, with Sam's reminder on it.
+        client.syncOk(home, SyncRequest(home.sam, hidden = listOf(HiddenSyncDto(shared.id, true, 3_000))))
+        assertTrue(!client.syncOk(home, SyncRequest(home.kim)).events.single().deleted)
+        val last = client.syncOk(home, SyncRequest(home.kim, hidden = listOf(HiddenSyncDto(shared.id, true, 3_000))))
+        assertTrue(last.events.single().deleted)
+        assertNull(client.syncOk(home, SyncRequest(home.sam)).reminders.firstOrNull { it.id == samReminder.id && !it.deleted })
     }
 }

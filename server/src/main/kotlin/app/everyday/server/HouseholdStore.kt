@@ -177,7 +177,8 @@ class HouseholdStore(private val db: DataSource) {
 
     /**
      * Soft-deletes a member (a soft delete doesn't trigger ON DELETE CASCADE) with their chore assignments,
-     * their invites, and their reminders except shared ones invitees still have (those live on read-only).
+     * their reminders, their place on others' events, and their events except shared ones that members
+     * still show (those live on read-only).
      * Returns false if there was no such member.
      */
     fun deleteMember(householdId: UUID, memberId: UUID): Boolean = db.transaction { conn ->
@@ -188,14 +189,17 @@ class HouseholdStore(private val db: DataSource) {
             conn.prepareStatement("UPDATE chore_assignment SET deleted = TRUE, updated_at = now() WHERE member_id = ? AND NOT deleted").run {
                 setObject(1, memberId); executeUpdate()
             }
-            conn.prepareStatement("UPDATE reminder_recipient SET deleted = TRUE, updated_at = now() WHERE member_id = ? AND NOT deleted").run {
+            conn.prepareStatement("UPDATE event_member SET deleted = TRUE, updated_at = now() WHERE member_id = ? AND NOT deleted").run {
+                setObject(1, memberId); executeUpdate()
+            }
+            conn.prepareStatement("UPDATE reminder SET deleted = TRUE, updated_at = now() WHERE owner_member_id = ? AND NOT deleted").run {
                 setObject(1, memberId); executeUpdate()
             }
             // Their phones return to the join screen.
             conn.prepareStatement("UPDATE device SET revoked = TRUE WHERE member_id = ? AND NOT revoked").run {
                 setObject(1, memberId); executeUpdate()
             }
-            conn.deleteOrphanedSharedReminders()
+            conn.deleteOrphanedEvents()
         }
         deleted
     }
