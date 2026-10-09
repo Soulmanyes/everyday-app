@@ -71,9 +71,9 @@ Design agreed 2026-10-08 (see CLAUDE.md, "Sync (Phase 4)"). Built and verified e
 
 ## Later / ideas (to discuss before building)
 - [ ] Members pick their own **dot colour** (shown on chores and events), from at least 10 colours, with each colour taken by only one member. Notes:
-  - `member.color` already exists on the server (unused); add a unique index per household for members who aren't deleted.
+  - **Household-wide, not per phone**: the colour is stored on the server (`member.color` already exists, unused) and sent with the member list, so every phone shows the same colour for the same person. Add a unique index per household for members who aren't deleted.
   - Today the app hands out 8 colours in household order (`MEMBER_COLORS` in `ui/chores/ChoresScreen.kt`), with no greens because chore cards are green. Grow the palette to 10+ colours that stay distinct from that green in light and dark mode.
-  - A member sets their own colour in Settings with no PIN; colours already taken show as unavailable. Members without a colour (e.g. added by hand) keep an automatic one until someone picks.
+  - A member sets their own colour in Settings with no PIN; colours already taken show as unavailable. Members who haven't picked (e.g. added by hand) get a free colour **assigned by the server** when they're created, so there are no colours worked out on each phone any more.
 - [ ] Reminders tab as a timetable of **events** (shown without notifying), where each person can optionally add their own reminders to an event, like chore times. Notes: [docs/ideas/events-timetable.md](docs/ideas/events-timetable.md)
 - [ ] Allow others to create their own households on this server (today: exactly one household, creation disabled once set up). Needs: dropping the singleton, scoping every query and the join code lookup to a household, a way to create one without the server's `SETUP_TOKEN`, and abuse limits. Notes: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
 - [ ] Optional per-member PIN (the admin PIN exists from Phase 2)
@@ -83,7 +83,7 @@ Design agreed 2026-10-08 (see CLAUDE.md, "Sync (Phase 4)"). Built and verified e
 - [ ] Shopping list shared by the household
 - [ ] Shared household calendar / events
 - [ ] Chore points and a weekly summary
-- [ ] Dark mode and theme colour per member
+- [ ] Dark theme: today the app follows the phone's light/dark setting. Change it to use the dark theme (decide: always dark, or an in-app System / Light / Dark choice). No per-member theme colours.
 - [ ] Scheduled Postgres backups (`pg_dump` cron with off-VM copy)
 - [ ] CI: GitHub Actions building the server and the debug APK
 - [ ] Shared models: move API DTOs into a Kotlin Multiplatform `shared` module used by both builds
