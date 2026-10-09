@@ -40,6 +40,11 @@ fun Application.module(api: ApiContext? = null) {
     install(StatusPages) {
         exception<ApiException> { call, e -> call.respond(e.status, ErrorResponse(e.message)) }
         exception<BadRequestException> { call, _ -> call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid request.")) }
+        // The rate limiter answers 429 without a body; the app shows the "error" field.
+        status(HttpStatusCode.TooManyRequests) { call, status ->
+            call.respond(status, ErrorResponse("Too many requests. Try again in a minute."))
+        }
     }
+    installRateLimits(api?.rateLimits ?: RateLimits())
     configureRouting(api)
 }

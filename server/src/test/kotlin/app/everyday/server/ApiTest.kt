@@ -291,6 +291,60 @@ class ApiTest {
         assertEquals(HttpStatusCode.OK, client.postJson("/join", JoinRequest(CODE, "Alex")).status)
     }
 
+    @Test
+    fun `the lockout keeps its own message`() = api { client ->
+        client.createHousehold()
+        repeat(5) { client.postJson("/join", JoinRequest("wrong-code", "Alex")) }
+        val response = client.postJson("/join", JoinRequest(CODE, "Alex"))
+        assertEquals(HttpStatusCode.TooManyRequests, response.status)
+        assertTrue(response.body<ErrorResponse>().error.startsWith("Too many wrong attempts."))
+    }
+
+    private fun withRateLimits(limits: RateLimits) {
+        api = ApiContext(api.store, api.chores, api.sync, api.secrets, api.limiter, SETUP, { now }, limits)
+    }
+
+    private suspend fun HttpClient.joinFrom(ip: String): HttpResponse = post("/join") {
+        contentType(ContentType.Application.Json)
+        header("X-Forwarded-For", ip)
+        setBody(JoinRequest(CODE, "Alex"))
+    }
+
+    @Test
+    fun `joining is rate limited per client IP`() {
+        withRateLimits(RateLimits(secrets = 3))
+        api { client ->
+            client.createHousehold()
+            repeat(3) { assertEquals(HttpStatusCode.OK, client.joinFrom("203.0.113.7").status) }
+            val limited = client.joinFrom("203.0.113.7")
+            assertEquals(HttpStatusCode.TooManyRequests, limited.status)
+            assertEquals("Too many requests. Try again in a minute.", limited.body<ErrorResponse>().error)
+            // Only the first address in the header counts.
+            assertEquals(HttpStatusCode.OK, client.joinFrom("198.51.100.4, 172.18.0.3").status)
+        }
+    }
+
+    @Test
+    fun `admin PIN routes are rate limited`() {
+        withRateLimits(RateLimits(admin = 2))
+        api { client ->
+            val token = client.createHousehold().token
+            repeat(2) { assertEquals(HttpStatusCode.NoContent, client.postJson("/admin/verify", Unit, token, PIN).status) }
+            assertEquals(HttpStatusCode.TooManyRequests, client.postJson("/admin/verify", Unit, token, PIN).status)
+            // Other routes still work.
+            assertEquals(HttpStatusCode.OK, client.get("/status").status)
+        }
+    }
+
+    @Test
+    fun `every route counts towards the overall limit`() {
+        withRateLimits(RateLimits(other = 3))
+        api { client ->
+            repeat(3) { assertEquals(HttpStatusCode.OK, client.get("/status").status) }
+            assertEquals(HttpStatusCode.TooManyRequests, client.get("/status").status)
+        }
+    }
+
     private suspend fun HttpClient.putChore(token: String, id: String, req: ChoreRequest): HttpResponse = put("/chores/$id") {
         contentType(ContentType.Application.Json)
         header(HttpHeaders.Authorization, "Bearer $token")
