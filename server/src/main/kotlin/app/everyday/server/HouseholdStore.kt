@@ -156,12 +156,15 @@ class HouseholdStore(private val db: DataSource) {
         db.transaction { conn -> conn.insertMember(householdId, name, color) }
     }
 
-    /** Null if there is no such member. Throws [NameTaken] if another member already has this name. */
+    /**
+     * Null if there is no such member. [color] null keeps the current colour. Throws [NameTaken] or
+     * [ColorTaken] if another member already has this name or colour.
+     */
     fun updateMember(householdId: UUID, memberId: UUID, name: String, color: String?): MemberDto? = nameMustBeFree {
         db.transaction { conn ->
             conn.prepareStatement(
                 """
-                UPDATE member SET display_name = ?, color = ?, updated_at = now()
+                UPDATE member SET display_name = ?, color = coalesce(?, color), updated_at = now()
                 WHERE id = ? AND household_id = ? AND NOT deleted
                 RETURNING id, display_name, color
                 """.trimIndent(),
@@ -197,12 +200,31 @@ class HouseholdStore(private val db: DataSource) {
         deleted
     }
 
+    /** A member picks their own colour. Null if there is no such member; throws [ColorTaken] if it's in use. */
+    fun setColor(householdId: UUID, memberId: UUID, color: String): MemberDto? = nameMustBeFree {
+        db.transaction { conn ->
+            conn.prepareStatement(
+                "UPDATE member SET color = ?, updated_at = now() WHERE id = ? AND household_id = ? AND NOT deleted RETURNING id, display_name, color",
+            ).run {
+                setString(1, color); setObject(2, memberId); setObject(3, householdId)
+                executeQuery().use { rs -> if (rs.next()) rs.toMember() else null }
+            }
+        }
+    }
+
     object NameTaken : RuntimeException("name taken")
 
+    object ColorTaken : RuntimeException("colour taken")
+
+    /** Turns unique violations into [NameTaken] or [ColorTaken], depending on the index that was hit. */
     private fun <T> nameMustBeFree(block: () -> T): T = try {
         block()
     } catch (e: SQLException) {
-        if (e.sqlState == UNIQUE_VIOLATION) throw NameTaken else throw e
+        when {
+            e.sqlState != UNIQUE_VIOLATION -> throw e
+            e.message.orEmpty().contains("member_color_unique") -> throw ColorTaken
+            else -> throw NameTaken
+        }
     }
 
     private fun Connection.household(id: UUID? = null): HouseholdRow? {
@@ -231,7 +253,13 @@ class HouseholdStore(private val db: DataSource) {
             executeQuery().use { rs -> buildList { while (rs.next()) add(rs.toMember()) } }
         }
 
-    private fun Connection.insertMember(householdId: UUID, name: String, color: String?): MemberDto {
+    /** New members get [color] if given, else the first palette colour nobody in the household has. */
+    private fun Connection.insertMember(householdId: UUID, name: String, requested: String?): MemberDto {
+        val used = prepareStatement("SELECT color FROM member WHERE household_id = ? AND NOT deleted AND color IS NOT NULL").run {
+            setObject(1, householdId)
+            executeQuery().use { rs -> buildSet { while (rs.next()) add(rs.getString(1)) } }
+        }
+        val color = requested ?: MEMBER_COLORS.firstOrNull { it !in used }
         val member = prepareStatement(
             "INSERT INTO member (household_id, display_name, color) VALUES (?, ?, ?) RETURNING id, display_name, color",
         ).run {

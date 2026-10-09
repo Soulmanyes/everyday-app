@@ -40,4 +40,29 @@ class MigrationTest {
             )
         }
     }
+
+    @Test
+    fun `V6 gives existing members distinct colours in creation order`() {
+        db.connection.use { it.createStatement().execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;") }
+        Flyway.configure().dataSource(db).target("5").load().migrate()
+        db.connection.use { conn ->
+            conn.createStatement().execute(
+                """
+                INSERT INTO household (id, name, code_hash, timezone, admin_pin_hash)
+                    VALUES ('00000000-0000-0000-0000-000000000001', 'Home', 'x', 'Europe/London', 'y');
+                INSERT INTO member (household_id, display_name, created_at, deleted) VALUES
+                    ('00000000-0000-0000-0000-000000000001', 'bal', '2026-10-08 21:00:00+00', FALSE),
+                    ('00000000-0000-0000-0000-000000000001', 'Gone', '2026-10-08 21:30:00+00', TRUE),
+                    ('00000000-0000-0000-0000-000000000001', 'Test Alex', '2026-10-08 22:00:00+00', FALSE);
+                """.trimIndent(),
+            )
+        }
+        migrate(db)
+        val colors = db.connection.use { conn ->
+            conn.createStatement().executeQuery("SELECT display_name, color FROM member ORDER BY created_at").use { rs ->
+                buildList { while (rs.next()) add(rs.getString(1) to rs.getString(2)) }
+            }
+        }
+        assertEquals(listOf("bal" to "blue", "Gone" to null, "Test Alex" to "red"), colors)
+    }
 }

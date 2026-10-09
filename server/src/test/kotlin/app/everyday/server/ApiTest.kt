@@ -158,6 +158,41 @@ class ApiTest {
     }
 
     @Test
+    fun `members get distinct colours and can pick a free one`() = api { client ->
+        val admin = client.createHousehold()
+        val (alexToken, alex) = client.joinApproved(admin.token, "Alex")
+        val colors = client.me(admin.token).members.associate { it.id to it.color }
+        assertEquals(listOf("blue", "red"), colors.values.toList())
+
+        // Alex picks a free colour without a PIN; a taken one is refused.
+        val picked = client.put("/me/color") {
+            contentType(ContentType.Application.Json); header(HttpHeaders.Authorization, "Bearer $alexToken"); setBody(ColorRequest("pink"))
+        }
+        assertEquals("pink", picked.body<MemberDto>().color)
+        val taken = client.put("/me/color") {
+            contentType(ContentType.Application.Json); header(HttpHeaders.Authorization, "Bearer $alexToken"); setBody(ColorRequest("blue"))
+        }
+        assertEquals(HttpStatusCode.Conflict, taken.status)
+        val unknown = client.put("/me/color") {
+            contentType(ContentType.Application.Json); header(HttpHeaders.Authorization, "Bearer $alexToken"); setBody(ColorRequest("plaid"))
+        }
+        assertEquals(HttpStatusCode.BadRequest, unknown.status)
+
+        // The admin sets a colour (PIN); renaming without a colour keeps it.
+        fun put(body: MemberRequest) = runBlocking {
+            client.put("/members/$alex") {
+                contentType(ContentType.Application.Json); header(HttpHeaders.Authorization, "Bearer ${admin.token}")
+                header(ADMIN_PIN_HEADER, PIN); setBody(body)
+            }
+        }
+        assertEquals("cyan", put(MemberRequest("Alex", "cyan")).body<MemberDto>().color)
+        assertEquals("cyan", put(MemberRequest("Alexander")).body<MemberDto>().color)
+        // A removed member's colour becomes free again.
+        client.delete("/members/$alex") { header(HttpHeaders.Authorization, "Bearer ${admin.token}"); header(ADMIN_PIN_HEADER, PIN) }
+        assertEquals("red", client.addMemberDto(admin.token, "Kim").color)
+    }
+
+    @Test
     fun `the admin rejoins on a new phone with the admin PIN`() = api { client ->
         val admin = client.createHousehold()
         assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest(CODE, adminPin = "0000")).status)
@@ -264,6 +299,9 @@ class ApiTest {
 
     private suspend fun HttpClient.chores(token: String): ChoresResponse =
         get("/chores") { header(HttpHeaders.Authorization, "Bearer $token") }.body()
+
+    private suspend fun HttpClient.addMemberDto(token: String, name: String): MemberDto =
+        postJson("/members", MemberRequest(name), token, PIN).body()
 
     private suspend fun HttpClient.addMember(token: String, name: String): String =
         postJson("/members", MemberRequest(name), token, PIN).body<MemberDto>().id

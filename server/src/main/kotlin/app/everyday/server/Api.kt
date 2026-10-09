@@ -63,8 +63,15 @@ data class JoinRequestDto(val id: String, val name: String, val deviceLabel: Str
 @Serializable
 data class ApproveRequest(val memberId: String? = null)
 
+/** [color] null keeps the member's current colour. */
 @Serializable
 data class MemberRequest(val displayName: String, val color: String? = null)
+
+@Serializable
+data class ColorRequest(val color: String)
+
+/** Palette keys, in the order free colours are handed out. The app maps each key to a colour. */
+val MEMBER_COLORS = listOf("blue", "red", "purple", "orange", "yellow", "pink", "cyan", "brown", "indigo", "grey", "maroon", "sky")
 
 @Serializable
 data class ErrorResponse(val error: String)
