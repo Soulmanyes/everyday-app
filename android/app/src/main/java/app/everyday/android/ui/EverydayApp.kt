@@ -1,5 +1,14 @@
 package app.everyday.android.ui
 
+import app.everyday.android.app
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import android.net.Uri
+import android.content.Intent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -126,6 +135,8 @@ private fun MainScreen(
     onAddChoreReminder: (String) -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.Reminders) }
+    val context = LocalContext.current
+    val update by context.app.updates.update.collectAsStateWithLifecycle()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -148,10 +159,22 @@ private fun MainScreen(
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (tab) {
-                Tab.Reminders -> CalendarScreen(onEditReminder = onEditReminder, onOpenShared = onOpenShared)
-                Tab.Chores -> ChoresScreen(onEditChore = onEditChore, onAddReminder = onAddChoreReminder)
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            update?.let { u ->
+                Text(
+                    "Version ${u.versionName} is available. Tap to download and install it.",
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.tertiaryContainer)
+                        .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u.downloadUrl))) }
+                        .padding(12.dp),
+                )
+            }
+            Box(Modifier.fillMaxSize()) {
+                when (tab) {
+                    Tab.Reminders -> CalendarScreen(onEditReminder = onEditReminder, onOpenShared = onOpenShared)
+                    Tab.Chores -> ChoresScreen(onEditChore = onEditChore, onAddReminder = onAddChoreReminder)
+                }
             }
         }
     }

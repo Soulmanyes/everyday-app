@@ -1,4 +1,6 @@
 // AGP 9 compiles Kotlin itself (built-in Kotlin), so org.jetbrains.kotlin.android is not applied.
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -14,20 +16,52 @@ android {
         applicationId = "app.everyday.android"
         minSdk = 28
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // Bump both for every release: the app compares versionCode with the server's version.json.
+        versionCode = 2
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // The release key lives outside the repo (~/.everyday, backed up off the PC). Without it,
+    // release builds are unsigned and can't be installed.
+    val keystoreFile = File(System.getProperty("user.home"), ".everyday/keystore.properties")
+    signingConfigs {
+        if (keystoreFile.exists()) {
+            val props = Properties().apply { keystoreFile.inputStream().use { load(it) } }
+            create("release") {
+                storeFile = File(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
+        // What the household installs from the download link.
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            signingConfig = signingConfigs.findByName("release")
+            resValue("string", "app_name", "Everyday")
+            buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://everyday-home.duckdns.org\"")
+            buildConfigField("boolean", "CHECK_FOR_UPDATES", "true")
+        }
+        // The development app: installs next to the release one and uses the throwaway test server
+        // (reached through `adb reverse` to the SSH tunnel), so unfinished features never touch real data.
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-dev"
+            resValue("string", "app_name", "Everyday (dev)")
+            buildConfigField("String", "DEFAULT_SERVER_URL", "\"http://127.0.0.1:18080\"")
+            buildConfigField("boolean", "CHECK_FOR_UPDATES", "false")
         }
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
+        resValues = true
     }
 }
 

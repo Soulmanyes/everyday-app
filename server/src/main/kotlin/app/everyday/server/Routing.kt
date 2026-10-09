@@ -67,12 +67,20 @@ fun Application.configureRouting(api: ApiContext?) {
 
         post("/join") {
             val req = call.receive<JoinRequest>()
-            val name = validName(req.name, "Your name", 40)
             api.ensureNotLocked()
             val household = api.store.getHousehold()
                 ?: throw ApiException(HttpStatusCode.NotFound, "No household has been set up yet.")
             api.checkSecret(api.secrets.verify(req.householdCode, household.codeHash), "Wrong household code.")
             val token = api.secrets.newToken()
+            // The admin on a new phone (or after reinstalling): nobody else could approve it.
+            if (!req.adminPin.isNullOrEmpty()) {
+                api.checkSecret(api.secrets.verify(req.adminPin, household.adminPinHash), "Wrong admin PIN.")
+                val adminId = household.adminMemberId ?: throw ApiException(HttpStatusCode.Conflict, "The household has no admin.")
+                api.store.addAdminDevice(household.id, Secrets.tokenHash(token), req.deviceLabel, adminId)
+                call.respond(SessionResponse(token, household.toDto(), api.store.members(household.id), memberId = adminId.toString()))
+                return@post
+            }
+            val name = validName(req.name, "Your name", 40)
             api.store.addPendingDevice(household.id, Secrets.tokenHash(token), req.deviceLabel, name)
             call.respond(SessionResponse(token, household.toDto(), api.store.members(household.id), deviceStatus = "pending"))
         }

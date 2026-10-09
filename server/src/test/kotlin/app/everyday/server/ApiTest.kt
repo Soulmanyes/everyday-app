@@ -158,6 +158,16 @@ class ApiTest {
     }
 
     @Test
+    fun `the admin rejoins on a new phone with the admin PIN`() = api { client ->
+        val admin = client.createHousehold()
+        assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest(CODE, adminPin = "0000")).status)
+        val session = client.postJson("/join", JoinRequest(CODE, deviceLabel = "New phone", adminPin = PIN)).body<SessionResponse>()
+        assertEquals("approved", session.deviceStatus)
+        assertEquals(admin.household.adminMemberId, session.memberId)
+        assertEquals(admin.household.adminMemberId, client.me(session.token).memberId)
+    }
+
+    @Test
     fun `a request can be linked to an existing member, or rejected`() = api { client ->
         val admin = client.createHousehold()
         val kim = client.addMember(admin.token, "Kim")

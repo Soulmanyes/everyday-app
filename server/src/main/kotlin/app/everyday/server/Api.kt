@@ -18,7 +18,13 @@ data class CreateHouseholdRequest(
 )
 
 @Serializable
-data class JoinRequest(val householdCode: String, val name: String = "", val deviceLabel: String? = null)
+data class JoinRequest(
+    val householdCode: String,
+    val name: String = "",
+    val deviceLabel: String? = null,
+    /** The admin joining from a new phone: with the right PIN the phone is approved as the admin at once. */
+    val adminPin: String? = null,
+)
 
 @Serializable
 data class HouseholdDto(val id: String, val name: String, val timezone: String, val adminMemberId: String?)

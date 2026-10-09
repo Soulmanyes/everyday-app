@@ -79,10 +79,11 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
     ).toJoinResult()
 
     /** Asks to join as [name]. The phone stays pending until the admin approves it. */
-    suspend fun join(householdCode: String, name: String, deviceLabel: String): JoinResult = call(
+    suspend fun join(householdCode: String, name: String, deviceLabel: String, adminPin: String? = null): JoinResult = call(
         "POST",
         "/join",
-        JSONObject().put("householdCode", householdCode).put("name", name).put("deviceLabel", deviceLabel),
+        JSONObject().put("householdCode", householdCode).put("name", name).put("deviceLabel", deviceLabel)
+            .put("adminPin", adminPin ?: JSONObject.NULL),
     ).toJoinResult()
 
     suspend fun joinRequests(pin: String): List<JoinRequestInfo> =

@@ -39,9 +39,12 @@ class HouseholdManager(
         saveJoin(serverUrl, result, requestedName = adminName)
     }
 
-    /** Asks to join as [name]. The phone waits for the admin's approval (see [refresh]). */
-    suspend fun join(serverUrl: String, householdCode: String, name: String) {
-        saveJoin(serverUrl, ApiClient(serverUrl).join(householdCode, name, deviceLabel()), requestedName = name)
+    /**
+     * Asks to join as [name]; the phone waits for the admin's approval (see [refresh]). With [adminPin],
+     * the admin's own new phone is approved as the admin at once.
+     */
+    suspend fun join(serverUrl: String, householdCode: String, name: String, adminPin: String? = null) {
+        saveJoin(serverUrl, ApiClient(serverUrl).join(householdCode, name, deviceLabel(), adminPin), requestedName = name)
     }
 
     /**

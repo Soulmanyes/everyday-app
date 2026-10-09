@@ -2,5 +2,18 @@
 # API_DOMAIN must resolve to the VM's public IP (e.g. a DuckDNS subdomain).
 {$API_DOMAIN} {
 	encode gzip
-	reverse_proxy api:8080
+
+	# The app's download page and the release APK (published with deploy/publish-release.sh).
+	redir /download /download/
+	handle /download/* {
+		root * /srv
+		@apk path *.apk
+		header @apk Content-Type application/vnd.android.package-archive
+		header Cache-Control "no-cache"
+		file_server
+	}
+
+	handle {
+		reverse_proxy api:8080
+	}
 }

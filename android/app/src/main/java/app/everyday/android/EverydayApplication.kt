@@ -34,6 +34,7 @@ class EverydayApplication : Application() {
     val chores by lazy { ChoreManager(session, choreRepository, repository, engine) }
     /** For flows shared beyond one screen. */
     val mainScope = MainScope()
+    val updates = UpdateChecker()
     val sync by lazy { SyncManager(this, session, database, engine) }
 
     override fun onCreate() {

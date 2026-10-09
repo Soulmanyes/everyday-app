@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
             app.household.refresh()
             app.chores.refresh()
             app.sync.requestSync()
+            app.updates.check()
         }
     }
 }

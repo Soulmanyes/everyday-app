@@ -55,7 +55,8 @@ class HouseholdViewModel(
     fun create(serverUrl: String, setupCode: String, householdName: String, householdCode: String, adminName: String, pin: String) =
         run({ manager.create(serverUrl.trim(), setupCode.trim(), householdName, householdCode, adminName, pin) })
 
-    fun join(serverUrl: String, householdCode: String, name: String) = run({ manager.join(serverUrl.trim(), householdCode, name.trim()) })
+    fun join(serverUrl: String, householdCode: String, name: String, adminPin: String? = null) =
+        run({ manager.join(serverUrl.trim(), householdCode, name.trim(), adminPin) })
 
     /** Join requests, loaded once the admin PIN is entered. */
     var requests by mutableStateOf<List<JoinRequestInfo>>(emptyList())

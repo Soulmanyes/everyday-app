@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Everyday app</title>
+<style>
+  :root { color-scheme: light dark; --accent: #4a5d8f; }
+  body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 0 auto; padding: 2rem 1.25rem; line-height: 1.5; }
+  h1 { margin-bottom: .25rem; }
+  .button { display: inline-block; margin: 1.25rem 0; padding: .9rem 1.6rem; border-radius: 999px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; }
+  li { margin-bottom: .5rem; }
+  small { opacity: .7; }
+</style>
+</head>
+<body>
+<h1>Everyday</h1>
+<p>Reminders and chores for our household. Android only.</p>
+<a class="button" href="everyday.apk">Download the app</a>
+<p><small id="version"></small></p>
+<h2>Installing</h2>
+<ol>
+  <li>Tap <b>Download the app</b>, then open the downloaded file.</li>
+  <li>If Android asks, allow your browser to <b>install unknown apps</b> (once), then tap <b>Install</b>.</li>
+  <li>Open Everyday, tap <b>Join my household</b>, and enter your name and the household code you were given.</li>
+  <li>Wait for the household admin to approve you. The app moves on by itself.</li>
+</ol>
+<p>On Samsung phones, also go to <i>Settings → Battery → Background usage limits → Never sleeping apps</i> and add Everyday, so reminders aren't delayed.</p>
+<p><small>The app tells you when there's an update; download it from this page again and install it over the old one.</small></p>
+<script>
+  fetch("version.json", { cache: "no-store" }).then(r => r.json())
+    .then(v => { document.getElementById("version").textContent = "Version " + v.versionName; })
+    .catch(() => {});
+</script>
+</body>
+</html>

@@ -21,6 +21,10 @@ captures/
 
 # Secrets
 .env
+keystore.properties
+
+# Published release files (built by deploy/publish-release.sh)
+deploy/download/version.json
 deploy/caddy_data/
 deploy/pgdata/
 

@@ -1,5 +1,9 @@
 package app.everyday.android.ui.household
 
+import androidx.compose.ui.semantics.Role
+import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Surface
 import kotlinx.coroutines.delay
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -92,19 +96,32 @@ private fun WelcomeScreen(onCreate: () -> Unit, onJoin: () -> Unit, onSkip: () -
 private fun JoinScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
     var code by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
+    var isAdmin by rememberSaveable { mutableStateOf(false) }
+    var pin by rememberSaveable { mutableStateOf("") }
     var server by rememberSaveable { mutableStateOf(vm.session.value.serverUrl) }
     FormScaffold("Join household", onBack) {
         Text(
             "Ask whoever set up the household for the household code. They'll approve you before you're in.",
             style = MaterialTheme.typography.bodyMedium,
         )
-        OutlinedTextField(name, { name = it.take(40) }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        if (!isAdmin) {
+            OutlinedTextField(name, { name = it.take(40) }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        }
         SecretField(code, { code = it }, "Household code")
+        // The admin's own new phone: nobody else could approve it.
+        Row(
+            Modifier.fillMaxWidth().toggleable(value = isAdmin, role = Role.Checkbox, onValueChange = { isAdmin = it }),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = isAdmin, onCheckedChange = null)
+            Text("I'm the household admin (new phone)", Modifier.padding(start = 8.dp))
+        }
+        if (isAdmin) SecretField(pin, { pin = it }, "Admin PIN", numeric = true)
         ServerField(server) { server = it }
         vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
-            onClick = { vm.join(server, code, name) },
-            enabled = !vm.busy && code.isNotBlank() && name.isNotBlank(),
+            onClick = { if (isAdmin) vm.join(server, code, "", pin) else vm.join(server, code, name) },
+            enabled = !vm.busy && code.isNotBlank() && if (isAdmin) pin.isNotBlank() else name.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
         ) { Text(if (vm.busy) "Joining…" else "Join") }
     }

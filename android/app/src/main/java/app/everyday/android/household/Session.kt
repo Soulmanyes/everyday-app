@@ -1,12 +1,14 @@
 package app.everyday.android.household
 
 import android.content.Context
+import app.everyday.android.BuildConfig
 import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-const val DEFAULT_SERVER_URL = "https://everyday-home.duckdns.org"
+/** The real server for release builds, the test server for the dev app (see build.gradle.kts). */
+val DEFAULT_SERVER_URL: String = BuildConfig.DEFAULT_SERVER_URL
 
 /** What this phone knows about its household membership. */
 data class SessionState(

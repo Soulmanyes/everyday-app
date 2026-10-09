@@ -60,6 +60,11 @@ class HouseholdStore(private val db: DataSource) {
         if (e.sqlState == UNIQUE_VIOLATION) null else throw e
     }
 
+    /** The admin's own new phone, approved at once (the admin PIN was checked). */
+    fun addAdminDevice(householdId: UUID, tokenHash: String, label: String?, adminId: UUID) = db.transaction { conn ->
+        conn.insertDevice(householdId, tokenHash, label, adminId, name = null)
+    }
+
     /** A joining phone: pending until the admin approves it as [name] or links it to a member. */
     fun addPendingDevice(householdId: UUID, tokenHash: String, label: String?, name: String) = db.transaction { conn ->
         conn.insertDevice(householdId, tokenHash, label, memberId = null, name = name)
