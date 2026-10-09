@@ -1,0 +1,49 @@
+# Builds the server and the debug app and runs their unit tests.
+# The Room migration test (connectedDebugAndroidTest) needs an emulator and isn't run here.
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      # Compiles and runs the tests (embedded Postgres, no database needed).
+      - run: ./gradlew build
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Install Android SDK platform 37
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" > /dev/null
+      - run: ./gradlew assembleDebug testDebugUnitTest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: everyday-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 7
