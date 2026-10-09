@@ -9,6 +9,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import app.everyday.android.ui.EverydayApp
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.everyday.android.ui.EverydayTheme
 import kotlinx.coroutines.launch
 
@@ -24,7 +26,8 @@ class MainActivity : ComponentActivity() {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         setContent {
-            EverydayTheme {
+            val followPhone by app.prefs.followPhoneTheme.collectAsStateWithLifecycle()
+            EverydayTheme(followPhone) {
                 EverydayApp()
             }
         }

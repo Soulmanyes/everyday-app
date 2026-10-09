@@ -48,6 +48,7 @@ import app.everyday.android.data.MemberEntity
 import app.everyday.android.data.toCompletion
 import app.everyday.android.reminders.isOnWeekday
 import app.everyday.android.ui.choreColors
+import app.everyday.android.ui.memberColorOf
 import app.everyday.android.data.ChoreSlotEntity
 import app.everyday.android.reminders.Window
 import app.everyday.android.ui.dayShort
@@ -59,18 +60,11 @@ import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
 
-/** Member dot colours. No greens: chore cards are green. */
-private val MEMBER_COLORS = listOf(
-    Color(0xFF1E88E5), Color(0xFFE53935), Color(0xFF8E24AA), Color(0xFFFB8C00),
-    Color(0xFF6D4C41), Color(0xFF3949AB), Color(0xFFD81B60), Color(0xFF00ACC1),
-)
-
-/** Colours handed out in household order, so members don't share one (up to 8 members). */
+/** Each member's dot colour, from the household-wide colour the server gave them. */
 private val LocalMemberColors = compositionLocalOf { emptyMap<String, Color>() }
 
 @Composable
-fun memberColor(id: String): Color =
-    LocalMemberColors.current[id] ?: MEMBER_COLORS[Math.floorMod(id.hashCode(), MEMBER_COLORS.size)]
+fun memberColor(id: String): Color = LocalMemberColors.current[id] ?: memberColorOf(null, id)
 
 /**
  * An assignee's slots on a chore: the current profile's from its reminders on this phone (shown at
@@ -116,7 +110,7 @@ fun ChoresScreen(onEditChore: (String?) -> Unit, onAddReminder: (String) -> Unit
     }
 
     val membersById = members.associateBy { it.id }
-    val colors = members.mapIndexed { i, m -> m.id to MEMBER_COLORS[i % MEMBER_COLORS.size] }.toMap()
+    val colors = members.associate { it.id to memberColorOf(it.color, it.id) }
     val mySlots by vm.mySlots.collectAsStateWithLifecycle()
     val myId = session.memberId
     val slots: (ChoreWithDetails, String) -> List<ChoreSlotEntity> = { c, m ->

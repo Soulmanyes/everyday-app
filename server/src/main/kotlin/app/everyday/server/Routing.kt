@@ -101,6 +101,14 @@ fun Application.configureRouting(api: ApiContext?) {
             )
         }
 
+        /** A member picks their own dot colour (no PIN). */
+        put("/me/color") {
+            val (household, me) = api.member(call)
+            val color = validColor(call.receive<ColorRequest>().color)
+            val member = withNameCheck { api.store.setColor(household.id, me, color) } ?: throw unauthorized()
+            call.respond(member)
+        }
+
         get("/join-requests") {
             val household = api.requireAdmin(call)
             call.respond(api.store.joinRequests(household.id))
@@ -139,7 +147,7 @@ fun Application.configureRouting(api: ApiContext?) {
             val household = api.requireAdmin(call)
             val req = call.receive<MemberRequest>()
             val member = withNameCheck {
-                api.store.addMember(household.id, validName(req.displayName, "Name", 40), req.color)
+                api.store.addMember(household.id, validName(req.displayName, "Name", 40), req.color?.let(::validColor))
             }
             call.respond(HttpStatusCode.Created, member)
         }
@@ -149,7 +157,7 @@ fun Application.configureRouting(api: ApiContext?) {
             val id = memberId(call)
             val req = call.receive<MemberRequest>()
             val member = withNameCheck {
-                api.store.updateMember(household.id, id, validName(req.displayName, "Name", 40), req.color)
+                api.store.updateMember(household.id, id, validName(req.displayName, "Name", 40), req.color?.let(::validColor))
             } ?: throw ApiException(HttpStatusCode.NotFound, "No such member.")
             call.respond(member)
         }
@@ -286,7 +294,11 @@ private inline fun <T> withNameCheck(block: () -> T): T = try {
     block()
 } catch (_: HouseholdStore.NameTaken) {
     throw ApiException(HttpStatusCode.Conflict, "Someone in the household already has that name.")
+} catch (_: HouseholdStore.ColorTaken) {
+    throw ApiException(HttpStatusCode.Conflict, "Someone in the household already has that colour.")
 }
+
+private fun validColor(color: String): String = color.takeIf { it in MEMBER_COLORS } ?: badRequest("Unknown colour.")
 
 private fun validName(value: String, field: String, max: Int): String {
     val trimmed = value.trim()

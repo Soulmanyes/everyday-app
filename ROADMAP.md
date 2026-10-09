@@ -62,23 +62,47 @@ Design agreed 2026-10-08 (see CLAUDE.md, "Sync (Phase 4)"). Built and verified e
 - [x] App: share a general reminder with members; owner sees Pending / Accepted / Declined; "Remind me too"
 - [x] App: invites notification and a "Shared with me" list to opt in/out; removed member's reminders can be removed for yourself
 - [x] Calendar shows shared reminders I've accepted (read-only, with the owner's name)
-- [ ] Deploy: `pg_dump` and a copy of the phone's database first
+- [x] Deploy: `pg_dump` and a copy of the phone's database first
 
 ## Since Phase 4
 - [x] Chore reminders look like chores (green, house icon); distinct member colours
 - [x] Quick chore times on the chore sheet, shown on the timetable for everyone
 - [x] Join by name with admin approval (or linking to an existing member); phones locked to their member
+- [x] **Release 1.0.0** (2026-10-09): signed release build on https://everyday-home.duckdns.org/download/ with an in-app update prompt; "Everyday (dev)" debug app on the test server; admin rejoin with the admin PIN
 
-## Later / ideas (to discuss before building)
-- [ ] Optional per-member PIN (the admin PIN exists from Phase 2)
-- [ ] Chore rotation (assignees rotate each week automatically)
-- [ ] Push notification when someone changes the chore timetable (needs FCM or ntfy)
-- [ ] Home-screen widget: today's chores and the next reminder
-- [ ] Shopping list shared by the household
-- [ ] Shared household calendar / events
+## How phases ship
+
+Each phase is built on `dev` and works on its own. When it's done, the owner is asked whether to merge it into `main`. If approved, the version goes up and `deploy/publish-release.sh` publishes it. Phases raise the middle number (Phase 5 = 1.1.0, Phase 6 = 1.2.0, …), and fixes between phases raise the last (1.1.1).
+
+## Phase 5: Look & feel, and backups (1.1.0)
+Built on `dev` and verified on an API 37 emulator against the test stack on 2026-10-09; backups running on the VM and this PC.
+
+- [x] Dark theme by default; Settings checkbox **"Follow phone theme"** (off by default) switches to the phone's light/dark setting. Per phone, not synced. Today the app always follows the phone (`EverydayTheme` in `ui/Theme.kt`).
+- [x] Members pick their own **dot colour** (shown on chores, and later events) from at least 10 colours, one member per colour:
+  - **Household-wide, not per phone**: stored on the server (`member.color` exists, unused) and sent with the member list; unique per household for members who aren't deleted.
+  - The palette grows from 8 (`MEMBER_COLORS` in `ui/chores/ChoresScreen.kt`, no greens because chore cards are green) to 10+ colours that stay distinct from that green in light and dark mode.
+  - Set in Settings without a PIN; taken colours show as unavailable. Members who haven't picked (e.g. added by hand) get a free colour **assigned by the server**, so phones no longer work out colours themselves.
+- [x] Scheduled database backups (server only): daily `pg_dump`, keeping 30 daily and 12 monthly, plus a copy pulled to the owner's PC daily (decided 2026-10-09). About 4 KB per backup today.
+
+## Phase 6: Events timetable (1.2.0)
+- [ ] Reminders tab becomes a timetable of **events** (shown without notifying); each person can add their own reminders to an event, like chore times. Absorbs the old "shared household calendar / events" idea. Notes and open questions: [docs/ideas/events-timetable.md](docs/ideas/events-timetable.md)
+
+## Phase 7: Chores, extended (1.3.0)
+- [ ] Chore rotation: assignees rotate each week automatically
 - [ ] Chore points and a weekly summary
-- [ ] Dark mode and theme colour per member
-- [ ] Scheduled Postgres backups (`pg_dump` cron with off-VM copy)
-- [ ] CI: GitHub Actions building the server and the debug APK
+
+## Phase 8: Instant updates (1.4.0)
+- [ ] Push a notification to phones when something changes (chores, shared reminders, join requests) instead of waiting for the 15-minute refresh (ntfy or FCM: decide in Phase 8)
+
+## Phase 9: Multiple households (1.5.0)
+- [ ] Others create their own households on this server. Notes: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
+- [ ] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong-code/PIN limits per household and per sender instead of one global lock, rate limiting in front of the API, dependencies kept up to date
+
+## Developer and ops (any time, no app release)
+- [ ] CI: GitHub Actions building the server and the debug APK, running the tests, and flagging outdated dependencies
 - [ ] Shared models: move API DTOs into a Kotlin Multiplatform `shared` module used by both builds
-- [ ] Alternative to a public endpoint: Tailscale, so the API isn't exposed to the internet at all
+
+## Dropped (decided 2026-10-09)
+- Shopping list, home-screen widget: not wanted
+- Per-member PIN: each phone already belongs to one approved member
+- Tailscale: every member would need to install it; the public server is hardened instead (Phase 9)

@@ -1,0 +1,6 @@
+[Unit]
+Description=Copy Everyday database backups from the VM to this PC
+
+[Service]
+Type=oneshot
+ExecStart=%h/claude/phoneapp/deploy/pull-backups.sh

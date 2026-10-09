@@ -1,5 +1,10 @@
 package app.everyday.android.ui.settings
 
+import app.everyday.android.ui.household.ColorPicker
+import app.everyday.android.app
+import androidx.compose.ui.semantics.Role
+import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.selection.toggleable
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.PowerManager
@@ -88,6 +93,27 @@ fun SettingsScreen(onBack: () -> Unit, onManageMembers: () -> Unit, onOpenShared
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             HouseholdSection(household, onManageMembers, onOpenShared)
+            HorizontalDivider()
+
+            val followPhone by context.app.prefs.followPhoneTheme.collectAsStateWithLifecycle()
+            Row(
+                Modifier.fillMaxWidth().toggleable(
+                    value = followPhone,
+                    role = Role.Checkbox,
+                    onValueChange = { context.app.prefs.setFollowPhoneTheme(it) },
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = followPhone, onCheckedChange = null)
+                Column(Modifier.padding(start = 8.dp)) {
+                    Text("Follow phone theme")
+                    Text(
+                        "Off: always dark. On: light or dark like the rest of your phone.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             HorizontalDivider()
 
             Setting("Snooze length", "How long Snooze waits before reminding you again") {
@@ -212,6 +238,18 @@ private fun HouseholdSection(vm: HouseholdViewModel, onManageMembers: () -> Unit
         val me = members.firstOrNull { it.id == session.memberId }
         Text(session.householdName.orEmpty(), style = MaterialTheme.typography.bodyLarge)
         Text("You: ${me?.displayName ?: "?"}")
+        Text("Your colour", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Shown on chores for everyone in the household. One colour per person.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ColorPicker(
+            selected = me?.color,
+            takenBy = members.filter { it.id != me?.id && it.color != null }.associate { it.color!! to it.displayName },
+            enabled = !vm.busy,
+            onPick = vm::setMyColor,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onManageMembers) {
                 Text(if (session.pendingRequests > 0) "Manage members (${session.pendingRequests} waiting)" else "Manage members")

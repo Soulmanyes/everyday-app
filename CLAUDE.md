@@ -70,7 +70,9 @@ Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Rem
 
 The Reminders tab is a **weekly calendar** (7 day columns), not a list.
 
-Chore reminders **look like chores**: the fixed chore green and the Chores tab's house icon (`ui/Kinds.kt`), so users can tell them from normal reminders, which use the Reminders tab's icon and are the ones that can be shared. Member dots get distinct colours in household order, with no greens.
+Chore reminders **look like chores**: the fixed chore green and the Chores tab's house icon (`ui/Kinds.kt`), so users can tell them from normal reminders, which use the Reminders tab's icon and are the ones that can be shared. Member dots use the member's **household-wide colour** from the server (`member.color`, a palette key; `ui/MemberColors.kt` maps keys to colours). The server gives each new member a free colour, keeps colours unique per household, and members change their own in Settings (no PIN) or the admin in Manage members. 12 colours, no greens (chore cards are green).
+
+The app is **dark by default**; "Follow phone theme" in Settings (per phone, `AppPrefs`) switches to the phone's light/dark setting.
 
 ## Android rules
 
@@ -138,7 +140,7 @@ Chore reminders **look like chores**: the fixed chore green and the Chores tab's
 - **`firewall-cmd --reload` wipes Docker's NAT rules** on this VM. Symptoms: containers get "network is unreachable", and published ports time out from outside. After any firewalld reload, run `docker compose down && docker compose up -d` in `~/everyday-app/deploy` (or `sudo systemctl restart docker`).
 - Public endpoint: `https://everyday-home.duckdns.org` (DuckDNS → the VM's public IP). If the VM's public IP ever changes, update it at duckdns.org.
 - The VM is arm64, so images must be built for `linux/arm64`. Building on the VM itself is simplest.
-- Back up Postgres with `pg_dump` on a schedule (roadmap).
+- **Backups**: cron on the VM runs `deploy/backup.sh` daily at 03:30 UTC (keeps 30 daily + 12 monthly dumps in `~/backups/{daily,monthly}`, log in `~/backups/backup.log`). On the owner's PC, the systemd user timer `everyday-backup-pull.timer` (units in `deploy/pc/`) runs `deploy/pull-backups.sh` daily and copies them to `~/everyday-backups/vm`. A restore was tested on 2026-10-09 by loading a dump into a throwaway `postgres:17` container.
 
 ## Build and run
 

@@ -85,6 +85,20 @@ class MigrationTest {
         db.query("SELECT count(*) FROM chore_slot").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
     }
 
+    @Test
+    fun migrate4To5AddsMemberColour() {
+        helper.createDatabase(DB, 4).apply {
+            execSQL("INSERT INTO member (id, displayName, updatedAt, deleted) VALUES ('m1', 'Sam', 1, 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(DB, 5, true)
+        db.query("SELECT displayName, color FROM member").use {
+            it.moveToFirst()
+            assertEquals("Sam", it.getString(0))
+            assertEquals(true, it.isNull(1))
+        }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

@@ -97,6 +97,13 @@ class HouseholdViewModel(
 
     fun renameMember(id: String, name: String) = adminPin?.let { pin -> run({ manager.renameMember(pin, id, name.trim()) }) }
 
+    /** The admin sets a member's colour. */
+    fun setMemberColor(id: String, name: String, color: String) =
+        adminPin?.let { pin -> run({ manager.setMemberColor(pin, id, name, color) }) }
+
+    /** The current member picks their own colour (no PIN). */
+    fun setMyColor(color: String) = run({ manager.setMyColor(color) })
+
     fun removeMember(id: String) = adminPin?.let { pin -> run({ manager.removeMember(pin, id) }) }
 
     companion object {

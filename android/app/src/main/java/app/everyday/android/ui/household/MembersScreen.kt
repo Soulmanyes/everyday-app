@@ -1,5 +1,9 @@
 package app.everyday.android.ui.household
 
+import app.everyday.android.ui.memberColorOf
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import app.everyday.android.household.JoinRequestInfo
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.DropdownMenuItem
@@ -53,6 +57,7 @@ fun MembersScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
     var adding by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<MemberEntity?>(null) }
     var removing by remember { mutableStateOf<MemberEntity?>(null) }
+    var coloring by remember { mutableStateOf<MemberEntity?>(null) }
 
     FormScaffold("Household members", onBack) {
         vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -65,6 +70,13 @@ fun MembersScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
             members.forEach { member ->
                 val isAdmin = member.id == session.adminMemberId
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // A 48 dp touch target around the 24 dp dot.
+                    Box(
+                        Modifier.size(48.dp).clickable(enabled = vm.adminPin != null, onClickLabel = "Change colour") { coloring = member },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(Modifier.size(24.dp).background(memberColorOf(member.color, member.id), CircleShape))
+                    }
                     Text(member.displayName + if (isAdmin) "  (admin)" else "", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     IconButton(onClick = { renaming = member }, enabled = vm.adminPin != null) {
                         Icon(Icons.Default.Edit, contentDescription = "Rename ${member.displayName}")
@@ -90,6 +102,20 @@ fun MembersScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
     }
     renaming?.let { member ->
         NameDialog("Rename", member.displayName, onDismiss = { renaming = null }) { vm.renameMember(member.id, it); renaming = null }
+    }
+    coloring?.let { member ->
+        AlertDialog(
+            onDismissRequest = { coloring = null },
+            title = { Text("Colour for ${member.displayName}") },
+            text = {
+                ColorPicker(
+                    selected = member.color,
+                    takenBy = members.filter { it.id != member.id && it.color != null }.associate { it.color!! to it.displayName },
+                    enabled = !vm.busy,
+                ) { color -> vm.setMemberColor(member.id, member.displayName, color); coloring = null }
+            },
+            confirmButton = { TextButton(onClick = { coloring = null }) { Text("Close") } },
+        )
     }
     removing?.let { member ->
         AlertDialog(
