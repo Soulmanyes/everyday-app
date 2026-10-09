@@ -83,7 +83,7 @@ Design agreed 2026-10-08 (see CLAUDE.md, "Sync (Phase 4)"). Built and verified e
 - [ ] Shopping list shared by the household
 - [ ] Shared household calendar / events
 - [ ] Chore points and a weekly summary
-- [ ] Dark theme: today the app follows the phone's light/dark setting. Change it to use the dark theme (decide: always dark, or an in-app System / Light / Dark choice). No per-member theme colours.
+- [ ] Dark theme by default (decided 2026-10-09): the app starts in dark mode, and Settings has a **"Follow phone theme"** checkbox (off by default) that switches to the phone's light/dark setting. Today it always follows the phone (`EverydayTheme` in `ui/Theme.kt`). The choice is per phone, not synced. No per-member theme colours.
 - [ ] Scheduled Postgres backups (`pg_dump` cron with off-VM copy)
 - [ ] CI: GitHub Actions building the server and the debug APK
 - [ ] Shared models: move API DTOs into a Kotlin Multiplatform `shared` module used by both builds
