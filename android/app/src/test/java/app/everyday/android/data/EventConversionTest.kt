@@ -65,4 +65,21 @@ class EventConversionTest {
         assertEquals(listOf(alex, false, false), listOf(copy.ownerMemberId, copy.active, copy.dirty))
         assertEquals(listOf(1080), out.times.filter { it.reminderId == copy.id }.map { it.minuteOfDay })
     }
+
+    @Test
+    fun `unsynced deletes and declines from 1_1_0 carry over as dirty rows`() {
+        val deleted = EventConversion.OldReminder(
+            id = r102, ownerMemberId = sam, message = "Homework", mode = ReminderMode.PERSISTENT, weekdays = 31, active = true,
+            ownerReceives = true, createdAt = 1, updatedAt = 5, dirty = true, times = emptyList(),
+            windows = listOf(Window(960, 1020), Window(1080, 1140)), accepted = listOf(alex), states = emptyList(), deleted = true,
+        )
+        val out = EventConversion.convert(listOf(deleted), emptySet())
+        assertEquals(listOf(true to true, true to true), out.events.map { it.deleted to it.dirty })
+        assertEquals(listOf(Triple(r102, true, true)), out.updated.map { Triple(it.id, it.deleted, it.dirty) })
+        assertEquals(emptyList<Any>(), out.inserted + out.members)
+
+        val declined = deleted.copy(id = "r", deleted = false, dirty = false, accepted = emptyList(), declined = listOf(alex), windows = listOf(Window(960, 1020)))
+        val hidden = EventConversion.convert(listOf(declined), emptySet()).members.single()
+        assertEquals(listOf(alex, true, true), listOf(hidden.memberId, hidden.hidden, hidden.dirty))
+    }
 }

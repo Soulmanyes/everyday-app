@@ -18,6 +18,10 @@ fun derivedId(base: String, suffix: String): String {
  * - The first event and the owner's reminder keep the reminder's id; others get [derivedId]s.
  * - Invitees who accepted share the event and get their own copy; pending and declined are dropped.
  * - The owner keeps no reminder if "Remind me too" was off or the owner was removed.
+ * Changes made on 1.1.0 that never reached the server (sync is refused once the server has events)
+ * are carried over as dirty rows, so they still win after the update:
+ * - a deleted reminder becomes deleted events with deleted reminders on them;
+ * - this phone's own decline becomes a hidden member row.
  */
 object EventConversion {
     data class OldReminder(
@@ -36,6 +40,10 @@ object EventConversion {
         /** Members who accepted the invite. */
         val accepted: List<String>,
         val states: List<ReminderStateEntity>,
+        /** Deleted on this phone and not synced yet. */
+        val deleted: Boolean = false,
+        /** Members who declined on this phone and haven't synced it yet. */
+        val declined: List<String> = emptyList(),
     )
 
     data class Result(
@@ -81,8 +89,19 @@ object EventConversion {
                     endMinute = window?.endMinute,
                     createdAt = r.createdAt,
                     updatedAt = r.updatedAt,
+                    deleted = r.deleted,
                     dirty = r.dirty,
                 )
+                if (r.deleted) {
+                    // Only tombstones: the server deletes everyone else's reminders on these events.
+                    if (k == 0) {
+                        updated += ReminderEntity(
+                            r.id, r.ownerMemberId, "", r.mode, 0, active, createdAt = r.createdAt, updatedAt = r.updatedAt,
+                            deleted = true, dirty = true, eventId = eventId, leadMinutes = lead,
+                        )
+                    }
+                    return@forEachIndexed
+                }
                 fun reminder(id: String, owner: String, dirty: Boolean, deleted: Boolean = false) = ReminderEntity(
                     id = id,
                     ownerMemberId = owner,
@@ -109,6 +128,7 @@ object EventConversion {
                     inserted += reminder(id, r.ownerMemberId, r.dirty)
                     r.states.filter { it.memberId == r.ownerMemberId }.forEach { states += it.copy(reminderId = id) }
                 }
+                for (member in r.declined) members += EventMemberEntity(eventId, member, hidden = true, updatedAt = r.updatedAt, dirty = true)
                 for (member in r.accepted) {
                     members += EventMemberEntity(eventId, member, updatedAt = r.updatedAt)
                     val id = derivedId(r.id, "member:$member:$k")
@@ -117,7 +137,7 @@ object EventConversion {
                     r.states.filter { it.memberId == member }.forEach { states += it.copy(reminderId = id) }
                 }
             }
-            r.states.filter { it.memberId != r.ownerMemberId }.forEach { deletedStates += r.id to it.memberId }
+            if (!r.deleted) r.states.filter { it.memberId != r.ownerMemberId }.forEach { deletedStates += r.id to it.memberId }
         }
         return Result(events, members, updated, inserted, times, states, deletedStates)
     }

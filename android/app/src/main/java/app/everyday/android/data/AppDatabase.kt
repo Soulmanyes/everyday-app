@@ -79,7 +79,8 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
 /**
  * 5 -> 6 (Phase 6): events. General reminders become events with the same ids the server's V7 gives
  * them ([EventConversion]), invites are dropped, and SOUND (which also vibrated) becomes SOUND_VIBRATE.
- * Nothing is newly marked dirty: the server makes the same changes; rows that were dirty stay dirty.
+ * The server makes the same changes, so only rows that were dirty stay dirty (including unsynced
+ * deletes and declines).
  */
 val MIGRATION_5_6 = object : Migration(5, 6) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -108,20 +109,20 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
         for (e in result.events) {
             db.execSQL(
                 "INSERT INTO `event` (`id`, `ownerMemberId`, `title`, `notes`, `weekdays`, `onDate`, `startMinute`, `endMinute`, " +
-                    "`createdAt`, `updatedAt`, `deleted`, `dirty`) VALUES (?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?, 0, ?)",
-                arrayOf<Any?>(e.id, e.ownerMemberId, e.title, e.weekdays, e.startMinute, e.endMinute, e.createdAt, e.updatedAt, e.dirty.sql),
+                    "`createdAt`, `updatedAt`, `deleted`, `dirty`) VALUES (?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?, ?)",
+                arrayOf<Any?>(e.id, e.ownerMemberId, e.title, e.weekdays, e.startMinute, e.endMinute, e.createdAt, e.updatedAt, e.deleted.sql, e.dirty.sql),
             )
         }
         for (m in result.members) {
             db.execSQL(
-                "INSERT INTO `event_member` (`eventId`, `memberId`, `hidden`, `updatedAt`, `dirty`) VALUES (?, ?, 0, ?, 0)",
-                arrayOf<Any?>(m.eventId, m.memberId, m.updatedAt),
+                "INSERT INTO `event_member` (`eventId`, `memberId`, `hidden`, `updatedAt`, `dirty`) VALUES (?, ?, ?, ?, ?)",
+                arrayOf<Any?>(m.eventId, m.memberId, m.hidden.sql, m.updatedAt, m.dirty.sql),
             )
         }
         for (r in result.updated) {
             db.execSQL(
-                "UPDATE `reminder` SET `eventId` = ?, `message` = '', `weekdays` = 0, `active` = ?, `leadMinutes` = ?, `deleted` = ? WHERE `id` = ?",
-                arrayOf<Any?>(r.eventId, r.active.sql, r.leadMinutes, r.deleted.sql, r.id),
+                "UPDATE `reminder` SET `eventId` = ?, `message` = '', `weekdays` = 0, `active` = ?, `leadMinutes` = ?, `deleted` = ?, `dirty` = ? WHERE `id` = ?",
+                arrayOf<Any?>(r.eventId, r.active.sql, r.leadMinutes, r.deleted.sql, r.dirty.sql, r.id),
             )
         }
         for (r in result.inserted) {
@@ -161,12 +162,14 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
             .groupBy({ it.first }, { it.second })
         val accepted = rows("SELECT `reminderId`, `memberId` FROM `reminder_recipient` WHERE `status` = 'ACCEPTED'") { it.getString(0) to it.getString(1) }
             .groupBy({ it.first }, { it.second })
+        val declined = rows("SELECT `reminderId`, `memberId` FROM `reminder_recipient` WHERE `status` = 'DECLINED' AND `dirty` = 1") { it.getString(0) to it.getString(1) }
+            .groupBy({ it.first }, { it.second })
         val states = rows("SELECT `reminderId`, `memberId`, `doneOn`, `snoozeUntil`, `updatedAt`, `dirty` FROM `reminder_state`") {
             ReminderStateEntity(it.getString(0), it.getString(1), it.getStringOrNull(2), it.getLongOrNull(3), it.getLong(4), it.getInt(5) != 0)
         }.groupBy { it.reminderId }
         return rows(
-            "SELECT `id`, `ownerMemberId`, `message`, `mode`, `weekdays`, `active`, `ownerReceives`, `createdAt`, `updatedAt`, `dirty` " +
-                "FROM `reminder` WHERE `choreId` IS NULL AND `deleted` = 0",
+            "SELECT `id`, `ownerMemberId`, `message`, `mode`, `weekdays`, `active`, `ownerReceives`, `createdAt`, `updatedAt`, `dirty`, `deleted` " +
+                "FROM `reminder` WHERE `choreId` IS NULL AND (`deleted` = 0 OR `dirty` = 1)",
         ) {
             val id = it.getString(0)
             EventConversion.OldReminder(
@@ -184,6 +187,8 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
                 windows = windows[id].orEmpty(),
                 accepted = accepted[id].orEmpty(),
                 states = states[id].orEmpty(),
+                deleted = it.getInt(10) != 0,
+                declined = declined[id].orEmpty(),
             )
         }
     }
