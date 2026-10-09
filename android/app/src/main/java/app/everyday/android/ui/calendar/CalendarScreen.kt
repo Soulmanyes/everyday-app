@@ -126,7 +126,7 @@ fun CalendarScreen(
     // Day view: the focused day as an epoch day, or null for the week view.
     var focusedEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
     // Month view (Phase 7): the shown month as "yyyy-MM", the day whose sheet is open, and the item picked there.
-    var monthMode by rememberSaveable { mutableStateOf(false) }
+    val monthMode by vm.monthMode.collectAsStateWithLifecycle()
     var shownMonth by rememberSaveable { mutableStateOf<String?>(null) }
     var monthDayEpoch by rememberSaveable { mutableStateOf<Long?>(null) }
     var monthItemKey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -162,7 +162,7 @@ fun CalendarScreen(
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             if (focusedDay == null) {
-                ViewSwitch(monthMode, onChange = { monthMode = it })
+                ViewSwitch(monthMode, onChange = vm::setMonthMode)
             }
             if (monthMode && focusedDay == null) {
                 MonthView(

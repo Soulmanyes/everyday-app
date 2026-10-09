@@ -43,6 +43,11 @@ class CalendarViewModel(
 
     fun setMonthFilter(filter: MonthFilter) = prefs.setMonthFilter(filter)
 
+    /** Week or month on the Events tab, remembered on this phone. */
+    val monthMode = prefs.monthMode
+
+    fun setMonthMode(month: Boolean) = prefs.setMonthMode(month)
+
     val members = repository.observeMembers()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 

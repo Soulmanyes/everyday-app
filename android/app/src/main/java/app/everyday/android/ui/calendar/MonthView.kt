@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -148,14 +150,23 @@ fun MonthView(
 /** [filter] limited to current members; everyone when none of its members are left. */
 fun effectiveFilter(filter: MonthFilter, members: List<MemberEntity>): MonthFilter {
     if (filter.everyone) return filter
-    val ids = filter.memberIds intersect members.map { it.id }.toSet()
-    return if (ids.isEmpty()) MonthFilter() else MonthFilter(everyone = false, memberIds = ids)
+    val current = members.map { it.id }.toSet()
+    val limited = MonthFilter(everyone = false, filter.eventMemberIds intersect current, filter.choreMemberIds intersect current)
+    return if (limited.memberIds.isEmpty()) MonthFilter() else limited
 }
 
+/** "Everyone", "Alex, Jo (chores)", "Alex (events)" or "3 people". */
 private fun filterLabel(filter: MonthFilter, members: List<MemberEntity>): String {
     if (filter.everyone) return "Everyone"
-    val names = members.filter { it.id in filter.memberIds }.map { it.displayName }
-    return if (names.size <= 2) names.joinToString(", ") else "${names.size} people"
+    val shown = members.filter { it.id in filter.memberIds }
+    if (shown.size > 2) return "${shown.size} people"
+    return shown.joinToString(", ") { m ->
+        when {
+            m.id !in filter.choreMemberIds -> "${m.displayName} (events)"
+            m.id !in filter.eventMemberIds -> "${m.displayName} (chores)"
+            else -> m.displayName
+        }
+    }
 }
 
 @Composable
@@ -227,33 +238,66 @@ private fun itemColors(item: MonthItem, membersById: Map<String, MemberEntity>):
     }
 }
 
-/** Everyone, or a selection of members. Done needs at least one member picked. */
+/**
+ * Everyone, or per member their events and their chores, each on or off. Done needs something showing;
+ * everything ticked saves as Everyone, so members added later show too.
+ */
 @Composable
 private fun MemberFilterDialog(current: MonthFilter, members: List<MemberEntity>, onDismiss: () -> Unit, onDone: (MonthFilter) -> Unit) {
-    var everyone by remember { mutableStateOf(current.everyone) }
-    var picked by remember { mutableStateOf(if (current.everyone) members.map { it.id }.toSet() else current.memberIds) }
+    val all = members.map { it.id }.toSet()
+    var events by remember { mutableStateOf(if (current.everyone) all else current.eventMemberIds) }
+    var chores by remember { mutableStateOf(if (current.everyone) all else current.choreMemberIds) }
+    val everyone = events == all && chores == all
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Show chores and events of") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                CheckRow("Everyone", everyone, color = null) { everyone = it; if (it) picked = members.map { m -> m.id }.toSet() }
+                CheckRow("Everyone", everyone, color = null) { on ->
+                    events = if (on) all else emptySet()
+                    chores = if (on) all else emptySet()
+                }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.weight(1f))
+                    ColumnLabel("Events")
+                    ColumnLabel("Chores")
+                }
                 members.forEach { m ->
-                    CheckRow(m.displayName, everyone || m.id in picked, color = memberColorOf(m.color, m.id)) { on ->
-                        everyone = false
-                        picked = if (on) picked + m.id else picked - m.id
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.padding(start = 12.dp, end = 8.dp).size(10.dp).background(memberColorOf(m.color, m.id), CircleShape))
+                        Text(m.displayName, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                        Box(Modifier.width(FILTER_COLUMN), contentAlignment = Alignment.Center) {
+                            Checkbox(checked = m.id in events, onCheckedChange = { on -> events = if (on) events + m.id else events - m.id })
+                        }
+                        Box(Modifier.width(FILTER_COLUMN), contentAlignment = Alignment.Center) {
+                            Checkbox(checked = m.id in chores, onCheckedChange = { on -> chores = if (on) chores + m.id else chores - m.id })
+                        }
                     }
                 }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onDone(if (everyone) MonthFilter() else MonthFilter(everyone = false, memberIds = picked)) },
-                enabled = everyone || picked.isNotEmpty(),
+                onClick = { onDone(if (everyone) MonthFilter() else MonthFilter(everyone = false, eventMemberIds = events, choreMemberIds = chores)) },
+                enabled = events.isNotEmpty() || chores.isNotEmpty(),
             ) { Text("Done") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Width of the Events and Chores checkbox columns in the filter dialog. */
+private val FILTER_COLUMN = 64.dp
+
+@Composable
+private fun ColumnLabel(text: String) {
+    Text(
+        text,
+        modifier = Modifier.width(FILTER_COLUMN),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
     )
 }
 

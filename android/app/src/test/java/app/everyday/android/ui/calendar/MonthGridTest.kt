@@ -81,7 +81,7 @@ class MonthGridTest {
             event("alexLeft", sharedWith = listOf("alex"), hidden = true),
         )
         val chores = listOf(chore("dishes", everyDay, me), chore("bins", everyDay, me, "alex"))
-        val alexOnly = MonthFilter(everyone = false, memberIds = setOf("alex"))
+        val alexOnly = MonthFilter.of(setOf("alex"))
         assertEquals(listOf("alexs", "sharedWithAlex", "bins"), monthItemsOn(day, events, chores, alexOnly).map { it.title })
         assertEquals(6, monthItemsOn(day, events, chores, MonthFilter()).size)
     }
@@ -90,10 +90,10 @@ class MonthGridTest {
     fun `removed members drop out of the filter, and nobody left means everyone`() {
         val members = listOf(MemberEntity("sam", "Sam", 1), MemberEntity("alex", "Alex", 1))
         assertEquals(
-            MonthFilter(everyone = false, memberIds = setOf("alex")),
-            effectiveFilter(MonthFilter(everyone = false, memberIds = setOf("alex", "gone")), members),
+            MonthFilter.of(setOf("alex")),
+            effectiveFilter(MonthFilter.of(setOf("alex", "gone")), members),
         )
-        assertEquals(MonthFilter(), effectiveFilter(MonthFilter(everyone = false, memberIds = setOf("gone")), members))
+        assertEquals(MonthFilter(), effectiveFilter(MonthFilter.of(setOf("gone")), members))
     }
 
     @Test
@@ -107,7 +107,22 @@ class MonthGridTest {
         val events = listOf(event("early", start = 8 * 60), event("late", start = 18 * 60))
         val items = monthItemsOn(day, events, listOf(chore("bins", everyDay, me)), MonthFilter(), busy)
         assertEquals(listOf("busy:b2", "event:early", "busy:b1", "event:late", "chore:bins"), items.map { it.key })
-        val alexOnly = MonthFilter(everyone = false, memberIds = setOf("alex"))
+        val alexOnly = MonthFilter.of(setOf("alex"))
         assertEquals(listOf("busy:b1"), monthItemsOn(day, events, emptyList(), alexOnly, busy).map { it.key })
+    }
+
+    @Test
+    fun `each member's events and chores switch on and off separately`() {
+        val day = LocalDate.of(2026, 10, 9)
+        val events = listOf(event("alexs", owner = "alex"), event("jos", owner = "jo"))
+        val busy = listOf(BusyEventEntity(me, "b1", "alex", weekdays = everyDay))
+        val chores = listOf(chore("bins", everyDay, "alex"), chore("cat", everyDay, "jo"))
+        // Alex's events only, Jo's chores only.
+        val filter = MonthFilter(everyone = false, eventMemberIds = setOf("alex"), choreMemberIds = setOf("jo"))
+        assertEquals(listOf("event:alexs", "busy:b1", "chore:cat"), monthItemsOn(day, events, chores, filter, busy).map { it.key })
+        // A member with only chores showing still counts as shown, so the filter isn't empty.
+        val members = listOf(MemberEntity("alex", "Alex", 1), MemberEntity("jo", "Jo", 1))
+        val choresOnly = MonthFilter(everyone = false, choreMemberIds = setOf("jo"))
+        assertEquals(choresOnly, effectiveFilter(choresOnly, members))
     }
 }

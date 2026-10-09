@@ -100,7 +100,7 @@ Clarifies Phase 6 (decided 2026-10-09). App only: no server or schema change. Bu
 Decided 2026-10-09. Replaces the old Phase 7 (chore rotation and points, now dropped). Built on `dev` and checked on an API 37 emulator against the test stack on 2026-10-10, including an in-place upgrade from Room 6. **Server V8 must be deployed before 1.4.0 is released.**
 
 - [x] New **monthly view**: a **Week | Month** switch on the Events tab. The month grid lists up to 3 items a day (events first, then chores) and "+N"; tapping a day opens a sheet listing it, where each item opens its event or chore sheet. The week and day views stay "just me" (decided 2026-10-09).
-- [x] Choose whose chores and events show: **everyone**, or a selection of members. Month view only, remembered on this phone. A chore shows if any assignee is picked, an event if its owner or anyone it's shared with is.
+- [x] Choose whose chores and events show: **everyone**, or per member their **events** and their **chores**, each switched on or off (decided 2026-10-10). Month view only, remembered on this phone, like Week/Month. A chore shows if any assignee has chores on, an event (or Busy event) if its owner or anyone it's shared with has events on.
 - [x] Personal events can show to other members as **"Busy"** (times only, no title or notes) or not at all. The owner chooses per event in the editor ("Others see: Busy | Nothing"); the default is **Busy**, for new and existing personal events. Server V8 adds `event.show_busy` and a `busy` list to the sync snapshot; Room 7 adds `busy_event`. Busy shows on the month view only, in the owner's colour. Events shared between other members never show as Busy (decided 2026-10-09).
 - [x] Events shared with me show in full, as on the Events tab.
 

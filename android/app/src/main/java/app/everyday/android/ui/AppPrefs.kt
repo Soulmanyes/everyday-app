@@ -20,9 +20,27 @@ class AppPrefs(context: Context) {
         _followPhoneTheme.value = follow
     }
 
-    private val _monthFilter = MutableStateFlow(
-        MonthFilter(prefs.getBoolean(KEY_MONTH_EVERYONE, true), prefs.getStringSet(KEY_MONTH_MEMBERS, null).orEmpty().toSet()),
-    )
+    private val _monthFilter = MutableStateFlow(readMonthFilter())
+
+    /** Events and chores per member; a filter saved before they were split covers both for its members. */
+    private fun readMonthFilter(): MonthFilter {
+        val old = prefs.getStringSet(KEY_MONTH_MEMBERS, null).orEmpty().toSet()
+        return MonthFilter(
+            everyone = prefs.getBoolean(KEY_MONTH_EVERYONE, true),
+            eventMemberIds = prefs.getStringSet(KEY_MONTH_EVENT_MEMBERS, null)?.toSet() ?: old,
+            choreMemberIds = prefs.getStringSet(KEY_MONTH_CHORE_MEMBERS, null)?.toSet() ?: old,
+        )
+    }
+
+    private val _monthMode = MutableStateFlow(prefs.getBoolean(KEY_MONTH_MODE, false))
+
+    /** Whether the Events tab shows the month (true) or the week; kept across tabs and restarts. */
+    val monthMode: StateFlow<Boolean> = _monthMode.asStateFlow()
+
+    fun setMonthMode(month: Boolean) {
+        prefs.edit { putBoolean(KEY_MONTH_MODE, month) }
+        _monthMode.value = month
+    }
 
     /** Whose chores and events the month view shows (Phase 7). */
     val monthFilter: StateFlow<MonthFilter> = _monthFilter.asStateFlow()
@@ -30,14 +48,20 @@ class AppPrefs(context: Context) {
     fun setMonthFilter(filter: MonthFilter) {
         prefs.edit {
             putBoolean(KEY_MONTH_EVERYONE, filter.everyone)
-            putStringSet(KEY_MONTH_MEMBERS, filter.memberIds)
+            putStringSet(KEY_MONTH_EVENT_MEMBERS, filter.eventMemberIds)
+            putStringSet(KEY_MONTH_CHORE_MEMBERS, filter.choreMemberIds)
+            remove(KEY_MONTH_MEMBERS)
         }
         _monthFilter.value = filter
     }
 
     private companion object {
         const val KEY_FOLLOW = "follow_phone_theme"
+        const val KEY_MONTH_MODE = "month_mode"
         const val KEY_MONTH_EVERYONE = "month_everyone"
+        /** Before events and chores were split: both, for these members. */
         const val KEY_MONTH_MEMBERS = "month_members"
+        const val KEY_MONTH_EVENT_MEMBERS = "month_event_members"
+        const val KEY_MONTH_CHORE_MEMBERS = "month_chore_members"
     }
 }
