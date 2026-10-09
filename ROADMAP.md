@@ -91,7 +91,7 @@ Built on `dev` and verified on an API 37 emulator against the test stack on 2026
 - [x] Notification sound setting gets a **"Sound and vibrate"** option next to sound, vibrate and silent, for timed and persistent reminders. **"Sound" becomes sound only** (decided 2026-10-09): today its channel also asks for vibration (`reminders/Notifier.kt`). Channels can't change after they are created, so both need new channels.
 
 ## Phase 6.5: Events and Reminders tabs (1.3.0)
-Clarifies Phase 6 (decided 2026-10-09). App only: no server or schema change. Written 2026-10-09; not yet built or tried on an emulator.
+Clarifies Phase 6 (decided 2026-10-09). App only: no server or schema change. Built on `dev` and checked on an API 37 emulator on 2026-10-09.
 
 - [x] Rename the **Reminders** tab to **Events**. It stays the events timetable built in Phase 6.
 - [x] New **Reminders** tab: a plain list of all my reminders, on events and on chores. Each row shows what it's on, its times or windows, and whether it's on or paused; tapping it opens it for editing (an event reminder opens its event's sheet, a chore reminder its editor). Two sections, Events then Chores, A to Z, with a pause switch on each row; tabs are Events, Chores, Reminders (decided 2026-10-09).
