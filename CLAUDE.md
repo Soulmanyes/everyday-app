@@ -174,7 +174,7 @@ docker compose up -d --build
 
 Versions are pinned in each build's `gradle/libs.versions.toml`.
 
-**CI** (`.github/workflows/ci.yml`): on pushes to `dev` and `main` and on PRs, GitHub Actions builds and tests the server (`./gradlew build`) and the app (`assembleDebug testDebugUnitTest`, debug APK kept 7 days as an artifact). The Room migration test needs an emulator and isn't run in CI.
+**CI** (`.github/workflows/ci.yml`): on pushes to `dev` and `main` and on PRs, GitHub Actions builds and tests the server (`./gradlew build`) and the app (`assembleDebug testDebugUnitTest`, debug APK kept 7 days as an artifact). The Room migration test needs an emulator and isn't run in CI. **Dependabot** (`.github/dependabot.yml`) opens weekly PRs into `dev` for the Gradle catalogs and the workflow's actions; it skips `kotlinx-serialization` (pinned for room-testing) and Postgres 18 test binaries (production runs 17).
 
 ## Releases and the dev app
 

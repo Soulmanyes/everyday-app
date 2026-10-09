@@ -103,7 +103,7 @@ Built on `dev` and verified on an API 37 emulator against the test stack on 2026
 
 ## Developer and ops (any time, no app release)
 - [x] CI: GitHub Actions building the server and the debug APK and running the unit tests (2026-10-09)
-- [ ] CI: flag outdated dependencies
+- [x] CI: Dependabot flags outdated dependencies with weekly PRs into `dev` (2026-10-09)
 - [x] Per-IP rate limits in the API (Ktor `RateLimit`): 10/min for joining and setup, 30/min for admin-PIN routes, 300/min overall (2026-10-09)
 - [x] Dependency check (2026-10-09): everything current except WorkManager (2.11.2 to 2.12.0). Kotlin 2.5 is still beta; `kotlinx-serialization` is pinned for room-testing; embedded Postgres stays on 17 to match production
 - [ ] Shared models: move API DTOs into a Kotlin Multiplatform `shared` module used by both builds
