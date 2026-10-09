@@ -96,9 +96,13 @@ Clarifies Phase 6 (decided 2026-10-09). App only: no server or schema change.
 - [ ] Rename the **Reminders** tab to **Events**. It stays the events timetable built in Phase 6.
 - [ ] New **Reminders** tab: a plain list of all my reminders, on events and on chores. Each row shows what it's on, its times or windows, and whether it's on or paused; tapping it opens it for editing.
 
-## Phase 7: Chores, extended (1.4.0)
-- [ ] Chore rotation: assignees rotate each week automatically
-- [ ] Chore points and a weekly summary
+## Phase 7: Monthly view (1.4.0)
+Decided 2026-10-09. Replaces the old Phase 7 (chore rotation and points, now dropped).
+
+- [ ] New **monthly view** screen: a month grid of chores and events.
+- [ ] Choose whose chores and events show: **everyone**, or a selection of members.
+- [ ] Personal events can show to other members as **"Busy"** (times only, no title or notes) or not at all. The owner chooses per event; the default is **Busy**, for new and existing personal events. Needs a server and schema change: today other members' personal events never reach a phone.
+- [ ] Events shared with me show in full, as on the Events tab.
 
 ## Phase 8: Instant updates (1.5.0)
 - [ ] Push a notification to phones when something changes (chores, shared reminders, join requests) instead of waiting for the 15-minute refresh (ntfy or FCM: decide in Phase 8)
@@ -115,6 +119,7 @@ Clarifies Phase 6 (decided 2026-10-09). App only: no server or schema change.
 - [ ] Shared models: move API DTOs into a Kotlin Multiplatform `shared` module used by both builds
 
 ## Dropped (decided 2026-10-09)
+- Chore rotation, chore points and a weekly summary (the old Phase 7): replaced by the monthly view
 - Shopping list, home-screen widget: not wanted
 - Per-member PIN: each phone already belongs to one approved member
 - Tailscale: every member would need to install it; the public server is hardened instead (Phase 9)
