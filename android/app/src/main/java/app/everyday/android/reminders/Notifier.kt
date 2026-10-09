@@ -11,7 +11,6 @@ import androidx.core.app.NotificationManagerCompat
 import app.everyday.android.MainActivity
 import app.everyday.android.R
 import app.everyday.android.data.MemberSettingsEntity
-import app.everyday.android.data.ReminderEntity
 import app.everyday.android.data.ReminderMode
 import app.everyday.android.data.SoundMode
 
@@ -21,19 +20,29 @@ import app.everyday.android.data.SoundMode
  * one ongoing notification with the tag [PERSISTENT_TAG].
  *
  * A channel's sound can't change after it is created, so there is one channel per
- * {timed, persistent} x {sound, vibrate, silent}, and the member's setting picks the channel.
+ * {timed, persistent} x [SoundMode], and the member's setting picks the channel. The ids carry a
+ * version: when a channel's behaviour changes it needs a new id, because recreating a deleted
+ * channel under its old id brings back its old settings.
  */
 class Notifier(private val context: Context) {
+    /** What a notification shows for one reminder. */
+    data class Shown(val id: String, val title: String)
+
     private val manager = context.getSystemService(NotificationManager::class.java)
 
     fun ensureChannels() {
+        // 1.1.0 channels without a version; their "sound" one also vibrated.
+        for (mode in ReminderMode.entries) for (old in listOf("sound", "vibrate", "silent")) {
+            manager.deleteNotificationChannel("${mode.name.lowercase()}_$old")
+        }
         manager.createNotificationChannel(
-            NotificationChannel(INVITE_CHANNEL, "Shared reminder invites", NotificationManager.IMPORTANCE_DEFAULT),
+            NotificationChannel(INVITE_CHANNEL, "Shared events and join requests", NotificationManager.IMPORTANCE_DEFAULT),
         )
         for (mode in ReminderMode.entries) for (sound in SoundMode.entries) {
             val channel = NotificationChannel(channelId(mode, sound), channelName(mode, sound), importance(mode, sound))
             when (sound) {
-                SoundMode.SOUND -> channel.enableVibration(true)
+                SoundMode.SOUND -> channel.enableVibration(false)
+                SoundMode.SOUND_VIBRATE -> channel.enableVibration(true)
                 SoundMode.VIBRATE -> {
                     channel.setSound(null, null)
                     channel.enableVibration(true)
@@ -50,11 +59,11 @@ class Notifier(private val context: Context) {
     fun canPost() = NotificationManagerCompat.from(context).areNotificationsEnabled()
 
     @SuppressLint("MissingPermission") // checked by canPost()
-    fun showTimed(reminder: ReminderEntity, settings: MemberSettingsEntity) {
+    fun showTimed(reminder: Shown, settings: MemberSettingsEntity) {
         if (!canPost()) return
         val notification = NotificationCompat.Builder(context, channelId(ReminderMode.TIMED, settings.timedSound))
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(reminder.message)
+            .setContentTitle(reminder.title)
             .setContentText("Reminder")
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -74,7 +83,7 @@ class Notifier(private val context: Context) {
      * update stays quiet, including a re-post after the user swiped it away (Android 14+ allows that).
      */
     @SuppressLint("MissingPermission") // checked by canPost()
-    fun showPersistent(reminders: List<ReminderEntity>, settings: MemberSettingsEntity, alert: Boolean) {
+    fun showPersistent(reminders: List<Shown>, settings: MemberSettingsEntity, alert: Boolean) {
         if (!canPost()) return
         val showing = isPersistentShowing()
         val sound = if (!alert && !showing) SoundMode.SILENT else settings.persistentSound
@@ -87,36 +96,37 @@ class Notifier(private val context: Context) {
             .setContentIntent(openApp(PERSISTENT_TAG))
             .setDeleteIntent(action(ReminderReceiver.ACTION_DISMISSED, null))
         if (single != null) {
-            builder.setContentTitle(single.message)
+            builder.setContentTitle(single.title)
                 .setContentText("Tap Done when finished")
                 .addAction(0, "Done", action(ReminderReceiver.ACTION_DONE, single.id))
         } else {
             val style = NotificationCompat.InboxStyle()
-            reminders.forEach { style.addLine("• ${it.message}") }
+            reminders.forEach { style.addLine("• ${it.title}") }
             if (reminders.size > MAX_DONE_ACTIONS) style.setSummaryText("Open the app to mark the rest done")
             builder.setContentTitle("${reminders.size} reminders")
-                .setContentText(reminders.joinToString(", ") { it.message })
+                .setContentText(reminders.joinToString(", ") { it.title })
                 .setStyle(style)
             reminders.take(MAX_DONE_ACTIONS).forEach {
-                builder.addAction(0, "Done: ${it.message.take(DONE_LABEL_LENGTH)}", action(ReminderReceiver.ACTION_DONE, it.id))
+                builder.addAction(0, "Done: ${it.title.take(DONE_LABEL_LENGTH)}", action(ReminderReceiver.ACTION_DONE, it.id))
             }
         }
         NotificationManagerCompat.from(context).notify(PERSISTENT_TAG, NOTIFICATION_ID, builder.build())
     }
 
-    /** "Sam shared "Bins" with you": opens the app, where the invite is accepted or declined. */
+    /** "Sam added you to Swimming", once: opens the app to add reminders, or Decline removes you from it. */
     @SuppressLint("MissingPermission") // checked by canPost()
-    fun showInvite(reminderId: String, message: String, ownerName: String?) {
+    fun showAddedToEvent(eventId: String, title: String, ownerName: String?) {
         if (!canPost()) return
         ensureChannels()
         val notification = NotificationCompat.Builder(context, INVITE_CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("${ownerName ?: "Someone"} shared a reminder with you")
-            .setContentText("\"$message\" · Open the app to opt in or out")
+            .setContentTitle("${ownerName ?: "Someone"} added you to $title")
+            .setContentText("Open the app to add your own reminders")
             .setAutoCancel(true)
-            .setContentIntent(openApp("INVITE:$reminderId"))
+            .setContentIntent(openApp("EVENT:$eventId"))
+            .addAction(0, "Decline", action(ReminderReceiver.ACTION_DECLINE, eventId))
             .build()
-        NotificationManagerCompat.from(context).notify("INVITE:$reminderId", NOTIFICATION_ID, notification)
+        NotificationManagerCompat.from(context).notify("EVENT:$eventId", NOTIFICATION_ID, notification)
     }
 
     /** On the admin's phone: someone asked to join; approving needs the PIN in member management. */
@@ -136,7 +146,7 @@ class Notifier(private val context: Context) {
 
     fun cancelJoinRequests() = manager.cancel(JOIN_TAG, NOTIFICATION_ID)
 
-    fun cancelInvite(reminderId: String) = manager.cancel("INVITE:$reminderId", NOTIFICATION_ID)
+    fun cancelAddedToEvent(eventId: String) = manager.cancel("EVENT:$eventId", NOTIFICATION_ID)
 
     fun isPersistentShowing() = manager.activeNotifications.any { it.tag == PERSISTENT_TAG }
 
@@ -174,17 +184,19 @@ class Notifier(private val context: Context) {
         private const val INVITE_CHANNEL = "invites"
         private const val JOIN_TAG = "JOIN_REQUESTS"
         private const val MAX_DONE_ACTIONS = 3
+        private const val CHANNEL_VERSION = "v2"
         private const val DONE_LABEL_LENGTH = 18
 
         fun tag(mode: ReminderMode, reminderId: String) = "${mode.name}:$reminderId"
 
-        fun channelId(mode: ReminderMode, sound: SoundMode) = "${mode.name.lowercase()}_${sound.name.lowercase()}"
+        fun channelId(mode: ReminderMode, sound: SoundMode) = "${mode.name.lowercase()}_${sound.name.lowercase()}_$CHANNEL_VERSION"
 
         private fun channelName(mode: ReminderMode, sound: SoundMode): String {
             val kind = if (mode == ReminderMode.TIMED) "Timed reminders" else "Persistent reminders"
             val how = when (sound) {
                 SoundMode.SOUND -> "sound"
                 SoundMode.VIBRATE -> "vibrate"
+                SoundMode.SOUND_VIBRATE -> "sound and vibrate"
                 SoundMode.SILENT -> "silent"
             }
             return "$kind ($how)"

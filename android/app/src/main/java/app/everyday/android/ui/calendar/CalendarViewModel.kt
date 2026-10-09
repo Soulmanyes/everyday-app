@@ -6,7 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.everyday.android.EverydayApplication
-import app.everyday.android.data.RecipientStatus
+import app.everyday.android.data.Persistent
 import app.everyday.android.data.ReminderRepository
 import app.everyday.android.reminders.ReminderEngine
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,31 +19,41 @@ class CalendarViewModel(
     private val engine: ReminderEngine,
     private val requestSync: () -> Unit,
 ) : ViewModel() {
-    val reminders = repository.observeReminders()
+    val events = repository.observeEvents()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val pendingInvites = repository.observeSharedWithMe()
-        .map { list -> list.count { it.myAnswer == RecipientStatus.PENDING } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /** Chore reminders also show on this timetable, in the chore colours. */
+    val choreReminders = repository.observeReminders()
+        .map { list -> list.filter { it.reminder.choreId != null } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val members = repository.observeMembers()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun setActive(id: String, active: Boolean) = viewModelScope.launch {
-        repository.setActive(id, active)
+    /** Runs a change, then reschedules alarms and syncs. */
+    private fun change(block: suspend () -> Unit) = viewModelScope.launch {
+        block()
         engine.recompute()
         requestSync()
     }
 
-    fun setDoneToday(id: String, done: Boolean) = viewModelScope.launch {
-        engine.setDoneToday(id, done)
+    fun setActive(reminderId: String, active: Boolean) = change { repository.setActive(reminderId, active) }
+
+    fun setDoneToday(reminderId: String, done: Boolean) = viewModelScope.launch {
+        engine.setDoneToday(reminderId, done)
         requestSync()
     }
 
-    /** Opts the current profile in or out of a reminder someone shared with them. */
-    fun setAnswer(id: String, status: RecipientStatus) = viewModelScope.launch {
-        repository.setMyAnswer(id, status)
-        engine.recompute()
-        requestSync()
-    }
+    fun addEventTime(eventId: String, minute: Int, relative: Boolean) = change { repository.addEventTime(eventId, minute, relative) }
+
+    fun removeEventTime(eventId: String, minute: Int, relative: Boolean) = change { repository.removeEventTime(eventId, minute, relative) }
+
+    fun setPersistent(eventId: String, persistent: Persistent) = change { repository.setPersistent(eventId, persistent) }
+
+    fun setEventActive(eventId: String, active: Boolean) = change { repository.setEventActive(eventId, active) }
+
+    fun leaveEvent(eventId: String) = change { repository.leaveEvent(eventId) }
+
+    fun deleteEvent(eventId: String) = change { repository.deleteEvent(eventId) }
 
     companion object {
         val Factory = viewModelFactory {

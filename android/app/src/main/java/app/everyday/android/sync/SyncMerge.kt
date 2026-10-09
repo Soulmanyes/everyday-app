@@ -1,13 +1,19 @@
 package app.everyday.android.sync
 
+import app.everyday.android.data.EventWithMembers
 import app.everyday.android.data.MemberSettingsEntity
 import app.everyday.android.data.ReminderStateEntity
 import app.everyday.android.data.ReminderWithDetails
 
-/** What to write to Room after a sync. Every row written is clean (not dirty). */
+/** What to write to Room after a sync. Every row written is clean (not dirty), unless kept from this phone. */
 data class MergePlan(
+    val saveEvents: List<SyncedEvent> = emptyList(),
+    /** Events no longer shared with this member: removed from this phone only. */
+    val deleteEvents: List<String> = emptyList(),
+    /** Pushed events the server refused and doesn't have: kept as they are, but no longer dirty. */
+    val clearDirtyEvents: List<String> = emptyList(),
     val saveReminders: List<SyncedReminder> = emptyList(),
-    /** Shared reminders this member is no longer invited to: removed from this phone only. */
+    /** Reminders that aren't this member's (left over from before events): removed from this phone only. */
     val deleteLocal: List<String> = emptyList(),
     /** Pushed rows the server refused and doesn't have: kept as they are, but no longer dirty. */
     val clearDirty: List<String> = emptyList(),
@@ -21,32 +27,46 @@ data class MergePlan(
  * Merges a server snapshot into what this phone has for [memberId]. Pure, so the rules are unit-tested:
  * - A row edited again during the sync (dirty, and its updatedAt differs from the pushed one) is kept.
  * - Otherwise the server's version wins: it already applied last write wins.
- * - A row missing from the snapshot is never deleted, except a shared reminder (not owned, not dirty)
- *   that the member is no longer invited to.
+ * - A row of this member missing from the snapshot is never deleted. Events of others that are missing
+ *   (no longer shared with this member) are removed, and so is any reminder that isn't this member's.
  * - A refused row the server doesn't have is kept but marked clean, so it can't block sync forever.
  */
 object SyncMerge {
     fun plan(
         memberId: String,
+        localEvents: List<EventWithMembers>,
         local: List<ReminderWithDetails>,
         localStates: List<ReminderStateEntity>,
         localSettings: MemberSettingsEntity?,
         pushed: Pushed,
         server: SyncSnapshot,
     ): MergePlan {
+        val localEventById = localEvents.associateBy { it.event.id }
+        val serverEventIds = server.events.map { it.event.id }.toSet()
+        val saveEvents = server.events.mapNotNull { s ->
+            val l = localEventById[s.event.id]
+            when {
+                l != null && changedSincePush(l.event.dirty, l.event.updatedAt, pushed.events[l.event.id]) -> null
+                else -> s.keepMyLeave(l, memberId, pushed)
+            }
+        }
+        val deleteEvents = localEvents.filter { l ->
+            l.event.id !in serverEventIds && l.event.ownerMemberId != memberId && !l.event.dirty
+        }.map { it.event.id }
+        val clearDirtyEvents = localEvents.filter { l ->
+            l.event.id !in serverEventIds && l.event.dirty && pushed.events[l.event.id] == l.event.updatedAt
+        }.map { it.event.id }
+
         val localById = local.associateBy { it.reminder.id }
         val serverIds = server.reminders.map { it.reminder.id }.toSet()
-
         val save = server.reminders.mapNotNull { s ->
             val l = localById[s.reminder.id]
             when {
                 l != null && changedSincePush(l.reminder.dirty, l.reminder.updatedAt, pushed.reminders[l.reminder.id]) -> null
-                else -> s.keepMyAnswer(l, memberId, pushed)
+                else -> s.copy(reminder = s.reminder.copy(dirty = false))
             }
         }
-        val deleteLocal = local.filter { l ->
-            l.reminder.id !in serverIds && l.reminder.ownerMemberId != memberId && !l.reminder.dirty
-        }.map { it.reminder.id }
+        val deleteLocal = local.filter { it.reminder.id !in serverIds && it.reminder.ownerMemberId != memberId }.map { it.reminder.id }
         val clearDirty = local.filter { l ->
             l.reminder.id !in serverIds && l.reminder.dirty && pushed.reminders[l.reminder.id] == l.reminder.updatedAt
         }.map { it.reminder.id }
@@ -67,21 +87,20 @@ object SyncMerge {
         val saveSettings = server.settings?.takeIf { !settingsChanged }?.copy(dirty = false)
         val clearDirtySettings = server.settings == null && localSettings?.dirty == true && pushed.settings == localSettings.updatedAt
 
-        return MergePlan(save, deleteLocal, clearDirty, saveStates, clearDirtyStates, saveSettings, clearDirtySettings)
+        return MergePlan(
+            saveEvents, deleteEvents, clearDirtyEvents, save, deleteLocal, clearDirty,
+            saveStates, clearDirtyStates, saveSettings, clearDirtySettings,
+        )
     }
 
     /** Dirty and not the version that was pushed (or not pushed at all): edited during the sync. */
     private fun changedSincePush(dirty: Boolean, updatedAt: Long, pushedAt: Long?) = dirty && pushedAt != updatedAt
 
-    /** Keeps this member's own answer to an invite if they changed it again during the sync. */
-    private fun SyncedReminder.keepMyAnswer(local: ReminderWithDetails?, memberId: String, pushed: Pushed): SyncedReminder {
-        val mine = local?.recipients?.firstOrNull { it.memberId == memberId } ?: return clean()
-        if (!changedSincePush(mine.dirty, mine.updatedAt, pushed.answers[reminder.id])) return clean()
-        return clean().copy(recipients = recipients.filter { it.memberId != memberId } + mine)
+    /** Keeps this member's leaving of a shared event if it happened during the sync (not pushed yet). */
+    private fun SyncedEvent.keepMyLeave(local: EventWithMembers?, memberId: String, pushed: Pushed): SyncedEvent {
+        val clean = copy(event = event.copy(dirty = false), members = members.map { it.copy(dirty = false) })
+        val mine = local?.members?.firstOrNull { it.memberId == memberId } ?: return clean
+        if (!changedSincePush(mine.dirty, mine.updatedAt, pushed.leaves[event.id])) return clean
+        return clean.copy(members = clean.members.filter { it.memberId != memberId } + mine)
     }
-
-    private fun SyncedReminder.clean() = copy(
-        reminder = reminder.copy(dirty = false),
-        recipients = recipients.map { it.copy(dirty = false) },
-    )
 }

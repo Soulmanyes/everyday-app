@@ -16,15 +16,29 @@ data class Window(val startMinute: Int, val endMinute: Int) {
 
 const val MINUTES_PER_DAY = 1440
 
-/** Everything the scheduler needs to know about one reminder, free of Android and Room types. */
+/**
+ * Everything the scheduler needs to know about one reminder, free of Android and Room types. An event
+ * reminder carries its event's days and times: [minutesBefore] and [leadMinutes] count back from
+ * [eventStart] on the event's date, so they can fall on the day before.
+ */
 data class ReminderSpec(
     val id: String,
     val mode: ReminderMode,
-    /** Bit 0 = Monday ... bit 6 = Sunday. */
+    /** Bit 0 = Monday ... bit 6 = Sunday. Ignored when [onDate] is set. */
     val weekdays: Int,
     val active: Boolean,
+    /** Fixed times of day (timed). */
     val times: List<Int> = emptyList(),
+    /** Fixed windows (persistent): a chore reminder's windows, or all day. */
     val windows: List<Window> = emptyList(),
+    /** A one-off event's date: the reminder happens only then. */
+    val onDate: LocalDate? = null,
+    /** Timed: minutes before [eventStart]. */
+    val minutesBefore: List<Int> = emptyList(),
+    val eventStart: Int? = null,
+    val eventEnd: Int? = null,
+    /** Persistent: shows from this many minutes before [eventStart] until [eventEnd] (or the start). */
+    val leadMinutes: Int? = null,
     val doneOn: LocalDate? = null,
     val snoozeUntil: Instant? = null,
     /** Days its chore is already done for the owner (chore reminders only); it stays silent on those days. */
@@ -76,14 +90,18 @@ object ReminderScheduler {
                     candidate(until)
                 }
             }
-            if (!r.active || r.weekdays == 0) continue
+            if (!r.active || (r.weekdays == 0 && r.onDate == null)) continue
 
             when (r.mode) {
                 ReminderMode.TIMED -> {
                     for (date in dates(today.minusDays(1), today.plusDays(LOOKAHEAD_DAYS))) {
                         if (!r.isOn(date) || date in r.choreDoneOn) continue
-                        for (minute in r.times) {
-                            val t = instantAt(date, minute, zone)
+                        val fixed = r.times.map { instantAt(date, it, zone) }
+                        val relative = r.eventStart?.let { start ->
+                            val at = instantAt(date, start, zone)
+                            r.minutesBefore.map { at.minus(Duration.ofMinutes(it.toLong())) }
+                        }.orEmpty()
+                        for (t in fixed + relative) {
                             if (t.isAfter(from) && !t.isAfter(now)) due += r.id
                             candidate(t)
                         }
@@ -91,10 +109,12 @@ object ReminderScheduler {
                 }
                 ReminderMode.PERSISTENT -> {
                     for (date in dates(today.minusDays(1), today.plusDays(LOOKAHEAD_DAYS))) {
-                        if (!r.isOn(date) || r.doneOn == date || date in r.choreDoneOn) continue
-                        for (w in r.windows) {
-                            val start = instantAt(date, w.startMinute, zone)
-                            val end = instantAt(date, w.endMinute, zone)
+                        if (!r.isOn(date) || date in r.choreDoneOn) continue
+                        val spans = r.windows.map { instantAt(date, it.startMinute, zone) to instantAt(date, it.endMinute, zone) } +
+                            listOfNotNull(r.leadSpan(date, zone))
+                        for ((start, end) in spans) {
+                            // Done hides it for the event's day, or for the day the lead started on (pressed before midnight).
+                            if (r.doneOn == date || r.doneOn == start.atZone(zone).toLocalDate()) continue
                             if (!start.isAfter(now) && end.isAfter(now)) visible += r.id
                             candidate(start)
                             candidate(end)
@@ -116,7 +136,16 @@ object ReminderScheduler {
         return ZonedDateTime.of(dateTime, zone).toInstant()
     }
 
-    private fun ReminderSpec.isOn(date: LocalDate) = isOnWeekday(weekdays, date)
+    private fun ReminderSpec.isOn(date: LocalDate) = onDate?.let { it == date } ?: isOnWeekday(weekdays, date)
+
+    /** From [ReminderSpec.leadMinutes] before the event's start until its end (or its start), on the event's [date]. */
+    private fun ReminderSpec.leadSpan(date: LocalDate, zone: ZoneId): Pair<Instant, Instant>? {
+        val lead = leadMinutes ?: return null
+        val start = eventStart ?: return null
+        val begin = instantAt(date, start, zone).minus(Duration.ofMinutes(lead.toLong()))
+        val end = instantAt(date, eventEnd ?: start, zone)
+        return if (end.isAfter(begin)) begin to end else null
+    }
 
     private fun dates(first: LocalDate, last: LocalDate) =
         generateSequence(first) { it.plusDays(1) }.takeWhile { !it.isAfter(last) }

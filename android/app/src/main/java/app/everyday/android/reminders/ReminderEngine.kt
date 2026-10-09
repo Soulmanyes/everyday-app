@@ -47,7 +47,7 @@ class ReminderEngine(
         val settings = repository.getSettings()
 
         result.expiredSnoozes.forEach { repository.setSnooze(it, null) }
-        result.dueTimed.forEach { id -> byId[id]?.let { notifier.showTimed(it.reminder, settings) } }
+        result.dueTimed.forEach { id -> byId[id]?.let { notifier.showTimed(Notifier.Shown(id, it.title), settings) } }
 
         // Timed notifications of deleted or paused reminders go away.
         for (id in notifier.showing(ReminderMode.TIMED)) {
@@ -57,7 +57,7 @@ class ReminderEngine(
         // Persistent reminders share one notification listing all that are showing now. It alerts only
         // when a reminder appears that wasn't in it before (not when re-posted after a swipe).
         val shown = prefs.getStringSet(KEY_SHOWN, emptySet())!!
-        val visible = result.visiblePersistent.mapNotNull { byId[it]?.reminder }.sortedBy { it.createdAt }
+        val visible = result.visiblePersistent.mapNotNull { byId[it] }.sortedBy { it.reminder.createdAt }.map { Notifier.Shown(it.reminder.id, it.title) }
         // Persistent notifications from before they were combined into one.
         notifier.showing(ReminderMode.PERSISTENT).filter { it != "all" }.forEach { notifier.cancel(ReminderMode.PERSISTENT, it) }
         if (visible.isEmpty()) {

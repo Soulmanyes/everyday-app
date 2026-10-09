@@ -1,8 +1,10 @@
 package app.everyday.android.ui
 
+import app.everyday.android.data.EventEntity
 import app.everyday.android.reminders.MINUTES_PER_DAY
 import app.everyday.android.reminders.Window
 import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -28,4 +30,23 @@ fun formatWeekdays(mask: Int): String = when (mask) {
     0b1100000 -> "Weekends"
     0 -> "No days"
     else -> DayOfWeek.entries.filter { mask and (1 shl (it.value - 1)) != 0 }.joinToString(", ") { dayShort(it) }
+}
+
+/** "30 min before", "1 h before", "1 h 30 min before" or "At start" for a reminder relative to an event's start. */
+fun formatBefore(minutes: Int): String = when {
+    minutes == 0 -> "At start"
+    minutes % 60 == 0 -> "${minutes / 60} h before"
+    minutes > 60 -> "${minutes / 60} h ${minutes % 60} min before"
+    else -> "$minutes min before"
+}
+
+/** When an event happens: "Tue, Thu · 17:00 – 18:00", "Mon 20 Oct · All day", "Every day · 08:00". */
+fun formatEventWhen(event: EventEntity): String {
+    val days = event.onDate?.let { LocalDate.parse(it).format(DateTimeFormatter.ofPattern("EEE d MMM yyyy")) } ?: formatWeekdays(event.weekdays)
+    val time = when {
+        event.startMinute == null -> "All day"
+        event.endMinute == null -> formatMinute(event.startMinute)
+        else -> "${formatMinute(event.startMinute)} – ${formatMinute(event.endMinute)}"
+    }
+    return "$days · $time"
 }

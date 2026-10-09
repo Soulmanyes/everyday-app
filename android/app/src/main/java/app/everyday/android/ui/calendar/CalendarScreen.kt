@@ -53,14 +53,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import app.everyday.android.data.RecipientStatus
+import app.everyday.android.data.EventView
 import app.everyday.android.data.ReminderMode
 import app.everyday.android.data.ReminderView
+import app.everyday.android.reminders.MINUTES_PER_DAY
 import app.everyday.android.reminders.Window
 import app.everyday.android.reminders.isOnWeekday
 import app.everyday.android.ui.choreColors
 import app.everyday.android.ui.dayShort
-import app.everyday.android.ui.kindIcon
+import app.everyday.android.ui.ChoreIcon
 import app.everyday.android.ui.formatMinute
 import app.everyday.android.ui.formatWindow
 import kotlinx.coroutines.delay
@@ -75,22 +76,37 @@ private val HOUR_HEIGHT = 56.dp
 private val GUTTER = 34.dp
 private const val TIMED_LENGTH_MINUTES = 30
 
-/** One block on the calendar: a timed reminder's time, or one window of a persistent reminder. */
+/** Something on the timetable: an event, or one of the picked profile's chore reminders. */
+private sealed interface Entry {
+    /** Selection key, unique across both kinds. */
+    val key: String
+
+    data class Event(val view: EventView) : Entry {
+        override val key get() = "event:${view.event.id}"
+    }
+
+    data class ChoreReminder(val view: ReminderView) : Entry {
+        override val key get() = "reminder:${view.reminder.id}"
+    }
+}
+
+/** One block on the calendar: an event, a chore reminder's time, or one window of a persistent chore reminder. */
 private data class CalendarItem(
-    val reminder: ReminderView,
+    val entry: Entry,
     val startMinute: Int,
     val endMinute: Int,
     val label: String,
 )
 
 @Composable
-fun CalendarScreen(onEditReminder: (String?) -> Unit, onOpenShared: () -> Unit) {
+fun CalendarScreen(onEditEvent: (String?) -> Unit, onEditChoreReminder: (String) -> Unit) {
     val vm: CalendarViewModel = viewModel(factory = CalendarViewModel.Factory)
-    val reminders by vm.reminders.collectAsStateWithLifecycle()
+    val events by vm.events.collectAsStateWithLifecycle()
+    val choreReminders by vm.choreReminders.collectAsStateWithLifecycle()
     val members by vm.members.collectAsStateWithLifecycle()
-    val invites by vm.pendingInvites.collectAsStateWithLifecycle()
+    val entries = remember(events, choreReminders) { events.map { Entry.Event(it) } + choreReminders.map { Entry.ChoreReminder(it) } }
     var weekOffset by rememberSaveable { mutableIntStateOf(0) }
-    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
     // Day view: the focused day as an epoch day, or null for the week view.
     var focusedEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
 
@@ -119,52 +135,60 @@ fun CalendarScreen(onEditReminder: (String?) -> Unit, onOpenShared: () -> Unit) 
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            if (invites > 0) {
-                Text(
-                    if (invites == 1) "1 shared reminder is waiting for your answer" else "$invites shared reminders are waiting for your answer",
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                        .clickable(onClick = onOpenShared)
-                        .padding(12.dp),
-                )
-            }
             if (focusedDay != null) {
                 DayHeader(focusedDay, today, onChange = { focusedEpochDay = it.toEpochDay() }, onBackToWeek = ::backToWeek)
             } else {
                 WeekHeader(weekStart, weekOffset, onChange = { weekOffset = it })
                 DayHeaders(days, today, onDayClick = { focusedEpochDay = it.toEpochDay() })
             }
-            AllDayRow(days, today, reminders, onSelect = { selectedId = it })
+            AllDayRow(days, today, entries, onSelect = { selectedKey = it })
             HorizontalDivider()
-            TimeGrid(days, today, now, reminders, detailed = focusedDay != null, onSelect = { selectedId = it })
+            TimeGrid(days, today, now, entries, detailed = focusedDay != null, onSelect = { selectedKey = it })
         }
-        if (reminders.isEmpty()) {
+        if (entries.isEmpty()) {
             Text(
-                "No reminders yet.\nTap + to add one.",
+                "Nothing on your timetable yet.\nTap + to add an event.",
                 modifier = Modifier.align(Alignment.Center),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         FloatingActionButton(
-            onClick = { onEditReminder(null) },
+            onClick = { onEditEvent(null) },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-        ) { Icon(Icons.Default.Add, contentDescription = "Add reminder") }
+        ) { Icon(Icons.Default.Add, contentDescription = "Add event") }
     }
 
-    val selected = reminders.firstOrNull { it.reminder.id == selectedId }
-    if (selected != null) {
-        ReminderSheet(
-            item = selected,
-            today = today,
-            onDismiss = { selectedId = null },
-            onEdit = { selectedId = null; onEditReminder(selected.reminder.id) },
-            onToggleActive = { vm.setActive(selected.reminder.id, !selected.reminder.active) },
-            onToggleDone = { done -> vm.setDoneToday(selected.reminder.id, done) },
-            memberNames = members.associate { it.id to it.displayName },
-            onOptOut = { selectedId = null; vm.setAnswer(selected.reminder.id, RecipientStatus.DECLINED) },
-        )
+    when (val selected = entries.firstOrNull { it.key == selectedKey }) {
+        is Entry.Event -> {
+            val id = selected.view.event.id
+            EventSheet(
+                item = selected.view,
+                today = today,
+                memberNames = members.associate { it.id to it.displayName },
+                onDismiss = { selectedKey = null },
+                onEdit = { selectedKey = null; onEditEvent(id) },
+                onDelete = { selectedKey = null; vm.deleteEvent(id) },
+                onLeave = { selectedKey = null; vm.leaveEvent(id) },
+                onAddTime = { minute, relative -> vm.addEventTime(id, minute, relative) },
+                onRemoveTime = { minute, relative -> vm.removeEventTime(id, minute, relative) },
+                onSetPersistent = { vm.setPersistent(id, it) },
+                onSetActive = { vm.setEventActive(id, it) },
+                onToggleDone = { done -> selected.view.persistentReminder?.let { vm.setDoneToday(it.reminder.id, done) } },
+            )
+        }
+        is Entry.ChoreReminder -> {
+            val r = selected.view.reminder
+            ReminderSheet(
+                item = selected.view,
+                today = today,
+                onDismiss = { selectedKey = null },
+                onEdit = { selectedKey = null; onEditChoreReminder(r.id) },
+                onToggleActive = { vm.setActive(r.id, !r.active) },
+                onToggleDone = { done -> vm.setDoneToday(r.id, done) },
+            )
+        }
+        null -> {}
     }
 }
 
@@ -237,17 +261,15 @@ private fun DayHeaders(days: List<LocalDate>, today: LocalDate, onDayClick: (Loc
     }
 }
 
-/** Persistent reminders with an all-day window, shown above the hour grid like calendar apps do. */
+/** All-day events and all-day chore reminders, shown above the hour grid like calendar apps do. */
 @Composable
 private fun AllDayRow(
     days: List<LocalDate>,
     today: LocalDate,
-    reminders: List<ReminderView>,
+    entries: List<Entry>,
     onSelect: (String) -> Unit,
 ) {
-    val allDay = reminders.filter { r ->
-        r.reminder.mode == ReminderMode.PERSISTENT && r.windows.any { Window(it.startMinute, it.endMinute).isAllDay }
-    }
+    val allDay = entries.filter { it.isAllDay() }
     if (allDay.isEmpty()) return
     Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
         Text(
@@ -258,10 +280,8 @@ private fun AllDayRow(
         )
         for (day in days) {
             Column(Modifier.weight(1f).padding(horizontal = 1.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                allDay.filter { isOnWeekday(it.reminder.weekdays, day) }.forEach { r ->
-                    ReminderBlock(r, r.reminder.message, day, today, Modifier.fillMaxWidth().height(22.dp)) {
-                        onSelect(r.reminder.id)
-                    }
+                allDay.filter { it.isOn(day) }.forEach { entry ->
+                    EntryBlock(entry, entry.title(), day, today, Modifier.fillMaxWidth().height(22.dp)) { onSelect(entry.key) }
                 }
             }
         }
@@ -273,7 +293,7 @@ private fun TimeGrid(
     days: List<LocalDate>,
     today: LocalDate,
     now: LocalTime,
-    reminders: List<ReminderView>,
+    entries: List<Entry>,
     detailed: Boolean,
     onSelect: (String) -> Unit,
 ) {
@@ -307,22 +327,22 @@ private fun TimeGrid(
                 for (hour in 1 until 24) {
                     HorizontalDivider(Modifier.offset(y = HOUR_HEIGHT * hour), thickness = 0.5.dp, color = lineColor)
                 }
-                val items = itemsFor(day, reminders, detailed)
+                val items = itemsFor(day, entries, detailed)
                 val lanes = assignLanes(items)
                 val laneCount = (lanes.maxOrNull() ?: 0) + 1
                 val laneWidth = maxWidth / laneCount
                 items.forEachIndexed { i, item ->
                     val top = minutesToDp(item.startMinute)
                     val height = maxOf(minutesToDp(item.endMinute - item.startMinute), 20.dp)
-                    ReminderBlock(
-                        item.reminder,
+                    EntryBlock(
+                        item.entry,
                         item.label,
                         day,
                         today,
                         Modifier.offset(x = laneWidth * lanes[i], y = top).width(laneWidth).height(height).padding(1.dp),
                         // Blocks too short for two lines would show a clipped second line.
                         singleLine = height < 32.dp,
-                    ) { onSelect(item.reminder.reminder.id) }
+                    ) { onSelect(item.entry.key) }
                 }
                 if (day == today) {
                     Box(
@@ -336,8 +356,8 @@ private fun TimeGrid(
 }
 
 @Composable
-private fun ReminderBlock(
-    r: ReminderView,
+private fun EntryBlock(
+    entry: Entry,
     label: String,
     day: LocalDate,
     today: LocalDate,
@@ -345,24 +365,40 @@ private fun ReminderBlock(
     singleLine: Boolean = true,
     onClick: () -> Unit,
 ) {
-    val persistent = r.reminder.mode == ReminderMode.PERSISTENT
-    val doneToday = persistent && day == today && r.state?.doneOn == today.toString()
     val colors = MaterialTheme.colorScheme
+    val persistent = when (entry) {
+        is Entry.Event -> entry.view.persistentReminder
+        is Entry.ChoreReminder -> entry.view.takeIf { it.reminder.mode == ReminderMode.PERSISTENT }
+    }
+    val doneToday = day == today && persistent != null && persistent.state?.doneOn == today.toString()
     val (bg, fg) = when {
         doneToday -> colors.surfaceVariant to colors.onSurfaceVariant
-        r.reminder.choreId != null -> colors.choreColors()
-        persistent -> colors.primaryContainer to colors.onPrimaryContainer
+        entry is Entry.ChoreReminder -> colors.choreColors()
         else -> colors.tertiaryContainer to colors.onTertiaryContainer
+    }
+    // Events show a bell when they remind me; paused reminders fade.
+    val reminding = when (entry) {
+        is Entry.Event -> entry.view.reminders.any { it.reminder.active }
+        is Entry.ChoreReminder -> entry.view.reminder.active
+    }
+    val faded = when (entry) {
+        is Entry.Event -> entry.view.paused
+        is Entry.ChoreReminder -> !entry.view.reminder.active
     }
     Row(
         modifier
-            .alpha(if (r.reminder.active) 1f else 0.4f)
+            .alpha(if (faded) 0.4f else 1f)
             .background(bg, RoundedCornerShape(4.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 3.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Icon(kindIcon(r.reminder.choreId), contentDescription = null, tint = fg, modifier = Modifier.padding(top = 1.dp).size(9.dp))
+        val icon = when {
+            entry is Entry.ChoreReminder -> ChoreIcon
+            reminding -> ReminderBell
+            else -> null
+        }
+        icon?.let { Icon(it, contentDescription = null, tint = fg, modifier = Modifier.padding(top = 1.dp).size(9.dp)) }
         Text(
             (if (doneToday) "✓ " else "") + label,
             color = fg,
@@ -376,28 +412,51 @@ private fun ReminderBlock(
 
 private fun minutesToDp(minutes: Int): Dp = HOUR_HEIGHT * (minutes / 60f)
 
+private fun Entry.title() = when (this) {
+    is Entry.Event -> view.event.title
+    is Entry.ChoreReminder -> view.title
+}
+
+private fun Entry.isOn(day: LocalDate) = when (this) {
+    is Entry.Event -> view.isOn(day)
+    is Entry.ChoreReminder -> isOnWeekday(view.reminder.weekdays, day)
+}
+
+private fun Entry.isAllDay() = when (this) {
+    is Entry.Event -> view.event.startMinute == null
+    is Entry.ChoreReminder -> view.reminder.mode == ReminderMode.PERSISTENT && view.windows.any { Window(it.startMinute, it.endMinute).isAllDay }
+}
+
 /** Calendar blocks for one day. [detailed] (day view) adds times to the labels; the week view has no room. */
-private fun itemsFor(day: LocalDate, reminders: List<ReminderView>, detailed: Boolean): List<CalendarItem> =
-    reminders.filter { isOnWeekday(it.reminder.weekdays, day) }.flatMap { r ->
-        when (r.reminder.mode) {
-            ReminderMode.TIMED -> r.times.map {
-                CalendarItem(
-                    r,
-                    it.minuteOfDay,
-                    minOf(it.minuteOfDay + TIMED_LENGTH_MINUTES, 1440),
-                    if (detailed) "${formatMinute(it.minuteOfDay)}  ${r.reminder.message}" else r.reminder.message,
-                )
+private fun itemsFor(day: LocalDate, entries: List<Entry>, detailed: Boolean): List<CalendarItem> =
+    entries.filter { it.isOn(day) }.flatMap { entry ->
+        when (entry) {
+            is Entry.Event -> {
+                val e = entry.view.event
+                val start = e.startMinute ?: return@flatMap emptyList()
+                val end = e.endMinute ?: minOf(start + TIMED_LENGTH_MINUTES, MINUTES_PER_DAY)
+                val label = if (detailed) "${formatMinute(start)}  ${e.title}" else e.title
+                listOf(CalendarItem(entry, start, end, label))
             }
-            ReminderMode.PERSISTENT -> r.windows
-                .filterNot { Window(it.startMinute, it.endMinute).isAllDay }
-                .map {
-                    val label = if (detailed) {
-                        "${r.reminder.message}  ${formatWindow(Window(it.startMinute, it.endMinute))}"
-                    } else {
-                        r.reminder.message
+            is Entry.ChoreReminder -> {
+                val r = entry.view
+                when (r.reminder.mode) {
+                    ReminderMode.TIMED -> r.times.map {
+                        CalendarItem(
+                            entry,
+                            it.minuteOfDay,
+                            minOf(it.minuteOfDay + TIMED_LENGTH_MINUTES, MINUTES_PER_DAY),
+                            if (detailed) "${formatMinute(it.minuteOfDay)}  ${r.title}" else r.title,
+                        )
                     }
-                    CalendarItem(r, it.startMinute, it.endMinute, label)
+                    ReminderMode.PERSISTENT -> r.windows
+                        .filterNot { Window(it.startMinute, it.endMinute).isAllDay }
+                        .map {
+                            val window = Window(it.startMinute, it.endMinute)
+                            CalendarItem(entry, it.startMinute, it.endMinute, if (detailed) "${r.title}  ${formatWindow(window)}" else r.title)
+                        }
                 }
+            }
         }
     }.sortedWith(compareBy({ it.startMinute }, { -it.endMinute }))
 

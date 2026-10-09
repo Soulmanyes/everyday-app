@@ -186,4 +186,63 @@ class ReminderSchedulerTest {
         assertTrue(result.dueTimed.isEmpty())
         assertEquals(setOf("t"), result.expiredSnoozes)
     }
+
+    private fun eventTimed(start: Int?, vararg before: Int, onDate: LocalDate? = null, weekdays: Int = if (onDate == null) everyDay else 0) =
+        ReminderSpec("e", ReminderMode.TIMED, weekdays, active = true, onDate = onDate, eventStart = start, minutesBefore = before.toList())
+
+    @Test
+    fun `minutes before the start fire on the day before when the event is just after midnight`() {
+        // Thursday 00:15, 30 minutes before = Wednesday 23:45.
+        val r = eventTimed(hm(0, 15), 30, weekdays = 0b0001000)
+        assertEquals(at("2026-10-07T23:45"), compute(listOf(r), "2026-10-07T20:00", null).nextWakeAt)
+        assertEquals(setOf("e"), compute(listOf(r), "2026-10-07T23:45", "2026-10-07T23:40").dueTimed)
+    }
+
+    @Test
+    fun `a one-off event reminds only on its date`() {
+        val r = eventTimed(hm(10), 60, onDate = LocalDate.parse("2026-10-09"))
+        assertEquals(at("2026-10-09T09:00"), compute(listOf(r), "2026-10-07T12:00", null).nextWakeAt)
+        assertNull(compute(listOf(r), "2026-10-09T09:30", null).nextWakeAt)
+        // Eight days ahead is still inside the lookahead.
+        val far = eventTimed(hm(10), 0, onDate = LocalDate.parse("2026-10-15"))
+        assertEquals(at("2026-10-15T10:00"), compute(listOf(far), "2026-10-07T12:00", null).nextWakeAt)
+    }
+
+    @Test
+    fun `minutes before an all-day event are ignored`() {
+        assertNull(compute(listOf(eventTimed(null, 30)), "2026-10-07T12:00", null).nextWakeAt)
+    }
+
+    @Test
+    fun `relative times count real minutes across a clock change`() {
+        // 2026-03-29 01:00 GMT -> 02:00 BST. An event at 02:30 local is 01:30 GMT... which doesn't exist; it shifts to 02:30 BST
+        // (01:30 UTC). 60 minutes before is 00:30 UTC = 00:30 GMT.
+        val r = eventTimed(hm(2, 30), 60, onDate = LocalDate.parse("2026-03-29"))
+        assertEquals(Instant.parse("2026-03-29T00:30:00Z"), compute(listOf(r), "2026-03-28T22:00", null).nextWakeAt)
+    }
+
+    @Test
+    fun `a lead window shows from before the start until the end, or until the start`() {
+        val r = ReminderSpec("p", ReminderMode.PERSISTENT, everyDay, active = true, eventStart = hm(17), eventEnd = hm(18), leadMinutes = 30)
+        assertTrue(compute(listOf(r), "2026-10-07T16:20", null).visiblePersistent.isEmpty())
+        assertEquals(setOf("p"), compute(listOf(r), "2026-10-07T16:30", null).visiblePersistent)
+        assertEquals(setOf("p"), compute(listOf(r), "2026-10-07T17:59", null).visiblePersistent)
+        assertEquals(at("2026-10-07T18:00"), compute(listOf(r), "2026-10-07T17:59", null).nextWakeAt)
+        val noEnd = r.copy(eventEnd = null)
+        assertEquals(at("2026-10-07T17:00"), compute(listOf(noEnd), "2026-10-07T16:40", null).nextWakeAt)
+        assertTrue(compute(listOf(noEnd), "2026-10-07T17:00", null).visiblePersistent.isEmpty())
+        // Done on the event's day hides it.
+        assertTrue(compute(listOf(r.copy(doneOn = LocalDate.parse("2026-10-07"))), "2026-10-07T17:00", null).visiblePersistent.isEmpty())
+    }
+
+    @Test
+    fun `done before midnight hides a lead window that started the day before`() {
+        // Event Thursday 00:15-01:00 with a 30 minute lead: starts Wednesday 23:45. Done pressed Wednesday.
+        val r = ReminderSpec(
+            "p", ReminderMode.PERSISTENT, 0b0001000, active = true, eventStart = hm(0, 15), eventEnd = hm(1), leadMinutes = 30,
+            doneOn = LocalDate.parse("2026-10-07"),
+        )
+        assertTrue(compute(listOf(r), "2026-10-08T00:30", null).visiblePersistent.isEmpty())
+        assertEquals(setOf("p"), compute(listOf(r.copy(doneOn = null)), "2026-10-08T00:30", null).visiblePersistent)
+    }
 }

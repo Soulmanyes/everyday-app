@@ -99,6 +99,67 @@ class MigrationTest {
         }
     }
 
+    @Test
+    fun migrate5To6MovesSoundToSoundAndVibrate() {
+        helper.createDatabase(DB, 5).apply {
+            execSQL("INSERT INTO member_settings (memberId, snoozeMinutes, timedSound, persistentSound, updatedAt, dirty) VALUES ('m1', 15, 'SOUND', 'SOUND', 3, 0)")
+            execSQL("INSERT INTO member_settings (memberId, snoozeMinutes, timedSound, persistentSound, updatedAt, dirty) VALUES ('m2', 15, 'VIBRATE', 'SILENT', 3, 0)")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(DB, 6, true, MIGRATION_5_6)
+        db.query("SELECT timedSound, persistentSound, dirty FROM member_settings ORDER BY memberId").use {
+            it.moveToNext(); assertEquals(listOf("SOUND_VIBRATE", "SOUND_VIBRATE", 0), listOf(it.getString(0), it.getString(1), it.getInt(2)))
+            it.moveToNext(); assertEquals(listOf("VIBRATE", "SILENT", 0), listOf(it.getString(0), it.getString(1), it.getInt(2)))
+        }
+    }
+
+    @Test
+    fun migrate5To6TurnsRemindersIntoEventsWithTheServersIds() {
+        val r102 = "00000000-0000-0000-0000-000000000102"
+        val sam = "00000000-0000-0000-0000-0000000000aa"
+        val alex = "00000000-0000-0000-0000-0000000000bb"
+        helper.createDatabase(DB, 5).apply {
+            execSQL("INSERT INTO member (id, displayName, updatedAt, deleted) VALUES ('$sam', 'Sam', 1, 0), ('$alex', 'Alex', 1, 0)")
+            execSQL(
+                "INSERT INTO reminder (id, ownerMemberId, message, mode, weekdays, active, choreId, createdAt, updatedAt, deleted, ownerReceives, dirty) VALUES " +
+                    "('$r102', '$sam', 'Homework', 'PERSISTENT', 31, 1, NULL, 1, 2, 0, 1, 0), " +
+                    "('meds', '$sam', 'Meds', 'TIMED', 127, 1, NULL, 1, 2, 0, 1, 1), " +
+                    "('chore', '$sam', 'Bins', 'TIMED', 8, 1, 'c1', 1, 2, 0, 1, 0)",
+            )
+            execSQL("INSERT INTO reminder_window (id, reminderId, startMinute, endMinute) VALUES ('w1', '$r102', 1080, 1140), ('w2', '$r102', 960, 1020)")
+            execSQL("INSERT INTO reminder_time (id, reminderId, minuteOfDay) VALUES ('t1', 'meds', 480), ('t2', 'chore', 420)")
+            execSQL("INSERT INTO reminder_recipient (reminderId, memberId, status, updatedAt, dirty) VALUES ('$r102', '$alex', 'ACCEPTED', 2, 0)")
+            execSQL("INSERT INTO reminder_state (reminderId, memberId, doneOn, snoozeUntil, updatedAt, dirty) VALUES ('$r102', '$sam', '2026-10-09', NULL, 3, 0)")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(DB, 6, true, MIGRATION_5_6)
+        fun rows(sql: String) = db.query(sql).use { c ->
+            buildList { while (c.moveToNext()) add((0 until c.columnCount).joinToString(" ") { if (c.isNull(it)) "-" else c.getString(it) }) }
+        }
+        val event1 = "270e5aed-f735-7f94-f429-68262aadf0d2"
+        assertEquals(
+            listOf("$r102 960 1020 0", "$event1 1080 1140 0", "meds - - 1").sorted(),
+            rows("SELECT id, startMinute, endMinute, dirty FROM event").sorted(),
+        )
+        assertEquals(
+            listOf(
+                "$r102 $r102 0",
+                "5f38c583-6b68-27c5-62b6-d21fab68a217 $event1 0",
+                "bd44097f-5b70-3750-1fdb-29823e78cc46 $r102 0",
+                "96e242e3-560d-0a09-6a8c-8ae9474fcca4 $event1 0",
+                "meds meds -",
+                "chore - -",
+            ).sorted(),
+            rows("SELECT id, eventId, leadMinutes FROM reminder").sorted(),
+        )
+        assertEquals(listOf("$r102 $alex", "$event1 $alex").sorted(), rows("SELECT eventId, memberId FROM event_member").sorted())
+        assertEquals(listOf("5f38c583-6b68-27c5-62b6-d21fab68a217", r102).sorted(), rows("SELECT reminderId FROM reminder_state").sorted())
+        assertEquals(listOf("0"), rows("SELECT count(*) FROM reminder_window"))
+        assertEquals(listOf("chore 420", "meds 480"), rows("SELECT reminderId, minuteOfDay FROM reminder_time ORDER BY reminderId"))
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

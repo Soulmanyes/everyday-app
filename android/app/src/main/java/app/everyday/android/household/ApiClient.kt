@@ -5,17 +5,18 @@ import app.everyday.android.data.ChoreCompletionEntity
 import app.everyday.android.data.ChoreEntity
 import app.everyday.android.data.ChoreSlotEntity
 import app.everyday.android.data.ChoreSnapshot
+import app.everyday.android.data.EventEntity
+import app.everyday.android.data.EventMemberEntity
 import app.everyday.android.data.MemberSettingsEntity
 import app.everyday.android.data.ReminderEntity
 import app.everyday.android.data.ReminderMode
-import app.everyday.android.data.ReminderRecipientEntity
 import app.everyday.android.data.ReminderStateEntity
 import app.everyday.android.data.SoundMode
 import app.everyday.android.reminders.Window
 import app.everyday.android.sync.SyncSnapshot
+import app.everyday.android.sync.SyncedEvent
 import app.everyday.android.sync.SyncedReminder
-import app.everyday.android.sync.recipientStatus
-import app.everyday.android.sync.wire
+import app.everyday.android.sync.SyncedTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -150,18 +151,18 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
     /** One sync round trip for [memberId]: pushes the changed rows, returns everything they can see. */
     suspend fun sync(
         memberId: String,
+        events: List<SyncedEvent>,
+        leaves: List<EventMemberEntity>,
         reminders: List<SyncedReminder>,
         states: List<ReminderStateEntity>,
         settings: MemberSettingsEntity?,
-        answers: List<ReminderRecipientEntity>,
     ): SyncSnapshot {
         val body = JSONObject()
             .put("memberId", memberId)
+            .put("events", JSONArray(events.map { it.toJson() }))
+            .put("leave", JSONArray(leaves.map { JSONObject().put("eventId", it.eventId).put("updatedAt", it.updatedAt) }))
             .put("reminders", JSONArray(reminders.map { it.toJson() }))
             .put("states", JSONArray(states.map { it.toJson() }))
-            .put("recipientStatuses", JSONArray(answers.map {
-                JSONObject().put("reminderId", it.reminderId).put("status", it.status.wire()).put("updatedAt", it.updatedAt)
-            }))
         settings?.let {
             body.put(
                 "settings",
@@ -169,7 +170,7 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
                     .put("persistentSound", it.persistentSound.name).put("updatedAt", it.updatedAt),
             )
         }
-        return call("POST", "/sync", body).toSyncSnapshot(memberId)
+        return call("POST", "/v2/sync", body).toSyncSnapshot(memberId)
     }
 
     private suspend fun call(method: String, path: String, body: JSONObject? = null, adminPin: String? = null): JSONObject =
@@ -261,18 +262,32 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
 
     private fun JSONArray.objects() = (0 until length()).map { getJSONObject(it) }
 
+    private fun SyncedEvent.toJson() = JSONObject()
+        .put("id", event.id)
+        .put("ownerMemberId", event.ownerMemberId)
+        .put("title", event.title)
+        .put("notes", event.notes ?: JSONObject.NULL)
+        .put("weekdays", event.weekdays)
+        .put("onDate", event.onDate ?: JSONObject.NULL)
+        .put("startMinute", event.startMinute ?: JSONObject.NULL)
+        .put("endMinute", event.endMinute ?: JSONObject.NULL)
+        .put("members", JSONArray(members.map { JSONObject().put("memberId", it.memberId).put("updatedAt", it.updatedAt) }))
+        .put("createdAt", event.createdAt)
+        .put("updatedAt", event.updatedAt)
+        .put("deleted", event.deleted)
+
     private fun SyncedReminder.toJson() = JSONObject()
         .put("id", reminder.id)
         .put("ownerMemberId", reminder.ownerMemberId)
+        .put("eventId", reminder.eventId ?: JSONObject.NULL)
         .put("choreId", reminder.choreId ?: JSONObject.NULL)
         .put("message", reminder.message)
         .put("mode", reminder.mode.name)
         .put("weekdays", reminder.weekdays)
         .put("active", reminder.active)
-        .put("ownerReceives", reminder.ownerReceives)
-        .put("times", JSONArray(times))
+        .put("times", JSONArray(times.map { JSONObject().put("minute", it.minute).put("relative", it.relative) }))
         .put("windows", JSONArray(windows.map { JSONObject().put("startMinute", it.startMinute).put("endMinute", it.endMinute) }))
-        .put("recipients", JSONArray(recipients.map { JSONObject().put("memberId", it.memberId) }))
+        .put("leadMinutes", reminder.leadMinutes ?: JSONObject.NULL)
         .put("createdAt", reminder.createdAt)
         .put("updatedAt", reminder.updatedAt)
         .put("deleted", reminder.deleted)
@@ -290,28 +305,51 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
 
     private fun JSONObject.optArray(name: String) = optJSONArray(name) ?: JSONArray()
 
+    private fun JSONObject.optIntOrNull(name: String) = if (isNull(name)) null else getInt(name)
+
+    /** An unknown sound (from a newer app on another phone) falls back to the default instead of failing sync. */
+    private fun sound(name: String, default: SoundMode) = runCatching { SoundMode.valueOf(name) }.getOrDefault(default)
+
     private fun JSONObject.toSyncSnapshot(memberId: String): SyncSnapshot {
+        val events = optArray("events").objects().map { e ->
+            val id = e.getString("id")
+            SyncedEvent(
+                event = EventEntity(
+                    id = id,
+                    ownerMemberId = e.getString("ownerMemberId"),
+                    title = e.getString("title"),
+                    notes = e.optStringOrNull("notes"),
+                    weekdays = e.optInt("weekdays", 0),
+                    onDate = e.optStringOrNull("onDate"),
+                    startMinute = e.optIntOrNull("startMinute"),
+                    endMinute = e.optIntOrNull("endMinute"),
+                    createdAt = e.getLong("createdAt"),
+                    updatedAt = e.getLong("updatedAt"),
+                    deleted = e.optBoolean("deleted", false),
+                ),
+                members = e.optArray("members").objects().map {
+                    EventMemberEntity(id, it.getString("memberId"), updatedAt = it.optLong("updatedAt", 0))
+                },
+            )
+        }
         val reminders = getJSONArray("reminders").objects().map { r ->
-            val id = r.getString("id")
             SyncedReminder(
                 reminder = ReminderEntity(
-                    id = id,
+                    id = r.getString("id"),
                     ownerMemberId = r.getString("ownerMemberId"),
-                    message = r.getString("message"),
+                    message = r.optString("message", ""),
                     mode = ReminderMode.valueOf(r.getString("mode")),
-                    weekdays = r.getInt("weekdays"),
+                    weekdays = r.optInt("weekdays", 0),
                     active = r.optBoolean("active", true),
                     choreId = r.optStringOrNull("choreId"),
                     createdAt = r.getLong("createdAt"),
                     updatedAt = r.getLong("updatedAt"),
                     deleted = r.optBoolean("deleted", false),
-                    ownerReceives = r.optBoolean("ownerReceives", true),
+                    eventId = r.optStringOrNull("eventId"),
+                    leadMinutes = r.optIntOrNull("leadMinutes"),
                 ),
-                times = r.optArray("times").let { a -> (0 until a.length()).map { a.getInt(it) } },
+                times = r.optArray("times").objects().map { SyncedTime(it.getInt("minute"), it.optBoolean("relative", false)) },
                 windows = r.optArray("windows").objects().map { Window(it.getInt("startMinute"), it.getInt("endMinute")) },
-                recipients = r.optArray("recipients").objects().map {
-                    ReminderRecipientEntity(id, it.getString("memberId"), recipientStatus(it.optString("status", "pending")), it.optLong("updatedAt", 0))
-                },
             )
         }
         val states = optArray("states").objects().map {
@@ -321,12 +359,12 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
             MemberSettingsEntity(
                 memberId = memberId,
                 snoozeMinutes = it.getInt("snoozeMinutes"),
-                timedSound = SoundMode.valueOf(it.getString("timedSound")),
-                persistentSound = SoundMode.valueOf(it.getString("persistentSound")),
+                timedSound = sound(it.getString("timedSound"), SoundMode.SOUND_VIBRATE),
+                persistentSound = sound(it.getString("persistentSound"), SoundMode.SILENT),
                 updatedAt = it.getLong("updatedAt"),
             )
         }
         val rejected = optArray("rejected").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
-        return SyncSnapshot(reminders, states, settings, rejected)
+        return SyncSnapshot(events, reminders, states, settings, rejected)
     }
 }

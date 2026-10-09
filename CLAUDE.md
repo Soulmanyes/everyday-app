@@ -6,7 +6,7 @@ Guidance for Claude Code (and humans) working in this repository.
 
 **Everyday App** is a private Android app for one household. It has two core features:
 
-1. **Reminders**: custom-message notifications that fire on chosen weekdays, at as many times per day as the user wants.
+1. **Events timetable** (the Reminders tab): events, weekly or on a date, personal or shared with chosen members. Each person adds their own reminders to an event.
 2. **Chore timetable**: a household-wide weekly schedule of chores, with members linked to each chore.
 
 A small backend on the owner's Oracle Cloud VM stores and syncs the data between the household's phones.
@@ -53,24 +53,22 @@ deploy/    docker-compose stack for the Oracle VM (Postgres, API, Caddy for HTTP
   - Any member can add, edit or delete chores and change assignees. No PIN is needed.
 - **Chore assignment**: links members to a chore. Every chore has **at least one** assignee. The timetable is the chores laid out by weekday with their assignees.
 - **Chore completion**: one row per (chore, member, day) saying that member did the chore on that day. ANY chores have at most one row per day. The day is the date in the **household timezone**. These rows only drive "done today": there is **no history screen**. Rows are kept (they are tiny).
-- **Reminder**: owned by one member. Has a message, a set of weekdays, an active (paused) flag, and a **mode**:
-  - **timed**: a normal notification at each of **one or more times of day** (as many as the user wants). It has a **Snooze** action that uses the member's snooze length.
-  - **persistent**: an ongoing notification shown during **one or more time windows** (e.g. 16:00-17:00 and 18:00-19:00), with an **"All day"** preset (00:00-23:59). It can't be swiped away. On Android 14+ the system allows swiping, so the app re-posts it while still inside the window. It has a **Done** action, which hides it until the next day. Done can also be set (and undone) from the calendar.
-  - Window rules: the end is after the start, no window crosses midnight, and windows of the same reminder don't overlap.
-  - It's also either:
-    - **general**: `chore_id` is null. It's personal by default, but the owner can **invite other members**. Each invitee is notified of the invite and can **opt in or out** at any time; that is their own on/off switch. It fires for every opted-in invitee, and for the owner unless the owner turned off **"Remind me too"** (`owner_receives`, on by default; off suits an FYI like "I'm out tonight"). Only the owner edits the message, days, times, pause and invitees, and the owner's **pause applies to everyone**. Or:
-    - **chore reminder**: `chore_id` is set. Only members assigned to that chore can create one, and each member manages their own reminders for the chore. Chore reminders are never shared.
-- **Reminder recipient**: an invited member of a general reminder, with status `pending`, `accepted` or `declined`. The owner sees each invitee's status and can remove an invite.
-- **Removed members** (admin removes a member): their personal and chore reminders are deleted, and their invites to others' reminders are removed. Reminders they **shared** keep firing, read-only, for invitees who accepted. Each invitee can remove such a reminder for themselves, and once nobody has it, it is deleted.
-- **Done/snooze state** is per (reminder, member), so a shared reminder can be done for one person and not another.
+- **Event** (Phase 6): something on the timetable, owned by one member: title, optional notes, and either **weekly** on chosen weekdays or **once on a date**, with a start time (none = all day) and an optional end time. It shows without notifying. It's **personal**, or **shared with chosen members** (`event_member`), who see it on their timetable at once (no invite to accept) and are told once ("Sam added you to …", with **Decline**). Only the owner edits or deletes it. A member can **leave** (or decline), which removes them and their reminders on it; the owner can add them again (a stale member list from the owner's phone can't). A removed member's shared events live on, read-only, until every member has left; then they are deleted.
+- **Reminder**: owned by one member, on an **event** (`event_id`) or a **chore** (`chore_id`), never neither. Each person sees and edits **only their own** reminders, and pauses only their own. It's either:
+  - **timed**: a normal notification at each time, with a **Snooze** action that uses the member's snooze length. On an event the times are fixed clock times, or **minutes before the start** (`reminder_time.relative`, only when the event has a start), which move with the event and can fall on the day before.
+  - **persistent**: an ongoing notification that can't be swiped away (on Android 14+ the system allows swiping, so the app re-posts it while it should show), with a **Done** action that hides it until the next day; Done can also be set and undone in the app. On an event it shows **all day** (`lead_minutes` null) or **from X minutes before the start until the end** (until the start if there's no end). On a chore it has one or more time windows (end after start, no crossing midnight, no overlaps), or "All day".
+  - An event reminder takes its title and days from the event. A chore reminder keeps its own message and days (copied from the chore), and only members assigned to that chore can have one.
+- Per person per event there is at most one timed and one persistent reminder.
+- **Removed members** (admin removes a member): their reminders are deleted, they're taken off others' events, and their events are deleted except shared ones members are still on.
+- **Done/snooze state** is per (reminder, member), so it survives reboots and syncs.
 - **Join request**: a device in the `pending` state with the name typed on the phone. Pending devices can only read their own status and leave. The admin's phone notifies on each new request (on its next refresh) and Settings shows the count. The admin keeps **Add member** for people without a phone (e.g. a child assigned chores); a phone can be linked to them later through a request.
-- **Member settings** (per member, edited in the app): snooze length in minutes, and **Sound / Vibrate / Silent** chosen separately for timed and persistent reminders.
+- **Member settings** (per member, edited in the app): snooze length in minutes, and **Sound / Vibrate / Both (sound and vibrate) / Silent** chosen separately for timed and persistent reminders. Sound is sound only (Phase 6); new members start on Both for timed and Silent for persistent.
 
-Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Reminders repeat **weekly** only. Times of day are local wall-clock times in the household timezone.
+Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Events repeat **weekly** or happen **once on a date**; chores repeat weekly. Times of day are local wall-clock times in the household timezone.
 
-The Reminders tab is a **weekly calendar** (7 day columns), not a list.
+The Reminders tab is a **weekly timetable** (7 day columns, with previous/next week and a day view) of events and the profile's chore reminders, not a list. An event shows a bell when the profile has active reminders on it.
 
-Chore reminders **look like chores**: the fixed chore green and the Chores tab's house icon (`ui/Kinds.kt`), so users can tell them from normal reminders, which use the Reminders tab's icon and are the ones that can be shared. Member dots use the member's **household-wide colour** from the server (`member.color`, a palette key; `ui/MemberColors.kt` maps keys to colours). The server gives each new member a free colour, keeps colours unique per household, and members change their own in Settings (no PIN) or the admin in Manage members. 12 colours, no greens (chore cards are green).
+Chore reminders **look like chores**: the fixed chore green and the Chores tab's house icon (`ui/Kinds.kt`), so users can tell them from events. Member dots use the member's **household-wide colour** from the server (`member.color`, a palette key; `ui/MemberColors.kt` maps keys to colours). The server gives each new member a free colour, keeps colours unique per household, and members change their own in Settings (no PIN) or the admin in Manage members. 12 colours, no greens (chore cards are green).
 
 The app is **dark by default**; "Follow phone theme" in Settings (per phone, `AppPrefs`) switches to the phone's light/dark setting.
 
@@ -85,23 +83,23 @@ The app is **dark by default**; "Follow phone theme" in Settings (per phone, `Ap
 - Done and snooze state are stored in Room, not only in alarms, so they survive reboots.
 - Local IDs are client-generated UUID strings (offline-first sync). Entities carry `ownerMemberId`, `updatedAt` and a soft-delete flag. Settings are keyed by member ID. Phase 1 uses one default local member until login exists (Phase 2).
 - **All persistent reminders showing at once share one ongoing notification** that lists them, with a Done button for each (up to 3; the rest are marked done in the app). Android 16 bundles an app's separate notifications into one collapsed block, even with a group per reminder (tried on the Phone, 2026-10-08), so separate notifications would hide all but one. The combined notification alerts only when a reminder newly appears in it.
-- Notification channels can't change their sound after creation. There are six channels, {timed, persistent} x {sound, vibrate, silent}, and the member's setting picks which one to use.
-- Room schemas are exported to `android/app/schemas/` and committed. Every Room version bump needs a tested migration, so nobody loses reminders.
+- Notification channels can't change their sound after creation. There is one channel per {timed, persistent} x {sound, vibrate, sound and vibrate, silent}, and the member's setting picks which one to use. Channel ids carry a version (`_v2`): a channel whose behaviour changes needs a new id, because recreating a deleted channel under its old id brings back its old settings. The 1.1.0 ids are deleted.
+- Room schemas are exported to `android/app/schemas/` and committed. Every Room version bump needs a tested migration, so nobody loses reminders. Room 5 -> 6 (Phase 6) turns general reminders into events exactly like the server's V7 (`EventConversion`, ids derived as md5 UUIDs, tested against the same values on both sides), and carries over unsynced 1.1.0 deletes and declines as dirty rows.
 - **Samsung:** One UI can put sideloaded apps to sleep, which blocks alarms. The app offers a button to request ignoring battery optimizations. Each phone should also add the app to *Settings → Battery → Background usage limits → Never sleeping apps*.
-- Notifications fire only for reminders that the profile currently selected on that phone owns or has accepted.
+- Notifications fire only for the picked profile's own reminders, on chores and on events it's still on.
 
-### Sync (Phase 4)
+### Sync (Phase 4, events in Phase 6)
 
-- Room stays the source for alarms; the server is a sync target. Each sync is **one round trip for the picked profile**: the phone pushes its dirty rows, the server applies them, and the server returns a **full snapshot** of everything that member can see (owned reminders, reminders shared with them in any status with their recipients, that member's done/snooze state and settings). No "since" cursor: commit order and timestamp order can differ.
-- What syncs: reminders with their times and windows, recipients, done/snooze state, member settings. Reminders of `LOCAL_MEMBER_ID` never sync.
+- Room stays the source for alarms; the server is a sync target. Each sync (`POST /v2/sync`) is **one round trip for the picked profile**: the phone pushes its dirty rows, the server applies them, and the server returns a **full snapshot** of everything that member can see (events they own, with tombstones, and events shared with them, with members; their own reminders, done/snooze state and settings). No "since" cursor: commit order and timestamp order can differ.
+- What syncs: events with their members, the events the member left, reminders with their times and windows, done/snooze state, member settings. Rows of `LOCAL_MEMBER_ID` never sync.
+- The 1.1.0 `POST /sync` answers `410 Gone` ("update the app"), never `401`, which would send old phones back to the join screen.
 - **Last write wins** on `updatedAt`, using the phone's clock in epoch millis. The server stores the client's value, not `now()`.
-- Deletes travel as **tombstones** (`deleted = true`). A row missing from the snapshot never deletes a local row, except a non-dirty reminder shared with me that I'm no longer a recipient of.
+- Deletes travel as **tombstones** (`deleted = true`). A row of mine missing from the snapshot never deletes a local row. Events of others that are missing (I'm no longer on them) are removed from the phone, and so is any reminder that isn't mine.
 - After a push, a row's dirty flag is cleared **only if its `updatedAt` still equals the pushed value**, so edits made during a sync aren't lost.
 - The server checks each row on its own and **rejects only that row** (returned as rejected ids). The phone then drops its dirty flag and keeps the server's version, so one bad row can't block sync forever.
 - Merging a snapshot into Room is one pure, unit-tested function.
 - Sync runs when the app opens, after local edits, and in the same 15-minute WorkManager job as chores (keep the `ChoreRefreshWorker` class name: installed phones have it enqueued by name).
-- A new invite posts a notification once ("Sam shared … with you"). Announced invite ids are remembered so a later sync doesn't repeat it. Invites are accepted or declined in the app.
-- Notifications fire for reminders the picked profile owns (if `owner_receives`) or has accepted, using that profile's own settings.
+- Being added to a shared event posts a notification once ("Sam added you to …", with Decline). Announced event ids are remembered so a later sync doesn't repeat it; the first sync after updating takes the events already shared as announced.
 
 ### Chores (Phase 3)
 
@@ -124,8 +122,8 @@ The app is **dark by default**; "Follow phone theme" in Settings (per phone, `Ap
 - Failed code/PIN/setup-token attempts are counted globally (all traffic comes through Caddy, so per-IP limits don't work). Too many failures lock those endpoints for a while.
 - A `401` tells the app its token is no longer valid, and the app returns to the join screen.
 - Chore routes need only the device token. Chore IDs are client-generated UUIDs. Validate a non-empty title, weekdays 1..127, at least one assignee, and that every assignee is an existing member who isn't deleted. For EACH, only an assignee can have a completion. For ANY, allow at most one completion per day (checked in the API, because the type lives on `chore`). Today's date comes from `household.timezone`, never from UTC `CURRENT_DATE`.
-- Deleting a member is a soft delete, so `ON DELETE CASCADE` doesn't fire. Member deletion must also soft-delete that member's chore assignments, their unshared and chore reminders, and recipient rows pointing at them.
-- Sync rules: the request's `memberId` must be an active member. Only the owner writes a reminder, its times/windows and its recipients; an invitee changes only their own recipient status; state rows only for the caller's own member id on reminders they own or are invited to. Chore reminders can't have recipients, and their owner must be assigned to the chore. Times and windows use the same validation as the app.
+- Deleting a member is a soft delete, so `ON DELETE CASCADE` doesn't fire. Member deletion must also soft-delete that member's chore assignments, their reminders, and their `event_member` rows, then delete their events nobody is on any more.
+- Sync rules: the request's `memberId` must be an active member. Only the owner writes an event and its member list; a member only removes themselves (leave). Only the owner writes a reminder and its times/windows; it needs an event or a chore. Event reminders need an event the owner sees; relative times and leads need the event to have a start. Chore reminders need the owner assigned to the chore. State rows only for the caller's own reminders. Removing a member from an event, leaving, or deleting the event also deletes the affected reminders on it. Times and windows use the same validation as the app.
 - Test against a throwaway stack, never the production database: a test household there would block the real setup.
 - Schema changes go through **Flyway migrations** in `server/src/main/resources/db/migration` (`V<n>__description.sql`). Never edit a migration that has already been deployed.
 - Configuration comes from environment variables (see `deploy/.env.example`). `.env` is gitignored and must never be committed.
@@ -161,8 +159,9 @@ cd android && ./gradlew assembleDebug
 cd android && ./gradlew connectedDebugAndroidTest
 
 # End-to-end test against the throwaway stack on the VM (never production)
-rsync -az --exclude build --exclude .gradle --exclude .env server deploy oracle:~/everyday-app/
-ssh oracle 'cd ~/everyday-app/deploy && docker compose -p everyday-test -f docker-compose.yml -f docker-compose.test.yml up -d --build db api'
+# Uses its own copy of the code (~/everyday-test-src, with its own throwaway .env), never production's ~/everyday-app
+rsync -az --exclude build --exclude .gradle --exclude .env server deploy oracle:~/everyday-test-src/
+ssh oracle 'cd ~/everyday-test-src/deploy && docker compose -p everyday-test -f docker-compose.yml -f docker-compose.test.yml up -d --build db api'
 ssh -f -N -L 18080:127.0.0.1:18080 oracle      # tunnel to the test API
 adb reverse tcp:18080 tcp:18080                # debug builds allow cleartext only to 127.0.0.1/localhost
 # In the app: server address http://127.0.0.1:18080, setup code test-setup-code

@@ -21,6 +21,7 @@ class ReminderReceiver : BroadcastReceiver() {
                     ACTION_SNOOZE -> id?.let { engine.snooze(it); context.app.sync.requestSync() }
                     ACTION_DONE -> id?.let { onDone(context, it) }
                     ACTION_DISMISSED -> engine.onPersistentDismissed()
+                    ACTION_DECLINE -> id?.let { onDecline(context, it) }
                     // ACTION_ALARM, boot, time and timezone changes, app updates, exact-alarm permission changes.
                     else -> engine.recompute()
                 }
@@ -43,11 +44,22 @@ class ReminderReceiver : BroadcastReceiver() {
         withTimeoutOrNull(8_000) { runCatching { app.chores.markDone(choreId) } }
     }
 
+    /** "Decline" on "Sam added you to …": removes the picked profile from the shared event. */
+    private suspend fun onDecline(context: Context, eventId: String) {
+        val app = context.app
+        Notifier(context).cancelAddedToEvent(eventId)
+        app.repository.leaveEvent(eventId)
+        app.engine.recompute()
+        app.sync.requestSync()
+    }
+
     companion object {
         const val ACTION_ALARM = "app.everyday.android.action.ALARM"
         const val ACTION_SNOOZE = "app.everyday.android.action.SNOOZE"
         const val ACTION_DONE = "app.everyday.android.action.DONE"
         const val ACTION_DISMISSED = "app.everyday.android.action.DISMISSED"
+        const val ACTION_DECLINE = "app.everyday.android.action.DECLINE"
+        /** A reminder id, or an event id for [ACTION_DECLINE]. */
         const val EXTRA_ID = "reminder_id"
     }
 }

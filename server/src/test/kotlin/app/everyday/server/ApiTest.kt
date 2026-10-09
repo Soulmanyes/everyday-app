@@ -221,8 +221,8 @@ class ApiTest {
         val admin = client.createHousehold()
         val (token, alex) = client.joinApproved(admin.token, "Alex")
         val sam = admin.household.adminMemberId!!
-        assertEquals(HttpStatusCode.Forbidden, client.postJson("/sync", SyncRequest(sam), token).status)
-        assertEquals(HttpStatusCode.OK, client.postJson("/sync", SyncRequest(alex), token).status)
+        assertEquals(HttpStatusCode.Forbidden, client.postJson("/v2/sync", SyncRequest(sam), token).status)
+        assertEquals(HttpStatusCode.OK, client.postJson("/v2/sync", SyncRequest(alex), token).status)
 
         client.delete("/members/$alex") {
             header(HttpHeaders.Authorization, "Bearer ${admin.token}"); header(ADMIN_PIN_HEADER, PIN)

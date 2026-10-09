@@ -170,8 +170,13 @@ fun Application.configureRouting(api: ApiContext?) {
             call.respond(HttpStatusCode.NoContent)
         }
 
-        /** Pushes the phone's changed rows for one member and returns everything that member can see. */
+        /** The 1.1.0 sync, before events. Not 401: that would send old phones back to the join screen. */
         post("/sync") {
+            throw ApiException(HttpStatusCode.Gone, "Update the app to keep syncing.")
+        }
+
+        /** Pushes the phone's changed rows for one member and returns everything that member can see. */
+        post("/v2/sync") {
             val (household, me) = api.member(call)
             val req = call.receive<SyncRequest>()
             if (req.memberId != me.toString()) throw notYours()
