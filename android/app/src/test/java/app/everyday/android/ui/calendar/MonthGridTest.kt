@@ -1,5 +1,6 @@
 package app.everyday.android.ui.calendar
 
+import app.everyday.android.data.BusyEventEntity
 import app.everyday.android.data.ChoreAssignmentEntity
 import app.everyday.android.data.ChoreCompletion
 import app.everyday.android.data.ChoreEntity
@@ -93,5 +94,20 @@ class MonthGridTest {
             effectiveFilter(MonthFilter(everyone = false, memberIds = setOf("alex", "gone")), members),
         )
         assertEquals(MonthFilter(), effectiveFilter(MonthFilter(everyone = false, memberIds = setOf("gone")), members))
+    }
+
+    @Test
+    fun `Busy events sort with events by time and follow their owner in the filter`() {
+        val day = LocalDate.of(2026, 10, 9)
+        val busy = listOf(
+            BusyEventEntity(me, "b1", "alex", weekdays = everyDay, startMinute = 9 * 60),
+            BusyEventEntity(me, "b2", "jo", onDate = "2026-10-09"),
+            BusyEventEntity(me, "b3", "alex", onDate = "2026-10-10"),
+        )
+        val events = listOf(event("early", start = 8 * 60), event("late", start = 18 * 60))
+        val items = monthItemsOn(day, events, listOf(chore("bins", everyDay, me)), MonthFilter(), busy)
+        assertEquals(listOf("busy:b2", "event:early", "busy:b1", "event:late", "chore:bins"), items.map { it.key })
+        val alexOnly = MonthFilter(everyone = false, memberIds = setOf("alex"))
+        assertEquals(listOf("busy:b1"), monthItemsOn(day, events, emptyList(), alexOnly, busy).map { it.key })
     }
 }

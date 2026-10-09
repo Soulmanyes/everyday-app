@@ -160,6 +160,23 @@ class MigrationTest {
         assertEquals(listOf("chore 420", "meds 480"), rows("SELECT reminderId, minuteOfDay FROM reminder_time ORDER BY reminderId"))
     }
 
+    @Test
+    fun migrate6To7ShowsEventsAsBusyAndAddsBusyTable() {
+        helper.createDatabase(DB, 6).apply {
+            execSQL("INSERT INTO event (id, ownerMemberId, title, weekdays, createdAt, updatedAt, deleted, dirty) VALUES ('e1', 'm1', 'Gym', 1, 1, 1, 0, 0)")
+            execSQL("INSERT INTO reminder (id, ownerMemberId, message, mode, weekdays, active, createdAt, updatedAt, deleted, ownerReceives, dirty, eventId) VALUES ('r1', 'm1', '', 'TIMED', 0, 1, 1, 1, 0, 1, 0, 'e1')")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(DB, 7, true)
+        db.query("SELECT title, showBusy FROM event").use {
+            it.moveToFirst()
+            assertEquals("Gym", it.getString(0))
+            assertEquals(1, it.getInt(1))
+        }
+        db.query("SELECT count(*) FROM reminder").use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
+        db.query("SELECT count(*) FROM busy_event").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

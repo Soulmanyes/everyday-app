@@ -1,5 +1,6 @@
 package app.everyday.android.sync
 
+import app.everyday.android.data.BusyEventEntity
 import app.everyday.android.data.EventEntity
 import app.everyday.android.data.EventMemberEntity
 import app.everyday.android.data.EventWithMembers
@@ -33,6 +34,8 @@ data class SyncSnapshot(
     val settings: MemberSettingsEntity?,
     /** Reminder ids, "event:<id>", "leave:<eventId>", "state:<reminderId>" or "settings". */
     val rejected: Set<String>,
+    /** Other members' personal events shown as Busy (Phase 7), for this member. */
+    val busy: List<BusyEventEntity> = emptyList(),
 )
 
 /** The updatedAt of each row as it was pushed, to tell whether it changed again during the sync. */

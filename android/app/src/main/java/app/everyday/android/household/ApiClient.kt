@@ -5,6 +5,7 @@ import app.everyday.android.data.ChoreCompletionEntity
 import app.everyday.android.data.ChoreEntity
 import app.everyday.android.data.ChoreSlotEntity
 import app.everyday.android.data.ChoreSnapshot
+import app.everyday.android.data.BusyEventEntity
 import app.everyday.android.data.EventEntity
 import app.everyday.android.data.EventMemberEntity
 import app.everyday.android.data.MemberSettingsEntity
@@ -275,6 +276,7 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
         .put("createdAt", event.createdAt)
         .put("updatedAt", event.updatedAt)
         .put("deleted", event.deleted)
+        .put("showBusy", event.showBusy)
 
     private fun SyncedReminder.toJson() = JSONObject()
         .put("id", reminder.id)
@@ -326,6 +328,7 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
                     createdAt = e.getLong("createdAt"),
                     updatedAt = e.getLong("updatedAt"),
                     deleted = e.optBoolean("deleted", false),
+                    showBusy = e.optBoolean("showBusy", true),
                 ),
                 members = e.optArray("members").objects().map {
                     EventMemberEntity(id, it.getString("memberId"), updatedAt = it.optLong("updatedAt", 0))
@@ -365,6 +368,17 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
             )
         }
         val rejected = optArray("rejected").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
-        return SyncSnapshot(events, reminders, states, settings, rejected)
+        val busy = optArray("busy").objects().map { b ->
+            BusyEventEntity(
+                viewerMemberId = memberId,
+                id = b.getString("id"),
+                ownerMemberId = b.getString("ownerMemberId"),
+                weekdays = b.optInt("weekdays", 0),
+                onDate = b.optStringOrNull("onDate"),
+                startMinute = b.optIntOrNull("startMinute"),
+                endMinute = b.optIntOrNull("endMinute"),
+            )
+        }
+        return SyncSnapshot(events, reminders, states, settings, rejected, busy)
     }
 }

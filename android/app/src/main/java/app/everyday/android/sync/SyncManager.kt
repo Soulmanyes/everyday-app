@@ -82,6 +82,7 @@ class SyncManager(
             reminders.upsertStates(plan.saveStates)
             plan.clearDirtyStates.forEach { reminders.clearStateDirty(it, me) }
             plan.saveSettings?.let { members.upsertSettings(it) }
+            reminders.replaceBusy(me, snapshot.busy)
             if (plan.clearDirtySettings) members.getSettings(me)?.let { members.upsertSettings(it.copy(dirty = false)) }
         }
         engine.recompute()

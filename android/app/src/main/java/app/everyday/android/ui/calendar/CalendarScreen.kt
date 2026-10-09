@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.everyday.android.data.BusyEventEntity
 import app.everyday.android.data.ChoreWithDetails
 import app.everyday.android.data.EventView
 import app.everyday.android.data.MemberEntity
@@ -130,6 +131,7 @@ fun CalendarScreen(
     var monthDayEpoch by rememberSaveable { mutableStateOf<Long?>(null) }
     var monthItemKey by rememberSaveable { mutableStateOf<String?>(null) }
     val chores by vm.chores.collectAsStateWithLifecycle()
+    val busy by vm.busy.collectAsStateWithLifecycle()
     val monthFilter by vm.monthFilter.collectAsStateWithLifecycle()
 
     // Ticks every minute so "today" and the now-line stay current.
@@ -168,6 +170,7 @@ fun CalendarScreen(
                     today = today,
                     events = events,
                     chores = chores,
+                    busy = busy,
                     members = members,
                     filter = monthFilter,
                     onMonthChange = { shownMonth = it.toString() },
@@ -218,6 +221,7 @@ fun CalendarScreen(
         vm = vm,
         events = events,
         chores = chores,
+        busy = busy,
         members = members,
         filter = effectiveFilter(monthFilter, members),
         today = today,
@@ -256,6 +260,7 @@ private fun MonthSheets(
     vm: CalendarViewModel,
     events: List<EventView>,
     chores: List<ChoreWithDetails>,
+    busy: List<BusyEventEntity>,
     members: List<MemberEntity>,
     filter: MonthFilter,
     today: LocalDate,
@@ -269,7 +274,7 @@ private fun MonthSheets(
     onAddChoreReminder: (String) -> Unit,
 ) {
     if (day == null) return
-    val items = monthItemsOn(day, events, chores, filter)
+    val items = monthItemsOn(day, events, chores, filter, busy)
     val selected = items.firstOrNull { it.key == itemKey }
     if (selected == null) {
         MonthDaySheet(day, items, members, onDismiss = onDayDismiss, onSelect = { onSelect(it.key) })
@@ -281,6 +286,7 @@ private fun MonthSheets(
             val choresVm: ChoresViewModel = viewModel(factory = ChoresViewModel.Factory)
             ChoreDetailsSheet(choresVm, selected.details, today, onDismiss = onItemDismiss, onEditChore = onEditChore, onAddReminder = onAddChoreReminder)
         }
+        is MonthItem.Busy -> {}
     }
 }
 

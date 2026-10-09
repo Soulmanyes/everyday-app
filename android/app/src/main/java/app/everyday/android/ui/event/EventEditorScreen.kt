@@ -26,10 +26,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -174,6 +174,30 @@ fun EventEditorScreen(eventId: String?, onDone: () -> Unit) {
                     }
                     Text(
                         "It shows on their timetable, and they're told once. Each person adds their own reminders. Only you can change the event.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            // Only a personal event can show as Busy: members of a shared one see it in full (Phase 7).
+            if (members.isNotEmpty() && draft.memberIds.isEmpty()) {
+                Section("Others see") {
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        listOf(true to "Busy", false to "Nothing").forEachIndexed { i, (value, label) ->
+                            SegmentedButton(
+                                selected = draft.showBusy == value,
+                                onClick = { vm.update { it.copy(showBusy = value) } },
+                                shape = SegmentedButtonDefaults.itemShape(i, 2),
+                            ) { Text(label) }
+                        }
+                    }
+                    Text(
+                        if (draft.showBusy) {
+                            "Others see \"Busy\" at these times on their month view, without the title or notes."
+                        } else {
+                            "Others don't see it at all."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

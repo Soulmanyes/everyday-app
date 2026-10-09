@@ -97,12 +97,12 @@ Clarifies Phase 6 (decided 2026-10-09). App only: no server or schema change. Bu
 - [x] New **Reminders** tab: a plain list of all my reminders, on events and on chores. Each row shows what it's on, its times or windows, and whether it's on or paused; tapping it opens it for editing (an event reminder opens its event's sheet, a chore reminder its editor). Two sections, Events then Chores, A to Z, with a pause switch on each row; tabs are Events, Chores, Reminders (decided 2026-10-09).
 
 ## Phase 7: Monthly view (1.4.0)
-Decided 2026-10-09. Replaces the old Phase 7 (chore rotation and points, now dropped).
+Decided 2026-10-09. Replaces the old Phase 7 (chore rotation and points, now dropped). Built on `dev` and checked on an API 37 emulator against the test stack on 2026-10-10, including an in-place upgrade from Room 6. **Server V8 must be deployed before 1.4.0 is released.**
 
 - [x] New **monthly view**: a **Week | Month** switch on the Events tab. The month grid lists up to 3 items a day (events first, then chores) and "+N"; tapping a day opens a sheet listing it, where each item opens its event or chore sheet. The week and day views stay "just me" (decided 2026-10-09).
 - [x] Choose whose chores and events show: **everyone**, or a selection of members. Month view only, remembered on this phone. A chore shows if any assignee is picked, an event if its owner or anyone it's shared with is.
-- [ ] Personal events can show to other members as **"Busy"** (times only, no title or notes) or not at all. The owner chooses per event; the default is **Busy**, for new and existing personal events. Needs a server and schema change: today other members' personal events never reach a phone.
-- [ ] Events shared with me show in full, as on the Events tab.
+- [x] Personal events can show to other members as **"Busy"** (times only, no title or notes) or not at all. The owner chooses per event in the editor ("Others see: Busy | Nothing"); the default is **Busy**, for new and existing personal events. Server V8 adds `event.show_busy` and a `busy` list to the sync snapshot; Room 7 adds `busy_event`. Busy shows on the month view only, in the owner's colour. Events shared between other members never show as Busy (decided 2026-10-09).
+- [x] Events shared with me show in full, as on the Events tab.
 
 ## Phase 8: Instant updates (1.5.0)
 - [ ] Push a notification to phones when something changes (chores, shared reminders, join requests) instead of waiting for the 15-minute refresh (ntfy or FCM: decide in Phase 8)

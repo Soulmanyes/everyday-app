@@ -1,5 +1,6 @@
 package app.everyday.android.ui.calendar
 
+import app.everyday.android.data.BusyEventEntity
 import app.everyday.android.data.ChoreWithDetails
 import app.everyday.android.data.EventView
 import app.everyday.android.reminders.isOnWeekday
@@ -29,6 +30,12 @@ sealed interface MonthItem {
         override val key get() = "chore:${details.chore.id}"
         override val title get() = details.chore.title
     }
+
+    /** Another member's personal event shown as Busy: times only. */
+    data class Busy(val busy: BusyEventEntity) : MonthItem {
+        override val key get() = "busy:${busy.id}"
+        override val title get() = "Busy"
+    }
 }
 
 /** The days the grid shows for [month]: whole weeks, Monday first, so 4 to 6 rows. */
@@ -42,18 +49,31 @@ fun monthDays(month: YearMonth): List<LocalDate> {
 fun MonthFilter.matches(view: EventView): Boolean =
     everyone || view.event.ownerMemberId in memberIds || view.members.any { !it.hidden && it.memberId in memberIds }
 
+/** A Busy event matches the filter if its owner is picked. */
+fun MonthFilter.matches(busy: BusyEventEntity): Boolean = everyone || busy.ownerMemberId in memberIds
+
+fun BusyEventEntity.isOn(date: LocalDate) = onDate?.let { it == date.toString() } ?: isOnWeekday(weekdays, date)
+
 /** A chore matches the filter if any of its assignees is picked. */
 fun MonthFilter.matches(chore: ChoreWithDetails): Boolean = everyone || chore.assigneeIds.any { it in memberIds }
 
 /**
- * What a month cell shows on [date]: events first (all day, then by start time), then chores, which
- * repeat every week and would otherwise push a date's events out of the cell; ties by title.
+ * What a month cell shows on [date]: events and Busy events first (all day, then by start time), then
+ * chores, which repeat every week and would otherwise push a date's events out of the cell; ties by title.
  */
-fun monthItemsOn(date: LocalDate, events: List<EventView>, chores: List<ChoreWithDetails>, filter: MonthFilter): List<MonthItem> {
-    val dayEvents = events.filter { it.isOn(date) && filter.matches(it) }
-    val (allDay, timed) = dayEvents.partition { it.event.startMinute == null }
+fun monthItemsOn(
+    date: LocalDate,
+    events: List<EventView>,
+    chores: List<ChoreWithDetails>,
+    filter: MonthFilter,
+    busy: List<BusyEventEntity> = emptyList(),
+): List<MonthItem> {
+    val dated = events.filter { it.isOn(date) && filter.matches(it) }.map { Dated(MonthItem.Event(it), it.event.startMinute) } +
+        busy.filter { it.isOn(date) && filter.matches(it) }.map { Dated(MonthItem.Busy(it), it.startMinute) }
     val dayChores = chores.filter { isOnWeekday(it.chore.weekdays, date) && filter.matches(it) }
-    return allDay.sortedBy { it.event.title.lowercase() }.map { MonthItem.Event(it) } +
-        timed.sortedWith(compareBy({ it.event.startMinute }, { it.event.title.lowercase() })).map { MonthItem.Event(it) } +
+    return dated.sortedWith(compareBy({ it.startMinute ?: -1 }, { it.item.title.lowercase() }, { it.item.key })).map { it.item } +
         dayChores.sortedBy { it.chore.title.lowercase() }.map { MonthItem.Chore(it) }
 }
+
+/** An event or Busy event with its start (null = all day), for sorting. */
+private data class Dated(val item: MonthItem, val startMinute: Int?)

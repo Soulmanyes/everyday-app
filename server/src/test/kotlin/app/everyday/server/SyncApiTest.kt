@@ -119,9 +119,10 @@ class SyncApiTest {
         val r = reminder(home.sam, e.id)
         val out = client.syncOk(home, SyncRequest(home.sam, events = listOf(e), reminders = listOf(r)))
         assertEquals(emptyList(), out.rejected)
-        assertEquals(listOf(e), out.events)
+        // A new event shows as Busy unless the phone says otherwise.
+        assertEquals(listOf(e.copy(showBusy = true)), out.events)
         assertEquals(listOf(TimeDto(480), TimeDto(30, relative = true)), out.reminders.single().times)
-        // Personal: nobody else sees it.
+        // Personal: nobody else sees it in full (only as Busy).
         val alex = client.syncOk(home, SyncRequest(home.alex))
         assertTrue(alex.events.isEmpty() && alex.reminders.isEmpty())
     }
@@ -303,5 +304,38 @@ class SyncApiTest {
             conn.createStatement().executeQuery("SELECT deleted FROM event WHERE id = '${shared.id}'").use { it.next(); it.getBoolean(1) }
         }
         assertTrue(orphan)
+    }
+
+    @Test
+    fun `personal events show to others as Busy, without title or notes, unless the owner hides them`() = api { client, home ->
+        val gym = event(home.alex).copy(notes = "Leg day")
+        val hidden = event(home.alex).copy(showBusy = false)
+        val shared = event(home.alex, home.kim)
+        client.syncOk(home, SyncRequest(home.alex, events = listOf(gym, hidden, shared)))
+
+        // Sam sees only the personal, visible one, as days and times.
+        val sam = client.syncOk(home, SyncRequest(home.sam))
+        assertEquals(listOf(BusyDto(gym.id, home.alex, gym.weekdays, null, gym.startMinute, gym.endMinute)), sam.busy)
+        assertTrue(sam.events.isEmpty())
+        // Kim is on the shared one and sees it in full; it's not Busy for anyone.
+        val kim = client.syncOk(home, SyncRequest(home.kim))
+        assertEquals(listOf(gym.id), kim.busy.map { it.id })
+        // The owner gets the setting back on their own events, and never sees their own as Busy.
+        val alex = client.syncOk(home, SyncRequest(home.alex))
+        assertTrue(alex.busy.isEmpty())
+        assertEquals(false, alex.events.single { it.id == hidden.id }.showBusy)
+
+        // A phone before 1.4.0 sends no showBusy: the stored value stays.
+        client.syncOk(home, SyncRequest(home.alex, events = listOf(hidden.copy(title = "Renamed", showBusy = null, updatedAt = 2_000))))
+        assertEquals(false, client.syncOk(home, SyncRequest(home.alex)).events.single { it.id == hidden.id }.showBusy)
+        // Turning it on shows it; deleting it removes it.
+        client.syncOk(home, SyncRequest(home.alex, events = listOf(hidden.copy(showBusy = true, updatedAt = 3_000))))
+        assertEquals(setOf(gym.id, hidden.id), client.syncOk(home, SyncRequest(home.sam)).busy.map { it.id }.toSet())
+        client.syncOk(home, SyncRequest(home.alex, events = listOf(gym.copy(deleted = true, updatedAt = 4_000))))
+        assertEquals(listOf(hidden.id), client.syncOk(home, SyncRequest(home.sam)).busy.map { it.id })
+
+        // Once everyone has left a shared event, it's personal again.
+        client.syncOk(home, SyncRequest(home.kim, leave = listOf(LeaveSyncDto(shared.id, 5_000))))
+        assertEquals(setOf(hidden.id, shared.id), client.syncOk(home, SyncRequest(home.sam)).busy.map { it.id }.toSet())
     }
 }

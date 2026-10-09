@@ -37,11 +37,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.everyday.android.data.BusyEventEntity
 import app.everyday.android.data.ChoreWithDetails
 import app.everyday.android.data.EventView
 import app.everyday.android.data.MemberEntity
@@ -69,6 +71,7 @@ fun MonthView(
     today: LocalDate,
     events: List<EventView>,
     chores: List<ChoreWithDetails>,
+    busy: List<BusyEventEntity>,
     members: List<MemberEntity>,
     filter: MonthFilter,
     onMonthChange: (YearMonth) -> Unit,
@@ -78,6 +81,7 @@ fun MonthView(
     // Members removed since the filter was saved don't count; with nobody left, show everyone.
     val effective = effectiveFilter(filter, members)
     val days = remember(month) { monthDays(month) }
+    val membersById = members.associateBy { it.id }
     var pickingMembers by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
@@ -121,7 +125,8 @@ fun MonthView(
                             day = day,
                             inMonth = YearMonth.from(day) == month,
                             isToday = day == today,
-                            items = monthItemsOn(day, events, chores, effective),
+                            items = monthItemsOn(day, events, chores, effective, busy),
+                            membersById = membersById,
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                             onClick = { onDayClick(day) },
                         )
@@ -154,7 +159,15 @@ private fun filterLabel(filter: MonthFilter, members: List<MemberEntity>): Strin
 }
 
 @Composable
-private fun DayCell(day: LocalDate, inMonth: Boolean, isToday: Boolean, items: List<MonthItem>, modifier: Modifier, onClick: () -> Unit) {
+private fun DayCell(
+    day: LocalDate,
+    inMonth: Boolean,
+    isToday: Boolean,
+    items: List<MonthItem>,
+    membersById: Map<String, MemberEntity>,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     Column(
         modifier.clickable(onClickLabel = "Open day", onClick = onClick).padding(1.dp),
@@ -176,7 +189,7 @@ private fun DayCell(day: LocalDate, inMonth: Boolean, isToday: Boolean, items: L
             )
         }
         items.take(CELL_ITEMS).forEach { item ->
-            val (bg, fg) = itemColors(item)
+            val (bg, fg) = itemColors(item, membersById)
             Text(
                 item.title,
                 modifier = Modifier.fillMaxWidth().background(bg, RoundedCornerShape(2.dp)).padding(horizontal = 2.dp),
@@ -197,13 +210,20 @@ private fun DayCell(day: LocalDate, inMonth: Boolean, isToday: Boolean, items: L
     }
 }
 
-/** Same colours as the week timetable: chore green for chores, the event colour for events. */
+/**
+ * Same colours as the week timetable: chore green for chores, the event colour for events. Busy events
+ * take their owner's member colour, so you can tell whose they are.
+ */
 @Composable
-private fun itemColors(item: MonthItem): Pair<Color, Color> {
+private fun itemColors(item: MonthItem, membersById: Map<String, MemberEntity>): Pair<Color, Color> {
     val colors = MaterialTheme.colorScheme
     return when (item) {
         is MonthItem.Chore -> colors.choreColors()
         is MonthItem.Event -> colors.tertiaryContainer to colors.onTertiaryContainer
+        is MonthItem.Busy -> {
+            val c = memberColorOf(membersById[item.busy.ownerMemberId]?.color, item.busy.ownerMemberId)
+            c to if (c.luminance() > 0.5f) Color.Black else Color.White
+        }
     }
 }
 
@@ -255,6 +275,7 @@ private fun CheckRow(label: String, checked: Boolean, color: Color?, onChange: (
 @Composable
 fun MonthDaySheet(day: LocalDate, items: List<MonthItem>, members: List<MemberEntity>, onDismiss: () -> Unit, onSelect: (MonthItem) -> Unit) {
     val names = members.associate { it.id to it.displayName }
+    val membersById = members.associateBy { it.id }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
@@ -265,9 +286,11 @@ fun MonthDaySheet(day: LocalDate, items: List<MonthItem>, members: List<MemberEn
                 Text("Nothing on this day.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             items.forEach { item ->
-                val (bg, fg) = itemColors(item)
+                val (bg, fg) = itemColors(item, membersById)
                 Row(
-                    Modifier.fillMaxWidth().background(bg, RoundedCornerShape(8.dp)).clickable { onSelect(item) }
+                    // Busy events have nothing more to show, so they don't open anything.
+                    Modifier.fillMaxWidth().background(bg, RoundedCornerShape(8.dp))
+                        .clickable(enabled = item !is MonthItem.Busy) { onSelect(item) }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -283,16 +306,19 @@ fun MonthDaySheet(day: LocalDate, items: List<MonthItem>, members: List<MemberEn
     }
 }
 
-/** "16:00 – 17:00", "All day · shared by Sam", or "Chore · Sam, Alex". */
+/** "16:00 – 17:00", "All day · shared by Sam", "Chore · Sam, Alex", or "18:00 – 19:00 · Alex" for Busy. */
 private fun daySheetDetail(item: MonthItem, names: Map<String, String>): String = when (item) {
+    is MonthItem.Busy -> timeRange(item.busy.startMinute, item.busy.endMinute) + " · " + (names[item.busy.ownerMemberId] ?: "a removed member")
     is MonthItem.Chore -> "Chore · " + item.details.assigneeIds.joinToString(", ") { names[it] ?: "a removed member" }
     is MonthItem.Event -> {
         val e = item.view.event
-        val time = when {
-            e.startMinute == null -> "All day"
-            e.endMinute == null -> formatMinute(e.startMinute)
-            else -> "${formatMinute(e.startMinute)} – ${formatMinute(e.endMinute)}"
-        }
+        val time = timeRange(e.startMinute, e.endMinute)
         if (item.view.isOwn) time else "$time · shared by ${names[e.ownerMemberId] ?: "a removed member"}"
     }
+}
+
+private fun timeRange(start: Int?, end: Int?): String = when {
+    start == null -> "All day"
+    end == null -> formatMinute(start)
+    else -> "${formatMinute(start)} – ${formatMinute(end)}"
 }

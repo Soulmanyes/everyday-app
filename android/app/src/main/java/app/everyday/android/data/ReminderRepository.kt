@@ -39,6 +39,8 @@ data class EventDraft(
     val endMinute: Int? = null,
     /** Members it's shared with (not the owner). */
     val memberIds: List<String> = emptyList(),
+    /** While personal, others see it as "Busy" (times only); false hides it from them. */
+    val showBusy: Boolean = true,
 )
 
 /** How a person's persistent reminder on an event shows: not at all, all day, or from X minutes before the start. */
@@ -110,6 +112,9 @@ class ReminderRepository(
         return list.sortedBy { it.reminder.createdAt }.map { ReminderView(it, memberId, it.reminder.eventId?.let(byId::get)) }
     }
 
+    /** Other members' personal events the current profile sees as Busy (Phase 7). */
+    fun observeBusy(): Flow<List<BusyEventEntity>> = memberIdChanges.flatMapLatest { reminders.observeBusy(it) }
+
     /** Events the current profile sees, with its own reminders on each. */
     fun observeEvents(): Flow<List<EventView>> = memberIdChanges.flatMapLatest { id ->
         combine(reminders.observeVisibleEvents(id), reminders.observeVisible(id)) { events, list ->
@@ -129,6 +134,7 @@ class ReminderRepository(
             startMinute = e.event.startMinute,
             endMinute = e.event.endMinute,
             memberIds = e.members.map { it.memberId },
+            showBusy = e.event.showBusy,
         )
     }
 
@@ -150,6 +156,7 @@ class ReminderRepository(
             createdAt = existing?.event?.createdAt ?: now,
             updatedAt = now,
             dirty = true,
+            showBusy = draft.showBusy,
         )
         // Members keep their own "hidden"; new ones start shown.
         val previous = existing?.members.orEmpty().associateBy { it.memberId }

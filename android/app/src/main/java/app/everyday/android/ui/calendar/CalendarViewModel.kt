@@ -34,6 +34,10 @@ class CalendarViewModel(
     val chores = choreRepository.observeChores()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Other members' personal events shown as Busy on the month view. */
+    val busy = repository.observeBusy()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     /** Whose chores and events the month view shows, remembered on this phone. */
     val monthFilter = prefs.monthFilter
 
