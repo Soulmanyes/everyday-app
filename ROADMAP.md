@@ -86,6 +86,7 @@ Built on `dev` and verified on an API 37 emulator against the test stack on 2026
 
 ## Phase 6: Events timetable (1.2.0)
 - [ ] Reminders tab becomes a timetable of **events** (shown without notifying); each person can add their own reminders to an event, like chore times. Absorbs the old "shared household calendar / events" idea. Notes and open questions: [docs/ideas/events-timetable.md](docs/ideas/events-timetable.md)
+- [ ] Notification sound setting gets a **"Sound and vibrate"** option next to sound, vibrate and silent, for timed and persistent reminders. **"Sound" becomes sound only** (decided 2026-10-09): today its channel also asks for vibration (`reminders/Notifier.kt`). Channels can't change after they are created, so both need new channels.
 
 ## Phase 7: Chores, extended (1.3.0)
 - [ ] Chore rotation: assignees rotate each week automatically
