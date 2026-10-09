@@ -14,7 +14,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -42,6 +41,7 @@ import app.everyday.android.ui.EventIcon
 import app.everyday.android.ui.editor.TimeDialog
 import app.everyday.android.ui.formatBefore
 import app.everyday.android.ui.formatEventWhen
+import app.everyday.android.ui.formatLead
 import app.everyday.android.ui.formatMinute
 import java.time.LocalDate
 
@@ -145,7 +145,7 @@ fun EventSheet(
                         onClick = { pickingLead = true },
                         label = {
                             Text(
-                                (persistent as? Persistent.Before)?.let { leadLabel(it.minutes, e.endMinute != null) } ?: "Before it starts",
+                                (persistent as? Persistent.Before)?.let { formatLead(it.minutes, e.endMinute != null) } ?: "Before it starts",
                             )
                         },
                     )
@@ -194,7 +194,7 @@ fun EventSheet(
         }
     }
     if (pickingLead) {
-        BeforeDialog("Show the notification", { leadLabel(it, e.endMinute != null) }, onDismiss = { pickingLead = false }) {
+        BeforeDialog("Show the notification", { formatLead(it, e.endMinute != null) }, onDismiss = { pickingLead = false }) {
             onSetPersistent(Persistent.Before(it))
             pickingLead = false
         }
@@ -217,12 +217,6 @@ fun EventSheet(
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
-}
-
-/** "From 30 min before until it ends", or "until it starts" for an event with no end time. */
-private fun leadLabel(minutes: Int, hasEnd: Boolean): String {
-    val until = if (hasEnd) "until it ends" else "until it starts"
-    return if (minutes == 0) "From the start $until" else "From ${formatBefore(minutes).removeSuffix(" before")} before $until"
 }
 
 @Composable
@@ -248,6 +242,3 @@ private fun BeforeDialog(title: String, label: (Int) -> String, onDismiss: () ->
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
-
-/** Shown on an event block when the picked profile has active reminders on it. */
-val ReminderBell = Icons.Default.Notifications

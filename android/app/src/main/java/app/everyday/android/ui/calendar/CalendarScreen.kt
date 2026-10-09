@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.everyday.android.data.EventView
+import app.everyday.android.data.MemberEntity
 import app.everyday.android.data.ReminderMode
 import app.everyday.android.data.ReminderView
 import app.everyday.android.reminders.MINUTES_PER_DAY
@@ -62,6 +63,7 @@ import app.everyday.android.reminders.isOnWeekday
 import app.everyday.android.ui.choreColors
 import app.everyday.android.ui.dayShort
 import app.everyday.android.ui.ChoreIcon
+import app.everyday.android.ui.ReminderIcon
 import app.everyday.android.ui.formatMinute
 import app.everyday.android.ui.formatWindow
 import kotlinx.coroutines.delay
@@ -160,23 +162,7 @@ fun CalendarScreen(onEditEvent: (String?) -> Unit, onEditChoreReminder: (String)
     }
 
     when (val selected = entries.firstOrNull { it.key == selectedKey }) {
-        is Entry.Event -> {
-            val id = selected.view.event.id
-            EventSheet(
-                item = selected.view,
-                today = today,
-                memberNames = members.associate { it.id to it.displayName },
-                onDismiss = { selectedKey = null },
-                onEdit = { selectedKey = null; onEditEvent(id) },
-                onDelete = { selectedKey = null; vm.deleteEvent(id) },
-                onLeave = { selectedKey = null; vm.leaveEvent(id) },
-                onAddTime = { minute, relative -> vm.addEventTime(id, minute, relative) },
-                onRemoveTime = { minute, relative -> vm.removeEventTime(id, minute, relative) },
-                onSetPersistent = { vm.setPersistent(id, it) },
-                onSetActive = { vm.setEventActive(id, it) },
-                onToggleDone = { done -> selected.view.persistentReminder?.let { vm.setDoneToday(it.reminder.id, done) } },
-            )
-        }
+        is Entry.Event -> EventDetailsSheet(vm, selected.view, today, members, onDismiss = { selectedKey = null }, onEditEvent = onEditEvent)
         is Entry.ChoreReminder -> {
             val r = selected.view.reminder
             ReminderSheet(
@@ -190,6 +176,33 @@ fun CalendarScreen(onEditEvent: (String?) -> Unit, onEditChoreReminder: (String)
         }
         null -> {}
     }
+}
+
+/** [EventSheet] wired to [vm]: shown from the Events timetable and from the Reminders list. */
+@Composable
+fun EventDetailsSheet(
+    vm: CalendarViewModel,
+    view: EventView,
+    today: LocalDate,
+    members: List<MemberEntity>,
+    onDismiss: () -> Unit,
+    onEditEvent: (String) -> Unit,
+) {
+    val id = view.event.id
+    EventSheet(
+        item = view,
+        today = today,
+        memberNames = members.associate { it.id to it.displayName },
+        onDismiss = onDismiss,
+        onEdit = { onDismiss(); onEditEvent(id) },
+        onDelete = { onDismiss(); vm.deleteEvent(id) },
+        onLeave = { onDismiss(); vm.leaveEvent(id) },
+        onAddTime = { minute, relative -> vm.addEventTime(id, minute, relative) },
+        onRemoveTime = { minute, relative -> vm.removeEventTime(id, minute, relative) },
+        onSetPersistent = { vm.setPersistent(id, it) },
+        onSetActive = { vm.setEventActive(id, it) },
+        onToggleDone = { done -> view.persistentReminder?.let { vm.setDoneToday(it.reminder.id, done) } },
+    )
 }
 
 @Composable
@@ -395,7 +408,7 @@ private fun EntryBlock(
     ) {
         val icon = when {
             entry is Entry.ChoreReminder -> ChoreIcon
-            reminding -> ReminderBell
+            reminding -> ReminderIcon
             else -> null
         }
         icon?.let { Icon(it, contentDescription = null, tint = fg, modifier = Modifier.padding(top = 1.dp).size(9.dp)) }

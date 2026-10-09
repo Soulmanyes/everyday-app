@@ -48,10 +48,12 @@ import app.everyday.android.ui.household.WaitingScreen
 import app.everyday.android.ui.household.SetupFlow
 import app.everyday.android.ui.settings.SettingsScreen
 import app.everyday.android.ui.event.EventEditorScreen
+import app.everyday.android.ui.reminders.RemindersScreen
 
 private enum class Tab(val label: String, val icon: ImageVector) {
-    Reminders("Reminders", ReminderIcon),
+    Events("Events", EventIcon),
     Chores("Chores", ChoreIcon),
+    Reminders("Reminders", ReminderIcon),
 }
 
 private object Routes {
@@ -137,7 +139,7 @@ private fun MainScreen(
     onEditChore: (String?) -> Unit,
     onAddChoreReminder: (String) -> Unit,
 ) {
-    var tab by rememberSaveable { mutableStateOf(Tab.Reminders) }
+    var tab by rememberSaveable { mutableStateOf(Tab.Events) }
     val context = LocalContext.current
     val update by context.app.updates.update.collectAsStateWithLifecycle()
     Scaffold(
@@ -175,8 +177,9 @@ private fun MainScreen(
             }
             Box(Modifier.fillMaxSize()) {
                 when (tab) {
-                    Tab.Reminders -> CalendarScreen(onEditEvent = onEditEvent, onEditChoreReminder = onEditChoreReminder)
+                    Tab.Events -> CalendarScreen(onEditEvent = onEditEvent, onEditChoreReminder = onEditChoreReminder)
                     Tab.Chores -> ChoresScreen(onEditChore = onEditChore, onAddReminder = onAddChoreReminder)
+                    Tab.Reminders -> RemindersScreen(onEditEvent = onEditEvent, onEditChoreReminder = onEditChoreReminder)
                 }
             }
         }
