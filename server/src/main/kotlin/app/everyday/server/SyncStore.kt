@@ -82,16 +82,18 @@ class SyncStore(private val db: DataSource) {
 
         prepareStatement(
             """
-            INSERT INTO event (id, owner_member_id, title, notes, weekdays, on_date, start_minute, end_minute, created_at, updated_at, deleted)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO event (id, owner_member_id, title, notes, weekdays, on_date, start_minute, end_minute, created_at, updated_at, deleted, show_busy)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, TRUE))
             ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, notes = EXCLUDED.notes, weekdays = EXCLUDED.weekdays,
                 on_date = EXCLUDED.on_date, start_minute = EXCLUDED.start_minute, end_minute = EXCLUDED.end_minute,
-                updated_at = EXCLUDED.updated_at, deleted = EXCLUDED.deleted
+                updated_at = EXCLUDED.updated_at, deleted = EXCLUDED.deleted, show_busy = COALESCE(?, event.show_busy)
             """.trimIndent(),
         ).run {
             setObject(1, id); setObject(2, me); setString(3, title); setString(4, notes); setInt(5, e.weekdays); setObject(6, onDate)
             setObject(7, e.startMinute); setObject(8, e.endMinute)
             setObject(9, e.createdAt.toTime()); setObject(10, e.updatedAt.toTime()); setBoolean(11, e.deleted)
+            // Phones before 1.4.0 don't send showBusy: keep what's stored.
+            setObject(12, e.showBusy); setObject(13, e.showBusy)
             executeUpdate()
         }
         if (e.deleted) {
@@ -288,7 +290,7 @@ class SyncStore(private val db: DataSource) {
         val events = prepareStatement(
             """
             SELECT e.id, e.owner_member_id, e.title, e.notes, e.weekdays, e.on_date, e.start_minute, e.end_minute,
-                   e.created_at, e.updated_at, e.deleted
+                   e.created_at, e.updated_at, e.deleted, e.show_busy
             FROM event e
             WHERE e.owner_member_id = ? OR EXISTS (
                 SELECT 1 FROM event_member em WHERE em.event_id = e.id AND em.member_id = ? AND NOT em.deleted)
@@ -313,6 +315,7 @@ class SyncStore(private val db: DataSource) {
                                 createdAt = rs.millis("created_at"),
                                 updatedAt = rs.millis("updated_at"),
                                 deleted = rs.getBoolean("deleted"),
+                                showBusy = rs.getBoolean("show_busy"),
                             ),
                         )
                     }
@@ -401,7 +404,38 @@ class SyncStore(private val db: DataSource) {
             setObject(1, me)
             executeQuery().use { rs -> if (rs.next()) SettingsSyncDto(rs.getInt(1), rs.getString(2), rs.getString(3), rs.millis(4)) else null }
         }
+        // Other members' personal events that show as Busy: days and times only. The title and notes never
+        // leave the server. Events whose members have all left count as personal again.
+        val busy = prepareStatement(
+            """
+            SELECT e.id, e.owner_member_id, e.weekdays, e.on_date, e.start_minute, e.end_minute
+            FROM event e JOIN member m ON m.id = e.owner_member_id
+            WHERE e.owner_member_id <> ? AND NOT e.deleted AND e.show_busy AND NOT m.deleted
+                AND m.household_id = (SELECT household_id FROM member WHERE id = ?)
+                AND NOT EXISTS (SELECT 1 FROM event_member em WHERE em.event_id = e.id AND NOT em.deleted)
+            ORDER BY e.created_at, e.id
+            """.trimIndent(),
+        ).run {
+            setObject(1, me); setObject(2, me)
+            executeQuery().use { rs ->
+                buildList {
+                    while (rs.next()) {
+                        add(
+                            BusyDto(
+                                id = rs.getString("id"),
+                                ownerMemberId = rs.getString("owner_member_id"),
+                                weekdays = rs.getInt("weekdays"),
+                                onDate = rs.getObject("on_date", LocalDate::class.java)?.toString(),
+                                startMinute = rs.getObject("start_minute") as Int?,
+                                endMinute = rs.getObject("end_minute") as Int?,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
         return SyncResponse(
+            busy = busy,
             events = events.map { it.copy(members = members[it.id].orEmpty()) },
             reminders = rows.map { r -> r.copy(times = times[r.id].orEmpty(), windows = windows[r.id].orEmpty()) },
             states = states,

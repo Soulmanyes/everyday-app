@@ -202,6 +202,24 @@ interface ReminderDao {
 
     @Query("UPDATE event SET ownerMemberId = :to, updatedAt = :now, dirty = 1 WHERE ownerMemberId = :from")
     suspend fun moveEvents(from: String, to: String, now: Long)
+
+    // Busy events (Phase 7)
+
+    @Query("SELECT * FROM busy_event WHERE viewerMemberId = :viewerId")
+    fun observeBusy(viewerId: String): Flow<List<BusyEventEntity>>
+
+    @Query("DELETE FROM busy_event WHERE viewerMemberId = :viewerId")
+    suspend fun deleteBusy(viewerId: String)
+
+    @Upsert
+    suspend fun upsertBusy(busy: List<BusyEventEntity>)
+
+    /** Busy events come whole in every snapshot: replace [viewerId]'s with the server's. */
+    @Transaction
+    suspend fun replaceBusy(viewerId: String, busy: List<BusyEventEntity>) {
+        deleteBusy(viewerId)
+        upsertBusy(busy)
+    }
 }
 
 @Dao

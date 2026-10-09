@@ -3,6 +3,7 @@ package app.everyday.server
 import org.flywaydb.core.Flyway
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class MigrationTest {
     private val db get() = ApiTest.postgres.postgresDatabase
@@ -185,5 +186,28 @@ class MigrationTest {
             rows("SELECT reminder_id, right(member_id::text, 2), done_on FROM reminder_state").sorted(),
         )
         assertEquals(listOf("0"), rows("SELECT count(*) FROM reminder_window"))
+    }
+
+    @Test
+    fun `V8 shows existing events as Busy`() {
+        db.connection.use { it.createStatement().execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;") }
+        Flyway.configure().dataSource(db).target("7").load().migrate()
+        db.connection.use { conn ->
+            conn.createStatement().execute(
+                """
+                INSERT INTO household (id, name, code_hash, timezone, admin_pin_hash)
+                    VALUES ('00000000-0000-0000-0000-000000000001', 'Home', 'x', 'Europe/London', 'y');
+                INSERT INTO member (id, household_id, display_name)
+                    VALUES ('00000000-0000-0000-0000-0000000000aa', '00000000-0000-0000-0000-000000000001', 'Sam');
+                INSERT INTO event (id, owner_member_id, title, weekdays, created_at, updated_at)
+                    VALUES ('00000000-0000-0000-0000-000000000e01', '00000000-0000-0000-0000-0000000000aa', 'Gym', 1, now(), now());
+                """.trimIndent(),
+            )
+        }
+        migrate(db)
+        val busy = db.connection.use { conn ->
+            conn.createStatement().executeQuery("SELECT show_busy FROM event").use { rs -> rs.next(); rs.getBoolean(1) }
+        }
+        assertTrue(busy)
     }
 }

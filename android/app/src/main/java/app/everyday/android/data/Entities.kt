@@ -62,6 +62,25 @@ data class EventEntity(
     val deleted: Boolean = false,
     /** Changed on this phone since the last sync. */
     val dirty: Boolean = false,
+    /** While personal, other members see it as "Busy" (times only); false hides it from them (Phase 7). */
+    @ColumnInfo(defaultValue = "1") val showBusy: Boolean = true,
+)
+
+/**
+ * Another member's personal event that [viewerMemberId] sees as "Busy" (Phase 7): days and times only,
+ * as the server sends them; the server never sends its title or notes. Replaced on every sync, and kept
+ * apart from [EventEntity] so alarms and the week view never treat it as an event.
+ */
+@Entity(tableName = "busy_event", primaryKeys = ["viewerMemberId", "id"])
+data class BusyEventEntity(
+    val viewerMemberId: String,
+    val id: String,
+    val ownerMemberId: String,
+    /** Bit 0 = Monday ... bit 6 = Sunday; 0 for a one-off event. */
+    val weekdays: Int = 0,
+    val onDate: String? = null,
+    val startMinute: Int? = null,
+    val endMinute: Int? = null,
 )
 
 /**

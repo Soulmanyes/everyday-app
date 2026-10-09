@@ -23,11 +23,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ChoreSlotEntity::class,
         EventEntity::class,
         EventMemberEntity::class,
+        BusyEventEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
-    // 1 -> 2 and 3 -> 4 add chore cache tables, 4 -> 5 the member colour. MigrationTest checks reminders survive every step.
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
+    // 1 -> 2 and 3 -> 4 add chore cache tables, 4 -> 5 the member colour, 6 -> 7 Busy events (Phase 7).
+    // MigrationTest checks reminders survive every step.
+    autoMigrations = [
+        AutoMigration(from = 1, to = 2), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 6, to = 7),
+    ],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun reminderDao(): ReminderDao

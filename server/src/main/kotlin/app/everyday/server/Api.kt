@@ -155,6 +155,22 @@ data class EventSyncDto(
     val createdAt: Long,
     val updatedAt: Long,
     val deleted: Boolean = false,
+    /**
+     * Whether other members see this personal event as "Busy" (Phase 7). Null from phones before 1.4.0,
+     * which keeps the stored value (Busy for a new event).
+     */
+    val showBusy: Boolean? = null,
+)
+
+/** Another member's personal event shown as "Busy": its days and times only, never its title or notes. */
+@Serializable
+data class BusyDto(
+    val id: String,
+    val ownerMemberId: String,
+    val weekdays: Int = 0,
+    val onDate: String? = null,
+    val startMinute: Int? = null,
+    val endMinute: Int? = null,
 )
 
 /** A reminder time: a minute of the day, or with [relative] the minutes before the event starts. */
@@ -217,4 +233,6 @@ data class SyncResponse(
     val states: List<StateSyncDto>,
     val settings: SettingsSyncDto?,
     val rejected: List<String>,
+    /** Other members' personal events shown as Busy (Phase 7). Phones before 1.4.0 ignore it. */
+    val busy: List<BusyDto> = emptyList(),
 )
