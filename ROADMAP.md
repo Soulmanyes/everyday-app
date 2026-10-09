@@ -72,7 +72,7 @@ Design agreed 2026-10-08 (see CLAUDE.md, "Sync (Phase 4)"). Built and verified e
 
 ## How phases ship
 
-Each phase is built on `dev` and works on its own. When it's done, the owner is asked whether to merge it into `main`. If approved, the version goes up and `deploy/publish-release.sh` publishes it. Phases raise the middle number (Phase 5 = 1.1.0, Phase 6 = 1.2.0, …), and fixes between phases raise the last (1.1.1).
+Each phase is built on `dev` and works on its own. When it's done, the owner is asked whether to merge it into `main`. If approved, the version goes up and `deploy/publish-release.sh` publishes it. Phases raise the middle number (Phase 5 = 1.1.0, Phase 6 = 1.2.0, Phase 6.5 = 1.3.0, …), and fixes between phases raise the last (1.1.1).
 
 ## Phase 5: Look & feel, and backups (1.1.0)
 Built on `dev` and verified on an API 37 emulator against the test stack on 2026-10-09; backups running on the VM and this PC.
@@ -90,14 +90,20 @@ Built on `dev` and verified on an API 37 emulator against the test stack on 2026
 - [x] Reminders tab becomes a timetable of **events** (shown without notifying); each person can add their own reminders to an event, like chore times. Absorbs the old "shared household calendar / events" idea. Notes and open questions: [docs/ideas/events-timetable.md](docs/ideas/events-timetable.md)
 - [x] Notification sound setting gets a **"Sound and vibrate"** option next to sound, vibrate and silent, for timed and persistent reminders. **"Sound" becomes sound only** (decided 2026-10-09): today its channel also asks for vibration (`reminders/Notifier.kt`). Channels can't change after they are created, so both need new channels.
 
-## Phase 7: Chores, extended (1.3.0)
+## Phase 6.5: Events and Reminders tabs (1.3.0)
+Clarifies Phase 6 (decided 2026-10-09). App only: no server or schema change.
+
+- [ ] Rename the **Reminders** tab to **Events**. It stays the events timetable built in Phase 6.
+- [ ] New **Reminders** tab: a plain list of all my reminders, on events and on chores. Each row shows what it's on, its times or windows, and whether it's on or paused; tapping it opens it for editing.
+
+## Phase 7: Chores, extended (1.4.0)
 - [ ] Chore rotation: assignees rotate each week automatically
 - [ ] Chore points and a weekly summary
 
-## Phase 8: Instant updates (1.4.0)
+## Phase 8: Instant updates (1.5.0)
 - [ ] Push a notification to phones when something changes (chores, shared reminders, join requests) instead of waiting for the 15-minute refresh (ntfy or FCM: decide in Phase 8)
 
-## Phase 9: Multiple households (1.5.0)
+## Phase 9: Multiple households (1.6.0)
 - [ ] Others create their own households on this server. Notes: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
 - [ ] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong-code/PIN limits per household and per sender instead of one global lock, dependencies kept up to date. Per-IP rate limiting in the API was added early (2026-10-09, see "Developer and ops").
 
