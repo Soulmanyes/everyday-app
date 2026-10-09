@@ -99,10 +99,13 @@ Built on `dev` and verified on an API 37 emulator against the test stack on 2026
 
 ## Phase 9: Multiple households (1.5.0)
 - [ ] Others create their own households on this server. Notes: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
-- [ ] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong-code/PIN limits per household and per sender instead of one global lock, rate limiting in front of the API, dependencies kept up to date
+- [ ] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong-code/PIN limits per household and per sender instead of one global lock, dependencies kept up to date. Per-IP rate limiting in the API was added early (2026-10-09, see "Developer and ops").
 
 ## Developer and ops (any time, no app release)
-- [ ] CI: GitHub Actions building the server and the debug APK, running the tests, and flagging outdated dependencies
+- [x] CI: GitHub Actions building the server and the debug APK and running the unit tests (2026-10-09)
+- [ ] CI: flag outdated dependencies
+- [x] Per-IP rate limits in the API (Ktor `RateLimit`): 10/min for joining and setup, 30/min for admin-PIN routes, 300/min overall (2026-10-09)
+- [x] Dependency check (2026-10-09): everything current except WorkManager (2.11.2 to 2.12.0). Kotlin 2.5 is still beta; `kotlinx-serialization` is pinned for room-testing; embedded Postgres stays on 17 to match production
 - [ ] Shared models: move API DTOs into a Kotlin Multiplatform `shared` module used by both builds
 
 ## Dropped (decided 2026-10-09)
