@@ -6,7 +6,7 @@ Guidance for Claude Code (and humans) working in this repository.
 
 **Everyday App** is a private Android app for one household. It has two core features:
 
-1. **Events timetable** (the Reminders tab): events, weekly or on a date, personal or shared with chosen members. Each person adds their own reminders to an event.
+1. **Events timetable** (the Events tab): events, weekly or on a date, personal or shared with chosen members. Each person adds their own reminders to an event.
 2. **Chore timetable**: a household-wide weekly schedule of chores, with members linked to each chore.
 
 A small backend on the owner's Oracle Cloud VM stores and syncs the data between the household's phones.
@@ -66,7 +66,9 @@ deploy/    docker-compose stack for the Oracle VM (Postgres, API, Caddy for HTTP
 
 Weekdays are stored as a 7-bit mask (bit 0 = Monday through bit 6 = Sunday). Events repeat **weekly** or happen **once on a date**; chores repeat weekly. Times of day are local wall-clock times in the household timezone.
 
-The Reminders tab is a **weekly timetable** (7 day columns, with previous/next week and a day view) of events and the profile's chore reminders, not a list. An event shows a bell when the profile has active reminders on it.
+The Events tab is a **weekly timetable** (7 day columns, with previous/next week and a day view) of events and the profile's chore reminders, not a list. An event shows a bell when the profile has active reminders on it.
+
+The **Reminders** tab (Phase 6.5) is a plain list of the profile's own reminders, in two sections (Events, then Chores), A to Z by title, one row per reminder. Each row shows what it's on, when that happens, its times or windows, and a switch to pause or resume it. Tapping an event reminder opens its event's sheet (where event reminders are edited); tapping a chore reminder opens its editor. Tabs: Events, Chores, Reminders.
 
 Chore reminders **look like chores**: the fixed chore green and the Chores tab's house icon (`ui/Kinds.kt`), so users can tell them from events. Member dots use the member's **household-wide colour** from the server (`member.color`, a palette key; `ui/MemberColors.kt` maps keys to colours). The server gives each new member a free colour, keeps colours unique per household, and members change their own in Settings (no PIN) or the admin in Manage members. 12 colours, no greens (chore cards are green).
 

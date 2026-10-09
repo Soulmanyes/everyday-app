@@ -50,3 +50,9 @@ fun formatEventWhen(event: EventEntity): String {
     }
     return "$days · $time"
 }
+
+/** A persistent event reminder's lead: "From 30 min before until it ends", or "until it starts" for an event with no end time. */
+fun formatLead(minutes: Int, hasEnd: Boolean): String {
+    val until = if (hasEnd) "until it ends" else "until it starts"
+    return if (minutes == 0) "From the start $until" else "From ${formatBefore(minutes).removeSuffix(" before")} before $until"
+}
