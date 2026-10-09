@@ -10,7 +10,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 
 /*
  * Chore reminders look like chores (the chore card colour and the Chores tab's house icon), so they
- * stand apart from normal reminders, which use the Reminders tab's icon and are the ones that can be shared.
+ * stand apart from events, which use the Reminders tab's icon.
  */
 
 val ReminderIcon: ImageVector = Icons.Default.DateRange
