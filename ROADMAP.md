@@ -105,7 +105,9 @@ Decided 2026-10-09. Replaces the old Phase 7 (chore rotation and points, now dro
 - [x] Events shared with me show in full, as on the Events tab.
 
 ## Phase 8: What's new (1.5.0)
-- [ ] After the app updates, show a popup once listing what changed in the new version
+App only: no server or schema change. Built on `dev` and checked on an API 37 emulator on 2026-10-11 (fresh install, update from 1.4.0, dismiss, Settings list).
+
+- [x] After the app updates, show a popup once listing what changed in the new version. Notes are bundled in the app (`ui/whatsnew/ReleaseNotes.kt`, one entry per versionCode); a phone that skipped versions sees every one it missed; a fresh install shows nothing. Settings → About → **What's new** lists every release back to 1.1.0 (decided 2026-10-10).
 
 ## Phase 8.5: Instant updates (1.6.0)
 Moved out of Phase 8 on 2026-10-10: it waits until the owner sets up the Firebase project.

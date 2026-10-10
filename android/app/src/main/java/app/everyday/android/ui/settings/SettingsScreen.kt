@@ -2,6 +2,7 @@ package app.everyday.android.ui.settings
 
 import app.everyday.android.ui.household.ColorPicker
 import app.everyday.android.app
+import app.everyday.android.BuildConfig
 import androidx.compose.ui.semantics.Role
 import androidx.compose.material3.Checkbox
 import androidx.compose.foundation.selection.toggleable
@@ -58,7 +59,7 @@ private val SNOOZE_OPTIONS = listOf(5, 10, 15, 30, 60)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onManageMembers: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onManageMembers: () -> Unit, onWhatsNew: () -> Unit) {
     val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
     val household: HouseholdViewModel = viewModel(factory = HouseholdViewModel.Factory)
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -170,6 +171,19 @@ fun SettingsScreen(onBack: () -> Unit, onManageMembers: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            HorizontalDivider()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("About", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Version ${BuildConfig.VERSION_NAME}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                OutlinedButton(onClick = onWhatsNew) { Text("What's new") }
+            }
         }
     }
 }

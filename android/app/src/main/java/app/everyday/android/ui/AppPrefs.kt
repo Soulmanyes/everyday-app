@@ -1,14 +1,19 @@
 package app.everyday.android.ui
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.content.edit
+import app.everyday.android.BuildConfig
 import app.everyday.android.ui.calendar.MonthFilter
+import app.everyday.android.ui.whatsnew.ReleaseNote
+import app.everyday.android.ui.whatsnew.pendingNotes
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** Display preferences kept on this phone only (not synced). */
-class AppPrefs(context: Context) {
+class AppPrefs(private val context: Context) {
     private val prefs = context.getSharedPreferences("ui", Context.MODE_PRIVATE)
     private val _followPhoneTheme = MutableStateFlow(prefs.getBoolean(KEY_FOLLOW, false))
 
@@ -55,6 +60,36 @@ class AppPrefs(context: Context) {
         _monthFilter.value = filter
     }
 
+    private val _whatsNew = MutableStateFlow(readWhatsNew())
+
+    /** Release notes to show once after an update (Phase 8); empty once dismissed. */
+    val whatsNew: StateFlow<List<ReleaseNote>> = _whatsNew.asStateFlow()
+
+    fun dismissWhatsNew() {
+        prefs.edit { putInt(KEY_NOTES_SEEN, BuildConfig.VERSION_CODE) }
+        _whatsNew.value = emptyList()
+    }
+
+    /** Saved only when dismissed, so the popup waits until the main screen shows it. */
+    private fun readWhatsNew(): List<ReleaseNote> {
+        val lastSeen = if (prefs.contains(KEY_NOTES_SEEN)) prefs.getInt(KEY_NOTES_SEEN, 0) else null
+        val notes = pendingNotes(lastSeen, BuildConfig.VERSION_CODE, freshInstall = isFreshInstall())
+        // Nothing to show: remember this version, so a later update doesn't take this phone for one from before the popup.
+        if (notes.isEmpty() && (lastSeen == null || lastSeen < BuildConfig.VERSION_CODE)) {
+            prefs.edit { putInt(KEY_NOTES_SEEN, BuildConfig.VERSION_CODE) }
+        }
+        return notes
+    }
+
+    private fun isFreshInstall(): Boolean = runCatching {
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION") context.packageManager.getPackageInfo(context.packageName, 0)
+        }
+        info.firstInstallTime == info.lastUpdateTime
+    }.getOrDefault(true)
+
     private companion object {
         const val KEY_FOLLOW = "follow_phone_theme"
         const val KEY_MONTH_MODE = "month_mode"
@@ -63,5 +98,7 @@ class AppPrefs(context: Context) {
         const val KEY_MONTH_MEMBERS = "month_members"
         const val KEY_MONTH_EVENT_MEMBERS = "month_event_members"
         const val KEY_MONTH_CHORE_MEMBERS = "month_chore_members"
+        /** The versionCode whose release notes were last shown (Phase 8). */
+        const val KEY_NOTES_SEEN = "notes_seen_version"
     }
 }
