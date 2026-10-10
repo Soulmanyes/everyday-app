@@ -49,6 +49,8 @@ import app.everyday.android.ui.household.SetupFlow
 import app.everyday.android.ui.settings.SettingsScreen
 import app.everyday.android.ui.event.EventEditorScreen
 import app.everyday.android.ui.reminders.RemindersScreen
+import app.everyday.android.ui.whatsnew.WhatsNewDialog
+import app.everyday.android.ui.whatsnew.WhatsNewScreen
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     Events("Events", EventIcon),
@@ -60,6 +62,7 @@ private object Routes {
     const val MAIN = "main"
     const val SETTINGS = "settings"
     const val MEMBERS = "members"
+    const val WHATS_NEW = "whats-new"
     const val EDIT = "edit?id={id}&choreId={choreId}"
     fun edit(id: String?) = if (id == null) "edit" else "edit?id=$id"
     fun newChoreReminder(choreId: String) = "edit?choreId=$choreId"
@@ -122,7 +125,11 @@ private fun MainNav(household: HouseholdViewModel) {
             SettingsScreen(
                 onBack = { nav.popBackStack() },
                 onManageMembers = { nav.navigate(Routes.MEMBERS) },
+                onWhatsNew = { nav.navigate(Routes.WHATS_NEW) },
             )
+        }
+        composable(Routes.WHATS_NEW) {
+            WhatsNewScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.MEMBERS) {
             MembersScreen(household, onBack = { nav.popBackStack() })
@@ -142,6 +149,8 @@ private fun MainScreen(
     var tab by rememberSaveable { mutableStateOf(Tab.Events) }
     val context = LocalContext.current
     val update by context.app.updates.update.collectAsStateWithLifecycle()
+    val whatsNew by context.app.prefs.whatsNew.collectAsStateWithLifecycle()
+    if (whatsNew.isNotEmpty()) WhatsNewDialog(whatsNew, onDismiss = context.app.prefs::dismissWhatsNew)
     Scaffold(
         topBar = {
             TopAppBar(
