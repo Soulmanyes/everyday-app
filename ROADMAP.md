@@ -106,6 +106,7 @@ Decided 2026-10-09. Replaces the old Phase 7 (chore rotation and points, now dro
 
 ## Phase 8: Instant updates (1.5.0)
 - [ ] Push a notification to phones when something changes (chores, shared reminders, join requests) instead of waiting for the 15-minute refresh (ntfy or FCM: decide in Phase 8)
+- [ ] After the app updates, show a popup once listing what changed in the new version
 
 ## Phase 9: Multiple households (1.6.0)
 - [ ] Others create their own households on this server. Notes: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
