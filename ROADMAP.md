@@ -104,11 +104,14 @@ Decided 2026-10-09. Replaces the old Phase 7 (chore rotation and points, now dro
 - [x] Personal events can show to other members as **"Busy"** (times only, no title or notes) or not at all. The owner chooses per event in the editor ("Others see: Busy | Nothing"); the default is **Busy**, for new and existing personal events. Server V8 adds `event.show_busy` and a `busy` list to the sync snapshot; Room 7 adds `busy_event`. Busy shows on the month view only, in the owner's colour. Events shared between other members never show as Busy (decided 2026-10-09).
 - [x] Events shared with me show in full, as on the Events tab.
 
-## Phase 8: Instant updates (1.5.0)
-- [ ] Push a notification to phones when something changes (chores, shared reminders, join requests) instead of waiting for the 15-minute refresh (ntfy or FCM: decide in Phase 8)
+## Phase 8: What's new (1.5.0)
 - [ ] After the app updates, show a popup once listing what changed in the new version
 
-## Phase 9: Multiple households (1.6.0)
+## Phase 8.5: Instant updates (1.6.0)
+Moved out of Phase 8 on 2026-10-10: it waits until the owner sets up the Firebase project.
+- [ ] Push a notification to phones when something changes (chores, shared reminders, join requests) instead of waiting for the 15-minute refresh. Uses **FCM** (decided 2026-10-10): a data-only "sync now" push, so no household data goes through Google; the 15-minute refresh stays as a fallback. Needs a Firebase project with both app IDs, `google-services.json` in the app, and a service-account key on the VM.
+
+## Phase 9: Multiple households (1.7.0)
 - [ ] Others create their own households on this server. Notes: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
 - [ ] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong-code/PIN limits per household and per sender instead of one global lock, dependencies kept up to date. Per-IP rate limiting in the API was added early (2026-10-09, see "Developer and ops").
 
