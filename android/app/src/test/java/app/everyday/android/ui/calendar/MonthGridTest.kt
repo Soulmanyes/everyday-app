@@ -91,9 +91,9 @@ class MonthGridTest {
         val members = listOf(MemberEntity("sam", "Sam", 1), MemberEntity("alex", "Alex", 1))
         assertEquals(
             MonthFilter.of(setOf("alex")),
-            effectiveFilter(MonthFilter.of(setOf("alex", "gone")), members),
+            effectiveFilter(MonthFilter.of(setOf("alex", "gone")), members, me),
         )
-        assertEquals(MonthFilter(), effectiveFilter(MonthFilter.of(setOf("gone")), members))
+        assertEquals(MonthFilter(), effectiveFilter(MonthFilter.of(setOf("gone")), members, me))
     }
 
     @Test
@@ -123,6 +123,29 @@ class MonthGridTest {
         // A member with only chores showing still counts as shown, so the filter isn't empty.
         val members = listOf(MemberEntity("alex", "Alex", 1), MemberEntity("jo", "Jo", 1))
         val choresOnly = MonthFilter(everyone = false, choreMemberIds = setOf("jo"))
-        assertEquals(choresOnly, effectiveFilter(choresOnly, members))
+        assertEquals(choresOnly, effectiveFilter(choresOnly, members, me))
+    }
+
+    @Test
+    fun `until a filter is picked, the views show my own events and chores`() {
+        val members = listOf(MemberEntity("sam", "Sam", 1), MemberEntity("alex", "Alex", 1))
+        assertEquals(MonthFilter.of(setOf(me)), effectiveFilter(null, members, me))
+        // A picked filter, Everyone included, stays as picked.
+        assertEquals(MonthFilter(), effectiveFilter(MonthFilter(), members, me))
+    }
+
+    @Test
+    fun `month cells count per person - events for their owner, chores for each assignee shown`() {
+        val day = LocalDate.parse("2026-10-14")
+        val items = monthItemsOn(
+            day,
+            listOf(event("gym"), event("swim"), event("party", owner = "alex", sharedWith = listOf(me))),
+            listOf(chore("bins", everyDay, me, "alex"), chore("dishes", everyDay, "kim")),
+            MonthFilter(),
+        )
+        assertEquals(mapOf(me to 3, "alex" to 2, "kim" to 1), personCounts(items, MonthFilter()))
+        // Chores count only for assignees the filter shows.
+        val mine = MonthFilter.of(setOf(me))
+        assertEquals(mapOf(me to 3, "alex" to 1), personCounts(monthItemsOn(day, listOf(event("gym"), event("swim"), event("party", owner = "alex", sharedWith = listOf(me))), listOf(chore("bins", everyDay, me, "alex"), chore("dishes", everyDay, "kim")), mine), mine))
     }
 }

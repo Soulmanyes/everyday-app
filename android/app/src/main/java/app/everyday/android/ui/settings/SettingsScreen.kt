@@ -118,6 +118,26 @@ fun SettingsScreen(household: HouseholdViewModel, onBack: () -> Unit, onManageMe
                     )
                 }
             }
+            // Phase 9.7: per phone, on by default.
+            val showChores by context.app.prefs.showChores.collectAsStateWithLifecycle()
+            Row(
+                Modifier.fillMaxWidth().toggleable(
+                    value = showChores,
+                    role = Role.Checkbox,
+                    onValueChange = { context.app.prefs.setShowChores(it) },
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = showChores, onCheckedChange = null)
+                Column(Modifier.padding(start = 8.dp)) {
+                    Text("Show chores on the Events tab")
+                    Text(
+                        "Chores, and your chore reminders, in the week and month views. They always show on the Chores and Reminders tabs.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             HorizontalDivider()
 
             Setting("Snooze length", "How long Snooze waits before reminding you again") {

@@ -139,7 +139,7 @@ class Notifier(private val context: Context) {
             .setContentTitle(if (count == 1) "Someone wants to join $householdName" else "$count people want to join $householdName")
             .setContentText("Open Settings → Manage members to approve")
             .setAutoCancel(true)
-            .setContentIntent(openApp(JOIN_TAG))
+            .setContentIntent(openApp("$JOIN_TAG:$householdKey", householdId = householdKey))
             .build()
         NotificationManagerCompat.from(context).notify("$JOIN_TAG:$householdKey", NOTIFICATION_ID, notification)
     }
@@ -165,10 +165,12 @@ class Notifier(private val context: Context) {
 
     fun cancel(mode: ReminderMode, reminderId: String) = manager.cancel(tag(mode, reminderId), NOTIFICATION_ID)
 
-    private fun openApp(key: String): PendingIntent = PendingIntent.getActivity(
+    /** Opens the app; with [householdId] (Phase 9.7) it opens that household. */
+    private fun openApp(key: String, householdId: String? = null): PendingIntent = PendingIntent.getActivity(
         context,
         key.hashCode(),
-        Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .apply { householdId?.let { putExtra(MainActivity.EXTRA_HOUSEHOLD, it) } },
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 

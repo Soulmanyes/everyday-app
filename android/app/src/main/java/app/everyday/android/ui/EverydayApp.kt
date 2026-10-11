@@ -84,6 +84,13 @@ fun EverydayApp() {
     LaunchedEffect(joinLink) {
         joinLink?.let { household.openJoinLink(it); app.joinLink.value = null }
     }
+    val openHousehold by app.openHousehold.collectAsStateWithLifecycle()
+    LaunchedEffect(openHousehold) {
+        openHousehold?.let { id ->
+            session.memberships.firstOrNull { it.householdId == id }?.let { household.pick(it.token) }
+            app.openHousehold.value = null
+        }
+    }
     when {
         household.addingHousehold -> SetupFlow(household, onCancel = { household.addingHousehold = false })
         !session.joined && !session.skippedSetup -> SetupFlow(household)

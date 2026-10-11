@@ -6,17 +6,21 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.everyday.android.EverydayApplication
+import app.everyday.android.profileId
 import app.everyday.android.data.ChoreRepository
 import app.everyday.android.ui.AppPrefs
 import app.everyday.android.data.Persistent
 import app.everyday.android.data.ReminderRepository
 import app.everyday.android.reminders.ReminderEngine
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class CalendarViewModel(
+    /** The picked profile, for the default filter and the order of people in month cells. */
+    val myId: StateFlow<String>,
     private val repository: ReminderRepository,
     choreRepository: ChoreRepository,
     private val prefs: AppPrefs,
@@ -42,6 +46,9 @@ class CalendarViewModel(
     val monthFilter = prefs.monthFilter
 
     fun setMonthFilter(filter: MonthFilter) = prefs.setMonthFilter(filter)
+
+    /** Chores and chore reminders on the Events tab (Phase 9.7), per phone. */
+    val showChores = prefs.showChores
 
     /** Week or month on the Events tab, remembered on this phone. */
     val monthMode = prefs.monthMode
@@ -81,7 +88,14 @@ class CalendarViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as EverydayApplication
-                CalendarViewModel(app.repository, app.choreRepository, app.prefs, app.engine, app.sync::requestSync)
+                CalendarViewModel(
+                    app.session.state.map { it.profileId() }.stateIn(app.mainScope, SharingStarted.Eagerly, app.session.current.profileId()),
+                    app.repository,
+                    app.choreRepository,
+                    app.prefs,
+                    app.engine,
+                    app.sync::requestSync,
+                )
             }
         }
     }
