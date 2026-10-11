@@ -4,7 +4,7 @@ Guidance for Claude Code (and humans) working in this repository.
 
 ## What this is
 
-**Everyday App** is a private Android app for one household. It has two core features:
+**Everyday App** is a private Android app for households (one per family; since 2.0 the server holds several, see "Multiple households"). It has two core features:
 
 1. **Events timetable** (the Events tab): events, weekly or on a date, personal or shared with chosen members. Each person adds their own reminders to an event.
 2. **Chore timetable**: a household-wide weekly schedule of chores, with members linked to each chore.
@@ -27,9 +27,9 @@ See `ROADMAP.md` for planned features and their order.
 | Topic | Decision |
 |---|---|
 | App | Native Android, Kotlin, Jetpack Compose, Material 3. `minSdk 28` (Android 9): the oldest household phone runs Android 9. |
-| Users | One household, several members |
-| Login | **Household code + name, approved by the admin.** A phone enters the household code and the person's name, and receives a device token in a **pending** state. The admin approves the request (with the admin PIN), either as a new member with that name or **linked to an existing member** (new phone, reinstall, or someone the admin added by hand). The approved phone is **locked to that member**: there is no profile switching. The admin can also reject a request. |
-| Household setup | The **first phone creates the household** (name, household code, admin name, admin PIN), using a one-time `SETUP_TOKEN` from the server's `.env`. The server allows exactly one household. |
+| Users | Several households on one server, each with several members (2.0, Phase 9). A phone can be in several households. |
+| Login | **Join code + name, approved by the admin.** A phone enters the household's server-generated join code and the person's name, and receives a device token in a **pending** state. The admin approves the request (with the admin PIN), either as a new member with that name or **linked to an existing member** (new phone, reinstall, or someone the admin added by hand). The approved phone is **locked to that member**: there is no profile switching. The admin can also reject a request. |
+| Household setup | A phone creates a household (name, admin name, admin PIN) with an **invite** from another household's admin (or the server's `SETUP_TOKEN`, the owner's own way in). The server generates the join code and shows it once. |
 | Members | Only the **admin** (the household's creator) adds, renames or removes members, and every such request must include the **admin PIN**, which the server checks. The admin can't be removed. |
 | Joining | Reminders made on a phone before it joined move to the member the phone is approved as. |
 | Backend | Ktor (Kotlin) REST API + PostgreSQL, both in Docker on an Oracle Cloud **Ampere A1 (arm64)** VM |
@@ -71,6 +71,19 @@ Chore reminders **look like chores**: the fixed chore green and the Chores tab's
 
 The app is **dark by default**; "Follow phone theme" in Settings (per phone, `AppPrefs`) switches to the phone's light/dark setting.
 
+## Multiple households (Phase 9, 2.0.0)
+
+Decisions and reasoning: `docs/ideas/multi-household.md`.
+
+- **Invites**: any admin makes one-time invites (Manage members, admin PIN): `NEW-XXXX-XXXX-XXXX`, stored as SHA-256, 7 days, **3 slots per household** (a cancelled or expired unused one frees its slot). The new household's `invited_by` is the inviting household.
+- **Join codes**: `XXXX-XXXX-XXXX` (alphabet without 0, O, 1, I): the first 4 characters are the public `join_id`, the rest the secret, PBKDF2-hashed like before. Shown only when made; the admin can make a new one (the old one stops working). Households from before 2.0 have none until the admin makes one. Wrong codes and admin PINs lock **per household** (`AttemptLimiter` keys).
+- **Join links**: shared as `https://<server>/download/join.html#CODE` (the code stays in the fragment, never in server logs), which opens `everyday://join?code=...` (`everyday-dev` for the debug app).
+- **Phones in several households**: `Session` keeps the picked household in the 1.x keys plus `other_households`; each `Membership` has its token, member and a notifications switch. With more than one, the app starts on a **household picker**. Screens act on the picked household; refresh, chores, sync, pushes and alarms cover every household (alarms only where notifications are on, titled with the household name). Room 8 adds `householdId` to cached members and chores. A sync merges only its own household's rows (`SyncMerge.inHousehold`), so it never removes another household's data from the phone.
+- **Deleting**: an admin deletes the household (`DELETE /household`, admin PIN, typed name); everything cascades, its other phones are pushed and land on the welcome screen.
+- **Cleanup**: daily, a household no phone has used for a year is marked and deleted 30 days later unless a phone comes back. `household.protected` (the owner's own household) is never deleted.
+- **Owner tool** (no names): `docker compose exec api java -cp app.jar app.everyday.server.OwnerToolKt list` / `remove <id>` (removes it and the households it invited; refuses protected ones).
+- Apps before 2.0 get `410` "update the app" from `POST /join` and `POST /household`; joined 1.x phones keep working.
+
 ## Sync (Phase 4, events in Phase 6)
 
 - Room stays the source for alarms; the server is a sync target. Each sync (`POST /v2/sync`) is **one round trip for the picked profile**: the phone pushes its dirty rows, the server applies them, and the server returns a **full snapshot** of everything that member can see (events they own, with tombstones, and events shared with them, with members; their own reminders, done/snooze state and settings). No "since" cursor: commit order and timestamp order can differ.
@@ -90,11 +103,11 @@ The app is **dark by default**; "Follow phone theme" in Settings (per phone, `Ap
 
 - Store the household code, admin PIN and device tokens **only as hashes**, never in plain text. Never log them. The code and PIN use PBKDF2 (slow); device tokens are 32 random bytes and use SHA-256.
 - Secrets travel in the JSON body or headers, **never in URLs** (URLs end up in logs).
-- Every API route except `GET /health`, `GET /status`, `POST /household` (needs `SETUP_TOKEN`) and `POST /join` requires a valid device token (`Authorization: Bearer ...`). Except `GET /me`, `PUT /me/push-token` and `DELETE /device`, it also requires the device to be **approved**, and member-scoped requests (sync, chore done/undo) act **as the device's member**: a different `memberId` is refused.
+- Every API route except `GET /health`, `GET /status`, `POST /household` (needs an invite or `SETUP_TOKEN`) and `POST /join` requires a valid device token (`Authorization: Bearer ...`). Except `GET /me`, `PUT /me/push-token` and `DELETE /device`, it also requires the device to be **approved**, and member-scoped requests (sync, chore done/undo) act **as the device's member**: a different `memberId` is refused.
 - Removing a member revokes their devices, which return to the join screen. A revoked device keeps no push token.
 - **FCM**: the server signs in with a Firebase service-account key (`FCM_CREDENTIALS`, see "Deployment notes"); without it pushes are off and everything else works. FCM push tokens are never logged. A token FCM reports as `UNREGISTERED` is cleared; other FCM errors keep it.
 - Member changes also need the `X-Admin-Pin` header, checked on the server.
-- Failed code/PIN/setup-token attempts are counted globally (the API sees every request coming from Caddy). Too many failures lock those endpoints for a while.
+- Failed join code and admin PIN attempts are counted per household, failed setup codes, invites and unknown join ids globally (the API sees every request coming from Caddy). Too many failures lock them for a while.
 - **Rate limits per client IP** (Ktor `RateLimit`, `RateLimits.kt`): 10/min on `/household` and `/join`, 30/min on admin-PIN routes, 300/min on all requests. The IP is the first `X-Forwarded-For` address: Caddy replaces any value the client sends, and the API port isn't published, so it can be trusted. A limited request gets `429` with an `error` message, which the app shows like any other error (never the `401` path).
 - A `401` tells the app its token is no longer valid, and the app returns to the join screen.
 - Chore routes need only the device token. Chore IDs are client-generated UUIDs. Validate a non-empty title, weekdays 1..127, at least one assignee, and that every assignee is an existing member who isn't deleted. For EACH, only an assignee can have a completion. For ANY, allow at most one completion per day (checked in the API, because the type lives on `chore`). Today's date comes from `household.timezone`, never from UTC `CURRENT_DATE`.

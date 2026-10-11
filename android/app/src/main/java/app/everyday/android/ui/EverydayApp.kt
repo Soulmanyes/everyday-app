@@ -137,6 +137,7 @@ private fun MainNav(household: HouseholdViewModel) {
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(
+                household = household,
                 onBack = { nav.popBackStack() },
                 onManageMembers = { nav.navigate(Routes.MEMBERS) },
                 onWhatsNew = { nav.navigate(Routes.WHATS_NEW) },

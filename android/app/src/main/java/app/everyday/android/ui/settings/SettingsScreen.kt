@@ -60,9 +60,9 @@ private val SNOOZE_OPTIONS = listOf(5, 10, 15, 30, 60)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onManageMembers: () -> Unit, onWhatsNew: () -> Unit) {
+fun SettingsScreen(household: HouseholdViewModel, onBack: () -> Unit, onManageMembers: () -> Unit, onWhatsNew: () -> Unit) {
+    // [household] is the app's shared one: switching or adding a household here changes the app's top screen.
     val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
-    val household: HouseholdViewModel = viewModel(factory = HouseholdViewModel.Factory)
     val settings by vm.settings.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
