@@ -1,5 +1,6 @@
 package app.everyday.android.ui.household
 
+import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +23,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -99,6 +104,54 @@ fun JoinCodeDialog(code: String, householdName: String, serverUrl: String, onDis
             "This is the only time the code is shown: if you lose it, make a new one in Manage members.",
         shareText = message,
         onDismiss = onDismiss,
+    )
+}
+
+/** Opens the share sheet with a one-time invite link into [householdName] (Phase 9.5). */
+fun shareMemberInvite(context: Context, code: String, householdName: String, serverUrl: String) {
+    val message = "Join $householdName in Everyday: ${joinLink(serverUrl, code)}\n" +
+        "New to the app? Install it from ${downloadLink(serverUrl)}, then tap \"Join a household\" and enter the code: $code\n" +
+        "It works once, within 7 days."
+    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, message)
+    context.startActivity(Intent.createChooser(send, "Invite to $householdName"))
+}
+
+/**
+ * Settings → Invite someone (Phase 9.5, admin): asks for the admin PIN, makes a one-time invite link and goes
+ * straight to the share sheet. The person still waits for the admin to approve them.
+ */
+@Composable
+fun InviteSomeoneDialog(vm: HouseholdViewModel, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val session by vm.session.collectAsStateWithLifecycle()
+    var pin by remember { mutableStateOf("") }
+    // Start over after a wrong PIN instead of appending to it.
+    LaunchedEffect(vm.error) { if (vm.error != null) pin = "" }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Invite someone") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Makes a link to join ${session.householdName ?: "the household"}. It works once, within 7 days, " +
+                        "and you still approve whoever uses it. Open links are listed in Manage members.",
+                )
+                SecretField(pin, { pin = it }, "Admin PIN", numeric = true)
+                vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    vm.inviteSomeone(pin) { code ->
+                        shareMemberInvite(context, code, session.householdName ?: "my household", session.serverUrl)
+                        onDismiss()
+                    }
+                },
+                enabled = pin.isNotEmpty() && !vm.busy,
+            ) { Text("Share link") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 

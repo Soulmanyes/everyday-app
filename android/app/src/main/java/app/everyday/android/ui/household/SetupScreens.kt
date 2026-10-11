@@ -119,7 +119,7 @@ private fun JoinScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
         if (!isAdmin) {
             OutlinedTextField(name, { name = it.take(40) }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         }
-        CodeField(code, { code = it }, "Join code", "e.g. HZ7K-2P9X-QM4T")
+        CodeField(code, { code = it }, "Join code or invite", "e.g. HZ7K-2P9X-QM4T")
         // The admin's own new phone: nobody else could approve it.
         Row(
             Modifier.fillMaxWidth().toggleable(value = isAdmin, role = Role.Checkbox, onValueChange = { isAdmin = it }),
