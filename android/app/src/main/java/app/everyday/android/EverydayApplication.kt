@@ -16,6 +16,7 @@ import app.everyday.android.reminders.ReminderEngine
 import app.everyday.android.sync.SyncManager
 import app.everyday.android.ui.AppPrefs
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -42,6 +43,8 @@ class EverydayApplication : Application() {
     val prefs by lazy { AppPrefs(this) }
     val sync by lazy { SyncManager(this, session, database, engine) }
     val push by lazy { PushRegistration(this, session) }
+    /** A join code from a join link, waiting for the join screen to take it (Phase 9). */
+    val joinLink = MutableStateFlow<String?>(null)
 
     override fun onCreate() {
         super.onCreate()

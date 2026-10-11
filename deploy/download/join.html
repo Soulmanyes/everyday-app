@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join a household</title>
+<style>
+  :root { color-scheme: light dark; --accent: #4a5d8f; }
+  body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 0 auto; padding: 2rem 1.25rem; line-height: 1.5; }
+  .button { display: inline-block; margin: .75rem 0; padding: .9rem 1.6rem; border-radius: 999px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; }
+  .code { font: 600 1.6rem ui-monospace, monospace; letter-spacing: .05em; }
+  small { opacity: .7; }
+</style>
+</head>
+<body>
+<!-- The join code is after the # in this page's link. Browsers never send that part to the server,
+     so the code doesn't end up in its logs. -->
+<h1>Join a household in Everyday</h1>
+<p>Your join code:</p>
+<p class="code" id="code">(no code in this link)</p>
+<a class="button" id="open" href="#">Open in Everyday</a>
+<p>Don't have the app yet? <a href="./">Download it here</a>, then come back to this link, or open the app,
+tap <b>Join a household</b> and type the code.</p>
+<p><small>The household's admin approves you before you're in.</small></p>
+<script>
+  const code = decodeURIComponent(location.hash.slice(1)).toUpperCase().replace(/[^A-Z0-9-]/g, "");
+  if (code) {
+    document.getElementById("code").textContent = code;
+    document.getElementById("open").href = "everyday://join?code=" + encodeURIComponent(code);
+  } else {
+    document.getElementById("open").style.display = "none";
+  }
+</script>
+</body>
+</html>

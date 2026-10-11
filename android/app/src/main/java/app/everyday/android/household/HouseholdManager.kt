@@ -169,6 +169,7 @@ class HouseholdManager(
                 adminMemberId = household.adminMemberId,
                 memberId = memberId,
                 pendingRequests = household.pendingRequestIds.size,
+                hasJoinCode = household.hasJoinCode,
             )
         }
         if (newlyApproved) engine.recompute()

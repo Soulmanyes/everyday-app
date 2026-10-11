@@ -37,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
@@ -52,15 +53,22 @@ private enum class SetupStep { Welcome, Create, Join }
 /** The keyboard's action key moves to the next field, which scrolls it into view above the keyboard. */
 private val NEXT = KeyboardOptions(imeAction = ImeAction.Next)
 
-/** First-run flow: create the household, join it, or skip for now. */
+/**
+ * First-run flow: create a household, join one, or skip for now. With [onCancel] it's adding another
+ * household to a phone that's already in one (Phase 9), and cancelling goes back.
+ */
 @Composable
-fun SetupFlow(vm: HouseholdViewModel) {
+fun SetupFlow(vm: HouseholdViewModel, onCancel: (() -> Unit)? = null) {
     var step by rememberSaveable { mutableStateOf(SetupStep.Welcome) }
+    if (onCancel != null && step == SetupStep.Welcome) BackHandler(onBack = onCancel)
+    // A join link goes straight to the join screen.
+    LaunchedEffect(vm.linkedJoinCode) { if (vm.linkedJoinCode != null) step = SetupStep.Join }
     when (step) {
         SetupStep.Welcome -> WelcomeScreen(
             onCreate = { vm.error = null; step = SetupStep.Create },
             onJoin = { vm.error = null; step = SetupStep.Join },
-            onSkip = vm::skipSetup,
+            onSkip = onCancel ?: vm::skipSetup,
+            skipLabel = if (onCancel != null) "Cancel" else "Not now",
         )
         SetupStep.Create -> CreateScreen(vm, onBack = { step = SetupStep.Welcome })
         SetupStep.Join -> JoinScreen(vm, onBack = { step = SetupStep.Welcome })
@@ -68,7 +76,7 @@ fun SetupFlow(vm: HouseholdViewModel) {
 }
 
 @Composable
-private fun WelcomeScreen(onCreate: () -> Unit, onJoin: () -> Unit, onSkip: () -> Unit) {
+private fun WelcomeScreen(onCreate: () -> Unit, onJoin: () -> Unit, onSkip: () -> Unit, skipLabel: String) {
     Scaffold { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).padding(32.dp),
@@ -84,11 +92,11 @@ private fun WelcomeScreen(onCreate: () -> Unit, onJoin: () -> Unit, onSkip: () -
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(48.dp))
-            Button(onClick = onJoin, modifier = Modifier.fillMaxWidth()) { Text("Join my household") }
+            Button(onClick = onJoin, modifier = Modifier.fillMaxWidth()) { Text("Join a household") }
             Spacer(Modifier.height(12.dp))
             OutlinedButton(onClick = onCreate, modifier = Modifier.fillMaxWidth()) { Text("Set up a new household") }
             Spacer(Modifier.height(12.dp))
-            TextButton(onClick = onSkip) { Text("Not now") }
+            TextButton(onClick = onSkip) { Text(skipLabel) }
         }
     }
 }
@@ -96,6 +104,9 @@ private fun WelcomeScreen(onCreate: () -> Unit, onJoin: () -> Unit, onSkip: () -
 @Composable
 private fun JoinScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
     var code by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(vm.linkedJoinCode) {
+        vm.linkedJoinCode?.let { code = it; vm.linkedJoinCode = null }
+    }
     var name by rememberSaveable { mutableStateOf("") }
     var isAdmin by rememberSaveable { mutableStateOf(false) }
     var pin by rememberSaveable { mutableStateOf("") }
@@ -155,6 +166,9 @@ private fun CreateScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
         SecretField(pin, { pin = it }, "Admin PIN (4–8 digits)", numeric = true)
         SecretField(pinAgain, { pinAgain = it }, "Admin PIN again", numeric = true)
         ServerField(server) { server = it }
+        var privacy by rememberSaveable { mutableStateOf(false) }
+        TextButton(onClick = { privacy = true }) { Text("What's stored, and who can see it") }
+        if (privacy) PrivacyDialog(onDismiss = { privacy = false })
         (problem ?: vm.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
             onClick = { vm.create(server, invite, householdName, adminName, pin) },
@@ -262,5 +276,6 @@ fun WaitingScreen(vm: HouseholdViewModel) {
             textAlign = TextAlign.Center,
         )
         OutlinedButton(onClick = { vm.leave {} }, enabled = !vm.busy) { Text("Cancel request") }
+        if (session.memberships.size > 1) TextButton(onClick = vm::showPicker) { Text("Switch household") }
     } }
 }

@@ -48,6 +48,9 @@ android {
             resValue("string", "app_name", "Everyday")
             buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://everyday-home.duckdns.org\"")
             buildConfigField("boolean", "CHECK_FOR_UPDATES", "true")
+            // Join links (everyday://join?code=...) open this app.
+            manifestPlaceholders["joinScheme"] = "everyday"
+            buildConfigField("String", "JOIN_SCHEME", "\"everyday\"")
         }
         // The development app: installs next to the release one and uses the throwaway test server
         // (reached through `adb reverse` to the SSH tunnel), so unfinished features never touch real data.
@@ -57,6 +60,9 @@ android {
             resValue("string", "app_name", "Everyday (dev)")
             buildConfigField("String", "DEFAULT_SERVER_URL", "\"http://127.0.0.1:18080\"")
             buildConfigField("boolean", "CHECK_FOR_UPDATES", "false")
+            // Its own scheme, so join links for the real app never open the dev app.
+            manifestPlaceholders["joinScheme"] = "everyday-dev"
+            buildConfigField("String", "JOIN_SCHEME", "\"everyday-dev\"")
         }
     }
 

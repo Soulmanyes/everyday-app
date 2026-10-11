@@ -1,6 +1,7 @@
 package app.everyday.android
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -25,12 +26,26 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && savedInstanceState == null) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        if (savedInstanceState == null) openJoinLink(intent)
         setContent {
             val followPhone by app.prefs.followPhoneTheme.collectAsStateWithLifecycle()
             EverydayTheme(followPhone) {
                 EverydayApp()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openJoinLink(intent)
+    }
+
+    /** A join link (Phase 9) opens the join screen with its code filled in. */
+    private fun openJoinLink(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (uri.scheme != BuildConfig.JOIN_SCHEME || uri.host != "join") return
+        val code = uri.getQueryParameter("code") ?: uri.fragment
+        if (!code.isNullOrBlank()) app.joinLink.value = code.trim().uppercase().take(24)
     }
 
     override fun onResume() {
