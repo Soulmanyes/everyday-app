@@ -129,7 +129,7 @@ Planned 2026-10-11, first in the queue. Released 2026-10-12 as 2.1.0.
 - [x] The invite is stored hashed and used up when someone joins with it; the admin sees open invites and can cancel them. The household join code keeps working as well.
 
 ## Phase 9.6: Multi-day events (2.2.0)
-Planned 2026-10-11. Built on `dev` 2026-10-12, not yet released.
+Planned 2026-10-11. Released 2026-10-12 as 2.2.0.
 
 Decided 2026-10-12:
 - **Setting the end**: a one-off event picks an end **date** and time, as in a calendar app. A weekly one picks the **weekday it ends on** (starts every Fri 18:00, ends Sun 20:00); a weekly multi-day event starts on **one weekday only**. Stored as "ends N days after it starts" (0 = the same day, as today).

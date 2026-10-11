@@ -9,6 +9,14 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        12, "2.2.0",
+        listOf(
+            "Events can last several days: add an end date to a one-off event (a holiday, a trip), or pick the day a weekly event ends on (every Fri 18:00 to Sun 20:00).",
+            "They show on every day they cover, in the week and month views.",
+            "Reminders on them: times you pick ring on each day, and a notification that stays can show each day or over the whole event.",
+        ),
+    ),
+    ReleaseNote(
         11, "2.1.0",
         listOf(
             "Admins: Settings → Invite someone shares a one-time invite link. No need to find or remake the join code.",
