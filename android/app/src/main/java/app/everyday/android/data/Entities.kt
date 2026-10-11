@@ -46,7 +46,8 @@ enum class ReminderMode { TIMED, PERSISTENT }
 /**
  * Something on the timetable (Phase 6): weekly on [weekdays], or once on [onDate] (ISO date), exactly
  * one of the two. No [startMinute] means all day; [endMinute] is optional. Personal unless it has
- * [EventMemberEntity] rows; only the owner edits it.
+ * [EventMemberEntity] rows; only the owner edits it. A multi-day event (Phase 9.6) ends [endDays] after the
+ * day it starts, at [endMinute] on that last day (see [app.everyday.android.reminders.Occurs]).
  */
 @Entity(tableName = "event", indices = [Index("ownerMemberId")])
 data class EventEntity(
@@ -66,6 +67,7 @@ data class EventEntity(
     val dirty: Boolean = false,
     /** While personal, other members see it as "Busy" (times only); false hides it from them (Phase 7). */
     @ColumnInfo(defaultValue = "1") val showBusy: Boolean = true,
+    @ColumnInfo(defaultValue = "0") val endDays: Int = 0,
 )
 
 /**
@@ -83,6 +85,7 @@ data class BusyEventEntity(
     val onDate: String? = null,
     val startMinute: Int? = null,
     val endMinute: Int? = null,
+    @ColumnInfo(defaultValue = "0") val endDays: Int = 0,
 )
 
 /**
@@ -129,6 +132,8 @@ data class ReminderEntity(
     @ColumnInfo(defaultValue = "0") val dirty: Boolean = false,
     val eventId: String? = null,
     val leadMinutes: Int? = null,
+    /** Persistent, on a multi-day event (Phase 9.6): all day on each of its days instead of over the whole event. */
+    @ColumnInfo(defaultValue = "0") val eachDay: Boolean = false,
 )
 
 @Entity(

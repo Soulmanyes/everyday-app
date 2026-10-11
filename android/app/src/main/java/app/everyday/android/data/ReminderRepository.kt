@@ -1,6 +1,7 @@
 package app.everyday.android.data
 
 import app.everyday.android.reminders.MINUTES_PER_DAY
+import app.everyday.android.reminders.Occurs
 import app.everyday.android.reminders.ReminderSpec
 import app.everyday.android.reminders.isOnWeekday
 import app.everyday.android.reminders.Window
@@ -36,18 +37,31 @@ data class EventDraft(
     val weekdays: Int = 0,
     val date: LocalDate? = null,
     val startMinute: Int? = null,
+    /** On the start day, or with [endDays] > 0 on the last day. */
     val endMinute: Int? = null,
+    /** Multi-day (Phase 9.6): days after the start day it ends; a one-off event's end date is [date] plus this. */
+    val endDays: Int = 0,
     /** Members it's shared with (not the owner). */
     val memberIds: List<String> = emptyList(),
     /** While personal, others see it as "Busy" (times only); false hides it from them. */
     val showBusy: Boolean = true,
 )
 
-/** How a person's persistent reminder on an event shows: not at all, all day, or from X minutes before the start. */
+/**
+ * How a person's persistent reminder on an event shows: not at all, all day, or from X minutes before the
+ * start. On a multi-day event the last two last until its end ("whole event"), while [EachDay] shows all
+ * day on each of its days.
+ */
 sealed interface Persistent {
     data object Off : Persistent
     data object AllDay : Persistent
     data class Before(val minutes: Int) : Persistent
+    data object EachDay : Persistent
+}
+
+private fun ReminderEntity.persistent(): Persistent = when {
+    eachDay -> Persistent.EachDay
+    else -> leadMinutes?.let { Persistent.Before(it) } ?: Persistent.AllDay
 }
 
 /** A reminder as seen by its owner ([memberId], the picked profile), with the event it belongs to. */
@@ -69,13 +83,22 @@ data class EventView(val event: EventEntity, val members: List<EventMemberEntity
     val fixedTimes get() = timed?.times.orEmpty().filter { !it.relative }.map { it.minuteOfDay }.sorted()
     val minutesBefore get() = timed?.times.orEmpty().filter { it.relative }.map { it.minuteOfDay }.sorted()
     val persistent: Persistent
-        get() = persistentReminder?.let { p -> p.reminder.leadMinutes?.let { Persistent.Before(it) } ?: Persistent.AllDay } ?: Persistent.Off
+        // "Each day" only differs from all day on a multi-day event.
+        get() = persistentReminder?.reminder?.persistent()?.let { if (it == Persistent.EachDay && !occurs.multiDay) Persistent.AllDay else it }
+            ?: Persistent.Off
 
     /** Paused if every reminder of mine on it is paused. */
     val paused get() = reminders.isNotEmpty() && reminders.none { it.reminder.active }
 
-    fun isOn(date: LocalDate) = event.onDate?.let { it == date.toString() } ?: isOnWeekday(event.weekdays, date)
+    val occurs get() = event.occurs()
+
+    /** Whether it happens on [date]: any day a multi-day event covers. */
+    fun isOn(date: LocalDate) = occurs.isOn(date)
 }
+
+fun EventEntity.occurs() = Occurs(weekdays, onDate?.let(LocalDate::parse), startMinute, endMinute, endDays)
+
+fun BusyEventEntity.occurs() = Occurs(weekdays, onDate?.let(LocalDate::parse), startMinute, endMinute, endDays)
 
 /**
  * Reminders and settings of the profile currently picked on this phone ([currentMemberId]): the
@@ -140,6 +163,7 @@ class ReminderRepository(
             date = e.event.onDate?.let(LocalDate::parse),
             startMinute = e.event.startMinute,
             endMinute = e.event.endMinute,
+            endDays = e.event.endDays,
             memberIds = e.members.map { it.memberId },
             showBusy = e.event.showBusy,
         )
@@ -160,6 +184,7 @@ class ReminderRepository(
             onDate = if (draft.weekly) null else draft.date?.toString(),
             startMinute = draft.startMinute,
             endMinute = draft.startMinute?.let { draft.endMinute },
+            endDays = draft.endDays,
             createdAt = existing?.event?.createdAt ?: now,
             updatedAt = now,
             dirty = true,
@@ -249,7 +274,7 @@ class ReminderRepository(
             else -> {
                 val lead = (persistent as? Persistent.Before)?.minutes
                 val reminder = existing?.reminder ?: newEventReminder(eventId, ReminderMode.PERSISTENT, now)
-                saveEventReminder(reminder.copy(leadMinutes = lead), emptyList(), now)
+                saveEventReminder(reminder.copy(leadMinutes = lead, eachDay = persistent == Persistent.EachDay), emptyList(), now)
             }
         }
     }
@@ -389,11 +414,15 @@ fun ReminderView.toSpec(choreDoneOn: Set<LocalDate> = emptySet()): ReminderSpec 
         minutesBefore = times.filter { it.relative }.map { it.minuteOfDay },
         windows = when {
             e == null -> windows.map { Window(it.startMinute, it.endMinute) }
-            reminder.mode == ReminderMode.PERSISTENT && reminder.leadMinutes == null -> listOf(Window(0, MINUTES_PER_DAY))
+            // All day: on every day of the event (one day, or each day of a multi-day event).
+            reminder.mode == ReminderMode.PERSISTENT && reminder.leadMinutes == null && (e.endDays == 0 || reminder.eachDay) ->
+                listOf(Window(0, MINUTES_PER_DAY))
             else -> emptyList()
         },
         eventStart = e?.startMinute,
         eventEnd = e?.endMinute,
+        eventEndDays = e?.endDays ?: 0,
+        wholeEvent = e != null && e.endDays > 0 && reminder.mode == ReminderMode.PERSISTENT && !reminder.eachDay,
         leadMinutes = if (reminder.mode == ReminderMode.PERSISTENT) reminder.leadMinutes else null,
         doneOn = state?.doneOn?.let(LocalDate::parse),
         snoozeUntil = state?.snoozeUntil?.let(Instant::ofEpochMilli),

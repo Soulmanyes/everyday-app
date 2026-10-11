@@ -245,4 +245,66 @@ class ReminderSchedulerTest {
         assertTrue(compute(listOf(r), "2026-10-08T00:30", null).visiblePersistent.isEmpty())
         assertEquals(setOf("p"), compute(listOf(r.copy(doneOn = null)), "2026-10-08T00:30", null).visiblePersistent)
     }
+
+    // Phase 9.6: multi-day events. A weekend away, Fri 23 Oct 18:00 to Sun 25 Oct 20:00 (the clocks go
+    // back in London early on Sunday 25 October).
+    private val away = ReminderSpec(
+        "away", ReminderMode.PERSISTENT, 0, active = true,
+        onDate = LocalDate.parse("2026-10-23"), eventStart = hm(18), eventEnd = hm(20), eventEndDays = 2,
+    )
+
+    @Test
+    fun `fixed times fire on every day of a multi-day event, before times only before it starts`() {
+        val r = away.copy(mode = ReminderMode.TIMED, times = listOf(hm(8)), minutesBefore = listOf(60))
+        assertEquals(setOf("away"), compute(listOf(r), "2026-10-23T17:00", "2026-10-23T16:59").dueTimed)
+        // Every day it covers, the first one included (as the owner chose: 08:00 on Fri, Sat and Sun).
+        assertEquals(setOf("away"), compute(listOf(r), "2026-10-23T08:00", "2026-10-23T07:59").dueTimed)
+        assertTrue(compute(listOf(r), "2026-10-22T08:00", "2026-10-22T07:59").dueTimed.isEmpty())
+        assertEquals(setOf("away"), compute(listOf(r), "2026-10-24T08:00", "2026-10-24T07:59").dueTimed)
+        assertEquals(setOf("away"), compute(listOf(r), "2026-10-25T08:00", "2026-10-25T07:59").dueTimed)
+        assertTrue(compute(listOf(r), "2026-10-26T08:00", "2026-10-26T07:59").dueTimed.isEmpty())
+    }
+
+    @Test
+    fun `a whole-event persistent reminder shows from the lead until the last day's end`() {
+        val r = away.copy(leadMinutes = 30, wholeEvent = true)
+        assertTrue(compute(listOf(r), "2026-10-23T17:29", null).visiblePersistent.isEmpty())
+        assertEquals(setOf("away"), compute(listOf(r), "2026-10-23T17:30", null).visiblePersistent)
+        assertEquals(setOf("away"), compute(listOf(r), "2026-10-24T12:00", null).visiblePersistent)
+        assertEquals(setOf("away"), compute(listOf(r), "2026-10-25T19:59", null).visiblePersistent)
+        assertTrue(compute(listOf(r), "2026-10-25T20:00", null).visiblePersistent.isEmpty())
+        // Without a lead it starts at the first day's midnight.
+        val allDay = away.copy(wholeEvent = true)
+        assertEquals(setOf("away"), compute(listOf(allDay), "2026-10-23T00:00", null).visiblePersistent)
+    }
+
+    @Test
+    fun `Done hides a whole-event reminder until the next day, which is when it wakes up again`() {
+        val r = away.copy(leadMinutes = 30, wholeEvent = true, doneOn = LocalDate.parse("2026-10-24"))
+        val saturday = compute(listOf(r), "2026-10-24T12:00", null)
+        assertTrue(saturday.visiblePersistent.isEmpty())
+        assertEquals(at("2026-10-25T00:00"), saturday.nextWakeAt)
+        assertEquals(setOf("away"), compute(listOf(r), "2026-10-25T00:00", null).visiblePersistent)
+    }
+
+    @Test
+    fun `an each-day persistent reminder shows all day on every day of the event`() {
+        val r = away.copy(windows = listOf(Window(0, MINUTES_PER_DAY)))
+        assertTrue(compute(listOf(r), "2026-10-22T12:00", null).visiblePersistent.isEmpty())
+        for (date in listOf("2026-10-23", "2026-10-24", "2026-10-25")) {
+            assertEquals(date, setOf("away"), compute(listOf(r), "${date}T09:00", null).visiblePersistent)
+        }
+        assertTrue(compute(listOf(r), "2026-10-26T09:00", null).visiblePersistent.isEmpty())
+        // Done hides only that day.
+        val done = r.copy(doneOn = LocalDate.parse("2026-10-24"))
+        assertTrue(compute(listOf(done), "2026-10-24T09:00", null).visiblePersistent.isEmpty())
+        assertEquals(setOf("away"), compute(listOf(done), "2026-10-25T09:00", null).visiblePersistent)
+    }
+
+    @Test
+    fun `a long event that started weeks ago still shows`() {
+        val r = away.copy(onDate = LocalDate.parse("2026-10-01"), eventEndDays = 31, wholeEvent = true)
+        assertEquals(setOf("away"), compute(listOf(r), "2026-10-30T12:00", null).visiblePersistent)
+        assertTrue(compute(listOf(r), "2026-11-01T20:00", null).visiblePersistent.isEmpty())
+    }
 }
