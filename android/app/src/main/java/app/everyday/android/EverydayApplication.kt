@@ -10,6 +10,7 @@ import app.everyday.android.data.ReminderRepository
 import app.everyday.android.household.HouseholdManager
 import app.everyday.android.household.Session
 import app.everyday.android.household.SessionState
+import app.everyday.android.push.PushRegistration
 import app.everyday.android.reminders.ReminderEngine
 import app.everyday.android.sync.SyncManager
 import app.everyday.android.ui.AppPrefs
@@ -38,6 +39,7 @@ class EverydayApplication : Application() {
     val updates = UpdateChecker()
     val prefs by lazy { AppPrefs(this) }
     val sync by lazy { SyncManager(this, session, database, engine) }
+    val push by lazy { PushRegistration(this, session) }
 
     override fun onCreate() {
         super.onCreate()
@@ -48,6 +50,24 @@ class EverydayApplication : Application() {
                 if (id != null) sync.requestSync()
             }
         }
+        // Joining (or rejoining) registers the phone for instant updates, pending phones too.
+        MainScope().launch {
+            session.state.map { it.token }.distinctUntilChanged().collect { token ->
+                if (token != null) push.ensureRegistered()
+            }
+        }
+    }
+
+    /**
+     * Fetches everything that may have changed on the server: run by the 15-minute job and by the
+     * server's "sync now" push.
+     */
+    suspend fun refreshFromServer() {
+        // Picks up approval of this phone, new join requests (admin), and member changes.
+        household.refresh()
+        chores.refresh()
+        runCatching { sync.sync() }
+        push.ensureRegistered()
     }
 }
 

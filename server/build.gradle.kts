@@ -32,6 +32,8 @@ dependencies {
     implementation(libs.postgresql)
     implementation(libs.hikari)
     implementation(libs.logback)
+    // FCM access tokens from the service-account key (instant updates).
+    implementation(libs.google.auth)
 
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test)

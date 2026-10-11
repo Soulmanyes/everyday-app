@@ -120,7 +120,7 @@ class HouseholdStore(private val db: DataSource) {
     /** Rejects a pending phone: its token stops working. Returns false if there was no such request. */
     fun reject(householdId: UUID, deviceId: UUID): Boolean = db.transaction { conn ->
         conn.prepareStatement(
-            "UPDATE device SET revoked = TRUE WHERE id = ? AND household_id = ? AND status = 'pending' AND NOT revoked",
+            "UPDATE device SET revoked = TRUE, push_token = NULL WHERE id = ? AND household_id = ? AND status = 'pending' AND NOT revoked",
         ).run { setObject(1, deviceId); setObject(2, householdId); executeUpdate() > 0 }
     }
 
@@ -146,7 +146,7 @@ class HouseholdStore(private val db: DataSource) {
     }
 
     fun revokeDevice(deviceId: UUID) = db.transaction { conn ->
-        conn.prepareStatement("UPDATE device SET revoked = TRUE WHERE id = ?").run { setObject(1, deviceId); executeUpdate() }
+        conn.prepareStatement("UPDATE device SET revoked = TRUE, push_token = NULL WHERE id = ?").run { setObject(1, deviceId); executeUpdate() }
     }
 
     fun members(householdId: UUID): List<MemberDto> = db.transaction { conn -> conn.members(householdId) }
@@ -196,7 +196,7 @@ class HouseholdStore(private val db: DataSource) {
                 setObject(1, memberId); executeUpdate()
             }
             // Their phones return to the join screen.
-            conn.prepareStatement("UPDATE device SET revoked = TRUE WHERE member_id = ? AND NOT revoked").run {
+            conn.prepareStatement("UPDATE device SET revoked = TRUE, push_token = NULL WHERE member_id = ? AND NOT revoked").run {
                 setObject(1, memberId); executeUpdate()
             }
             conn.deleteOrphanedEvents()

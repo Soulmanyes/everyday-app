@@ -32,6 +32,8 @@ class ApiContext(
     val setupToken: String?,
     val clock: () -> Instant = Instant::now,
     val rateLimits: RateLimits = RateLimits(),
+    /** Instant updates; null on a server without Firebase (and in most tests). */
+    val push: Push? = null,
 )
 
 const val ADMIN_PIN_HEADER = "X-Admin-Pin"
@@ -86,6 +88,7 @@ fun Application.configureRouting(api: ApiContext?) {
                 }
                 val name = validName(req.name, "Your name", 40)
                 api.store.addPendingDevice(household.id, Secrets.tokenHash(token), req.deviceLabel, name)
+                api.push?.admin(household.id)
                 call.respond(SessionResponse(token, household.toDto(), api.store.members(household.id), deviceStatus = "pending"))
             }
         }
@@ -108,10 +111,20 @@ fun Application.configureRouting(api: ApiContext?) {
 
         /** A member picks their own dot colour (no PIN). */
         put("/me/color") {
-            val (household, me) = api.member(call)
+            val caller = api.member(call)
             val color = validColor(call.receive<ColorRequest>().color)
-            val member = withNameCheck { api.store.setColor(household.id, me, color) } ?: throw unauthorized()
+            val member = withNameCheck { api.store.setColor(caller.household.id, caller.memberId, color) } ?: throw unauthorized()
+            api.pushOthers(caller)
             call.respond(member)
+        }
+
+        /** Registers the phone for instant updates. Pending phones too: they're pushed when approved. */
+        put("/me/push-token") {
+            val session = api.authenticate(call)
+            val token = call.receive<PushTokenRequest>().token?.trim()?.takeIf { it.isNotEmpty() }
+            if (token != null && token.length > 4096) badRequest("Bad push token.")
+            api.push?.store?.setToken(session.deviceId, token)
+            call.respond(HttpStatusCode.NoContent)
         }
 
         /** Leaving the household: the device's token stops working. */
@@ -123,23 +136,33 @@ fun Application.configureRouting(api: ApiContext?) {
 
         rateLimit(ADMIN_LIMIT) {
             get("/join-requests") {
-                val household = api.requireAdmin(call)
+                val admin = api.requireAdmin(call)
+                val household = admin.household
                 call.respond(api.store.joinRequests(household.id))
             }
 
             /** Approves a phone as a new member (body without memberId) or as an existing member. */
             post("/join-requests/{id}/approve") {
-                val household = api.requireAdmin(call)
+                val admin = api.requireAdmin(call)
+                val household = admin.household
                 val id = uuidParam(call, "request")
                 val memberId = call.receive<ApproveRequest>().memberId?.let { parseUuid(it) ?: badRequest("Bad member id.") }
                 val member = withNameCheck { api.store.approve(household.id, id, memberId) }
                     ?: throw ApiException(HttpStatusCode.NotFound, "No such request or member.")
+                // The approved phone moves on from its waiting screen; the others may have a new member.
+                api.push?.let { push -> push.tokens(push.store.deviceTokens(household.id, id)) }
+                api.pushOthers(admin)
                 call.respond(member)
             }
 
             post("/join-requests/{id}/reject") {
-                val household = api.requireAdmin(call)
-                if (!api.store.reject(household.id, uuidParam(call, "request"))) throw ApiException(HttpStatusCode.NotFound, "No such request.")
+                val admin = api.requireAdmin(call)
+                val household = admin.household
+                val id = uuidParam(call, "request")
+                // Read before rejecting: a rejected phone keeps no token. The push sends it back to the join screen.
+                val tokens = api.push?.store?.deviceTokens(household.id, id).orEmpty()
+                if (!api.store.reject(household.id, id)) throw ApiException(HttpStatusCode.NotFound, "No such request.")
+                api.push?.tokens(tokens)
                 call.respond(HttpStatusCode.NoContent)
             }
 
@@ -150,29 +173,38 @@ fun Application.configureRouting(api: ApiContext?) {
             }
 
             post("/members") {
-                val household = api.requireAdmin(call)
+                val admin = api.requireAdmin(call)
+                val household = admin.household
                 val req = call.receive<MemberRequest>()
                 val member = withNameCheck {
                     api.store.addMember(household.id, validName(req.displayName, "Name", 40), req.color?.let(::validColor))
                 }
+                api.pushOthers(admin)
                 call.respond(HttpStatusCode.Created, member)
             }
 
             put("/members/{id}") {
-                val household = api.requireAdmin(call)
+                val admin = api.requireAdmin(call)
+                val household = admin.household
                 val id = memberId(call)
                 val req = call.receive<MemberRequest>()
                 val member = withNameCheck {
                     api.store.updateMember(household.id, id, validName(req.displayName, "Name", 40), req.color?.let(::validColor))
                 } ?: throw ApiException(HttpStatusCode.NotFound, "No such member.")
+                api.pushOthers(admin)
                 call.respond(member)
             }
 
             delete("/members/{id}") {
-                val household = api.requireAdmin(call)
+                val admin = api.requireAdmin(call)
+                val household = admin.household
                 val id = memberId(call)
                 if (id == household.adminMemberId) badRequest("The admin can't be removed.")
+                // Read before removing: their phones keep no token. The push sends them back to the join screen.
+                val tokens = api.push?.store?.memberTokens(household.id, id).orEmpty()
                 if (!api.store.deleteMember(household.id, id)) throw ApiException(HttpStatusCode.NotFound, "No such member.")
+                api.push?.tokens(tokens)
+                api.pushOthers(admin)
                 call.respond(HttpStatusCode.NoContent)
             }
         }
@@ -184,11 +216,15 @@ fun Application.configureRouting(api: ApiContext?) {
 
         /** Pushes the phone's changed rows for one member and returns everything that member can see. */
         post("/v2/sync") {
-            val (household, me) = api.member(call)
+            val caller = api.member(call)
             val req = call.receive<SyncRequest>()
-            if (req.memberId != me.toString()) throw notYours()
-            when (val result = api.sync.sync(household.id, req)) {
-                is SyncStore.Result.Ok -> call.respond(result.response)
+            if (req.memberId != caller.memberId.toString()) throw notYours()
+            when (val result = api.sync.sync(caller.household.id, req)) {
+                is SyncStore.Result.Ok -> {
+                    // Only when something was written: pushed phones sync too, and a sync with nothing new must not push again.
+                    if (result.changed) api.pushOthers(caller)
+                    call.respond(result.response)
+                }
                 SyncStore.Result.UnknownMember -> badRequest("Unknown member.")
             }
         }
@@ -200,7 +236,8 @@ fun Application.configureRouting(api: ApiContext?) {
 
         /** Creates or updates a chore. The id is generated by the phone. */
         put("/chores/{id}") {
-            val household = api.household(call)
+            val caller = api.member(call)
+            val household = caller.household
             val id = uuidParam(call, "chore")
             val req = call.receive<ChoreRequest>()
             val valid = req.copy(
@@ -212,28 +249,31 @@ fun Application.configureRouting(api: ApiContext?) {
             if (req.weekdays !in 1..127) badRequest("Pick at least one day.")
             val assignees = req.assigneeIds.map { parseUuid(it) ?: badRequest("Bad member id.") }.toSet()
             if (assignees.isEmpty()) badRequest("Assign at least one person.")
-            call.respondChores(api.chores.upsert(household.id, id, valid, assignees, api.today(household)))
+            call.respondChores(api.chores.upsert(household.id, id, valid, assignees, api.today(household)), api, caller)
         }
 
         delete("/chores/{id}") {
-            val household = api.household(call)
-            call.respondChores(api.chores.delete(household.id, uuidParam(call, "chore"), api.today(household)))
+            val caller = api.member(call)
+            val household = caller.household
+            call.respondChores(api.chores.delete(household.id, uuidParam(call, "chore"), api.today(household)), api, caller)
         }
 
         post("/chores/{id}/done") {
-            val (household, me) = api.member(call)
+            val caller = api.member(call)
+            val (household, me) = caller
             val id = uuidParam(call, "chore")
             val member = parseUuid(call.receive<ChoreDoneRequest>().memberId) ?: badRequest("Bad member id.")
             if (member != me) throw notYours()
-            call.respondChores(api.chores.markDone(household.id, id, member, api.today(household)))
+            call.respondChores(api.chores.markDone(household.id, id, member, api.today(household)), api, caller)
         }
 
         post("/chores/{id}/undo") {
-            val (household, me) = api.member(call)
+            val caller = api.member(call)
+            val (household, me) = caller
             val id = uuidParam(call, "chore")
             val member = parseUuid(call.receive<ChoreDoneRequest>().memberId) ?: badRequest("Bad member id.")
             if (member != me) throw notYours()
-            call.respondChores(api.chores.undoDone(household.id, id, member, api.today(household)))
+            call.respondChores(api.chores.undoDone(household.id, id, member, api.today(household)), api, caller)
         }
     }
 }
@@ -247,12 +287,12 @@ private fun ApiContext.authenticate(call: ApplicationCall): DeviceSession {
     return store.authenticate(Secrets.tokenHash(token)) ?: throw unauthorized()
 }
 
-/** Authenticates the device and checks the admin PIN header. Returns the household. */
-private fun ApiContext.requireAdmin(call: ApplicationCall): HouseholdRow {
-    val household = household(call)
+/** Authenticates the device and checks the admin PIN header. */
+private fun ApiContext.requireAdmin(call: ApplicationCall): Caller {
+    val caller = member(call)
     val pin = call.request.headers[ADMIN_PIN_HEADER].orEmpty()
-    checkSecret(pin.isNotEmpty() && secrets.verify(pin, household.adminPinHash), "Wrong admin PIN.")
-    return household
+    checkSecret(pin.isNotEmpty() && secrets.verify(pin, caller.household.adminPinHash), "Wrong admin PIN.")
+    return caller
 }
 
 private fun ApiContext.ensureNotLocked() {
@@ -278,15 +318,23 @@ private fun uuidParam(call: ApplicationCall, what: String): UUID =
 
 private fun parseUuid(value: String): UUID? = runCatching { UUID.fromString(value) }.getOrNull()
 
-/** The household of an approved phone. Pending phones are refused. */
-private fun ApiContext.household(call: ApplicationCall): HouseholdRow = member(call).first
+/** An approved phone making a request: member-scoped requests act as [memberId]. */
+private data class Caller(val household: HouseholdRow, val memberId: UUID, val deviceId: UUID)
 
-/** The household and member of an approved phone: member-scoped requests act as this member. */
-private fun ApiContext.member(call: ApplicationCall): Pair<HouseholdRow, UUID> {
+/** The household of an approved phone. Pending phones are refused. */
+private fun ApiContext.household(call: ApplicationCall): HouseholdRow = member(call).household
+
+/** The household, member and device of an approved phone. */
+private fun ApiContext.member(call: ApplicationCall): Caller {
     val session = authenticate(call)
     val memberId = session.memberId?.takeIf { session.approved } ?: throw notApproved()
     val household = store.getHousehold(session.householdId) ?: throw unauthorized()
-    return household to memberId
+    return Caller(household, memberId, session.deviceId)
+}
+
+/** Tells every other phone in the household to sync. The caller's own phone already has the change. */
+private fun ApiContext.pushOthers(caller: Caller) {
+    push?.household(caller.household.id, exceptDevice = caller.deviceId)
 }
 
 private fun notApproved() = ApiException(HttpStatusCode.Forbidden, "This phone is waiting for the admin to approve it.")
@@ -296,8 +344,11 @@ private fun notYours() = ApiException(HttpStatusCode.Forbidden, "This phone can 
 /** Today's date in the household timezone; chore completions are per day there, not per UTC day. */
 private fun ApiContext.today(household: HouseholdRow): LocalDate = LocalDate.ofInstant(clock(), ZoneId.of(household.timezone))
 
-private suspend fun ApplicationCall.respondChores(result: ChoreStore.Result) = when (result) {
-    is ChoreStore.Result.Ok -> respond(result.snapshot)
+private suspend fun ApplicationCall.respondChores(result: ChoreStore.Result, api: ApiContext? = null, caller: Caller? = null) = when (result) {
+    is ChoreStore.Result.Ok -> {
+        if (api != null && caller != null) api.pushOthers(caller)
+        respond(result.snapshot)
+    }
     ChoreStore.Result.NotFound -> throw ApiException(HttpStatusCode.NotFound, "No such chore.")
     is ChoreStore.Result.Invalid -> badRequest(result.message)
 }

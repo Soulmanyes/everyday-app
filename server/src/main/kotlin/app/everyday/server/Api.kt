@@ -70,6 +70,10 @@ data class MemberRequest(val displayName: String, val color: String? = null)
 @Serializable
 data class ColorRequest(val color: String)
 
+/** The phone's FCM token for instant updates; null stops pushes to this phone. */
+@Serializable
+data class PushTokenRequest(val token: String? = null)
+
 /** Palette keys, in the order free colours are handed out. The app maps each key to a colour. */
 val MEMBER_COLORS = listOf("blue", "red", "purple", "orange", "yellow", "pink", "cyan", "brown", "indigo", "grey", "maroon", "sky")
 
