@@ -9,6 +9,12 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        9, "1.6.0",
+        listOf(
+            "Instant updates: changes from other phones (chores, shared events, join requests) arrive straight away instead of within 15 minutes.",
+        ),
+    ),
+    ReleaseNote(
         8, "1.5.0",
         listOf(
             "This \"What's new\" list, shown once after each update. You can read it again in Settings.",

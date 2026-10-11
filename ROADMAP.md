@@ -110,8 +110,9 @@ App only: no server or schema change. Built on `dev` and checked on an API 37 em
 - [x] After the app updates, show a popup once listing what changed in the new version. Notes are bundled in the app (`ui/whatsnew/ReleaseNotes.kt`, one entry per versionCode); a phone that skipped versions sees every one it missed; a fresh install shows nothing. Settings → About → **What's new** lists every release back to 1.1.0 (decided 2026-10-10).
 
 ## Phase 8.5: Instant updates (1.6.0)
-Moved out of Phase 8 on 2026-10-10: it waits until the owner sets up the Firebase project (done 2026-10-11, project `everyday-app-a684a`).
-- [ ] Push a notification to phones when something changes (chores, shared reminders, join requests) instead of waiting for the 15-minute refresh. Uses **FCM** (decided 2026-10-10): a data-only "sync now" push, so no household data goes through Google; the 15-minute refresh stays as a fallback. Needs a Firebase project with both app IDs, `google-services.json` in the app, and a service-account key on the VM.
+Moved out of Phase 8 on 2026-10-10 until the owner set up the Firebase project (done 2026-10-11, project `everyday-app-a684a`). Server (V9) deployed and checked on the test stack with the dev app on an API 37 emulator on 2026-10-11 (app in the background and with its process killed: the change arrived in under a second).
+
+- [x] Push a notification to phones when something changes (chores, shared reminders, join requests) instead of waiting for the 15-minute refresh. Uses **FCM** (decided 2026-10-10): a data-only "sync now" push, so no household data goes through Google; the 15-minute refresh stays as a fallback. Needs a Firebase project with both app IDs, `google-services.json` in the app, and a service-account key on the VM. Every other phone is pushed (decided 2026-10-11); sends use google-auth-library and the FCM HTTP v1 API, not the Firebase Admin SDK (decided 2026-10-11).
 
 ## Phase 9: Multiple households (1.7.0)
 - [ ] Others create their own households on this server. Notes: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
