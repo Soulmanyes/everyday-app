@@ -131,7 +131,7 @@ class Notifier(private val context: Context) {
 
     /** On the admin's phone: someone asked to join; approving needs the PIN in member management. */
     @SuppressLint("MissingPermission") // checked by canPost()
-    fun showJoinRequests(count: Int, householdName: String) {
+    fun showJoinRequests(count: Int, householdName: String, householdKey: String) {
         if (!canPost()) return
         ensureChannels()
         val notification = NotificationCompat.Builder(context, INVITE_CHANNEL)
@@ -141,10 +141,11 @@ class Notifier(private val context: Context) {
             .setAutoCancel(true)
             .setContentIntent(openApp(JOIN_TAG))
             .build()
-        NotificationManagerCompat.from(context).notify(JOIN_TAG, NOTIFICATION_ID, notification)
+        NotificationManagerCompat.from(context).notify("$JOIN_TAG:$householdKey", NOTIFICATION_ID, notification)
     }
 
-    fun cancelJoinRequests() = manager.cancel(JOIN_TAG, NOTIFICATION_ID)
+    /** One notification per household the phone is admin of (Phase 9). */
+    fun cancelJoinRequests(householdKey: String) = manager.cancel("$JOIN_TAG:$householdKey", NOTIFICATION_ID)
 
     fun cancelAddedToEvent(eventId: String) = manager.cancel("EVENT:$eventId", NOTIFICATION_ID)
 

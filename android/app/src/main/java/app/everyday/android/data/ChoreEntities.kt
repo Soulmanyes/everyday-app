@@ -21,6 +21,8 @@ data class ChoreEntity(
     /** Bit 0 = Monday ... bit 6 = Sunday. */
     val weekdays: Int,
     val completion: ChoreCompletion,
+    /** The household the chore is in (Phase 9). Null before the first refresh after updating to 2.0. */
+    val householdId: String? = null,
 )
 
 @Entity(tableName = "chore_assignment", primaryKeys = ["choreId", "memberId"])

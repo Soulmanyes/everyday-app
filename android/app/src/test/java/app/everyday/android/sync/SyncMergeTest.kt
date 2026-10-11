@@ -45,6 +45,21 @@ class SyncMergeTest {
     ) = SyncMerge.plan(me, events, local, states, settings, pushed, server)
 
     @Test
+    fun `a phone in two households merges each household's rows only`() {
+        val householdOf = mapOf(me to "h1", "alex" to "h1", "kim" to "h2", "jo" to "h2", "old" to null)
+        val events = listOf(event("mine"), event("alexs", owner = "alex"), event("kims", owner = "kim"), event("legacy", owner = "old"))
+            .map { EventWithMembers(it, emptyList()) }
+        val rows = SyncMerge.inHousehold(events, { it.event.ownerMemberId }, "h1", householdOf, single = false)
+        assertEquals(listOf("mine", "alexs"), rows.map { it.event.id })
+        // Merging h1's snapshot then can't remove Kim's event, which h1 doesn't know about.
+        assertEquals(listOf("alexs"), plan(local = emptyList(), events = rows, server = snapshot()).deleteEvents)
+
+        // With one household, rows cached before 2.0 (no household yet) still belong to it.
+        val single = SyncMerge.inHousehold(events, { it.event.ownerMemberId }, "h1", householdOf, single = true)
+        assertEquals(listOf("mine", "alexs", "legacy"), single.map { it.event.id })
+    }
+
+    @Test
     fun `server version is saved clean`() {
         val p = plan(listOf(local(entity("a", dirty = true, updatedAt = 200))), snapshot(server(entity("a", updatedAt = 200, message = "srv"))), Pushed(reminders = mapOf("a" to 200)))
         val saved = p.saveReminders.single()

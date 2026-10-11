@@ -9,6 +9,7 @@ import androidx.core.content.edit
 import app.everyday.android.data.ChoreRepository
 import app.everyday.android.data.ReminderMode
 import app.everyday.android.data.ReminderRepository
+import app.everyday.android.data.ReminderView
 import app.everyday.android.data.toSpec
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -16,15 +17,19 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
+/** A member on this phone whose reminders fire, and the household name to show on them (when the phone is in several). */
+data class ActiveProfile(val memberId: String, val label: String? = null)
+
 /**
  * Glue between [ReminderScheduler] and Android: loads reminders, posts what is due, syncs persistent
- * notifications, and keeps a single alarm for the next event. Call [recompute] after anything changes.
+ * notifications, and keeps a single alarm for the next event. Reminders of every household whose
+ * notifications are on fire (Phase 9). Call [recompute] after anything changes.
  */
 class ReminderEngine(
     private val context: Context,
     private val repository: ReminderRepository,
     private val chores: ChoreRepository,
-    private val currentMemberId: () -> String,
+    private val activeProfiles: () -> List<ActiveProfile>,
 ) {
     private val mutex = Mutex()
     private val notifier = Notifier(context)
@@ -36,18 +41,25 @@ class ReminderEngine(
         notifier.ensureChannels()
         val now = Instant.now()
         val zone = ZoneId.systemDefault()
-        val reminders = repository.getReminders()
-        val byId = reminders.associateBy { it.reminder.id }
+        val profiles = activeProfiles()
+        val reminders = profiles.flatMap { p -> repository.getReminders(p.memberId).map { it to p } }
+        val byId = reminders.associate { (r, _) -> r.reminder.id to r }
+        val labelOf = reminders.associate { (r, p) -> r.reminder.id to p.label }
+        fun title(r: ReminderView) = labelOf[r.reminder.id]?.let { "$it · ${r.title}" } ?: r.title
         val lastCheck = prefs.getLong(KEY_LAST_CHECK, 0L).takeIf { it > 0 }?.let(Instant::ofEpochMilli)
 
         // Uses the cached chores, so alarms never wait for the network.
-        val choreDone = chores.doneDatesFor(currentMemberId())
-        val specs = reminders.map { r -> r.toSpec(r.reminder.choreId?.let { choreDone[it] }.orEmpty()) }
+        val choreDone = profiles.associate { it.memberId to chores.doneDatesFor(it.memberId) }
+        val specs = reminders.map { (r, p) -> r.toSpec(r.reminder.choreId?.let { choreDone[p.memberId]?.get(it) }.orEmpty()) }
         val result = ReminderScheduler.compute(specs, now, zone, lastCheck)
+        // Each reminder alerts with its owner's settings. The combined persistent notification uses the picked profile's.
+        val settingsOf = profiles.associate { it.memberId to repository.getSettings(it.memberId) }
         val settings = repository.getSettings()
 
-        result.expiredSnoozes.forEach { repository.setSnooze(it, null) }
-        result.dueTimed.forEach { id -> byId[id]?.let { notifier.showTimed(Notifier.Shown(id, it.title), settings) } }
+        result.expiredSnoozes.forEach { repository.setSnooze(it, null, byId[it]?.memberId) }
+        result.dueTimed.forEach { id ->
+            byId[id]?.let { notifier.showTimed(Notifier.Shown(id, title(it)), settingsOf[it.memberId] ?: settings) }
+        }
 
         // Timed notifications of deleted or paused reminders go away.
         for (id in notifier.showing(ReminderMode.TIMED)) {
@@ -57,7 +69,7 @@ class ReminderEngine(
         // Persistent reminders share one notification listing all that are showing now. It alerts only
         // when a reminder appears that wasn't in it before (not when re-posted after a swipe).
         val shown = prefs.getStringSet(KEY_SHOWN, emptySet())!!
-        val visible = result.visiblePersistent.mapNotNull { byId[it] }.sortedBy { it.reminder.createdAt }.map { Notifier.Shown(it.reminder.id, it.title) }
+        val visible = result.visiblePersistent.mapNotNull { byId[it] }.sortedBy { it.reminder.createdAt }.map { Notifier.Shown(it.reminder.id, title(it)) }
         // Persistent notifications from before they were combined into one.
         notifier.showing(ReminderMode.PERSISTENT).filter { it != "all" }.forEach { notifier.cancel(ReminderMode.PERSISTENT, it) }
         if (visible.isEmpty()) {
@@ -74,14 +86,16 @@ class ReminderEngine(
     }
 
     suspend fun snooze(reminderId: String) {
-        val minutes = repository.getSettings().snoozeMinutes
-        repository.setSnooze(reminderId, Instant.now().plusSeconds(minutes * 60L))
+        val owner = repository.getReminder(reminderId)?.reminder?.ownerMemberId
+        val minutes = (owner?.let { repository.getSettings(it) } ?: repository.getSettings()).snoozeMinutes
+        repository.setSnooze(reminderId, Instant.now().plusSeconds(minutes * 60L), owner)
         notifier.cancel(ReminderMode.TIMED, reminderId)
         recompute()
     }
 
     suspend fun setDoneToday(reminderId: String, done: Boolean) {
-        repository.setDone(reminderId, if (done) LocalDate.now() else null)
+        val owner = repository.getReminder(reminderId)?.reminder?.ownerMemberId
+        repository.setDone(reminderId, if (done) LocalDate.now() else null, owner)
         recompute()
     }
 

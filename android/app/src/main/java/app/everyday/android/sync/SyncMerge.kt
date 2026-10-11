@@ -32,6 +32,15 @@ data class MergePlan(
  * - A refused row the server doesn't have is kept but marked clean, so it can't block sync forever.
  */
 object SyncMerge {
+    /**
+     * The events and reminders that belong to one household (Phase 9), so merging its snapshot never
+     * removes another household's rows from a phone that's in several. A row belongs by its owner's
+     * household ([householdOf]: member id to household id). Owners without a known household (cached
+     * before 2.0, or the local profile) count only while the phone is in a single household.
+     */
+    fun <T> inHousehold(rows: List<T>, owner: (T) -> String, householdId: String?, householdOf: Map<String, String?>, single: Boolean): List<T> =
+        rows.filter { row -> householdOf[owner(row)]?.let { it == householdId } ?: single }
+
     fun plan(
         memberId: String,
         localEvents: List<EventWithMembers>,

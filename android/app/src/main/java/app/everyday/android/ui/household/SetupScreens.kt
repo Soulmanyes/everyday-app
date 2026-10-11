@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -101,13 +102,13 @@ private fun JoinScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
     var server by rememberSaveable { mutableStateOf(vm.session.value.serverUrl) }
     FormScaffold("Join household", onBack) {
         Text(
-            "Ask whoever set up the household for the household code. They'll approve you before you're in.",
+            "Ask the household's admin for its join code. They'll approve you before you're in.",
             style = MaterialTheme.typography.bodyMedium,
         )
         if (!isAdmin) {
             OutlinedTextField(name, { name = it.take(40) }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         }
-        SecretField(code, { code = it }, "Household code")
+        CodeField(code, { code = it }, "Join code", "e.g. HZ7K-2P9X-QM4T")
         // The admin's own new phone: nobody else could approve it.
         Row(
             Modifier.fillMaxWidth().toggleable(value = isAdmin, role = Role.Checkbox, onValueChange = { isAdmin = it }),
@@ -129,36 +130,34 @@ private fun JoinScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
 
 @Composable
 private fun CreateScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
-    var setupCode by rememberSaveable { mutableStateOf("") }
+    var invite by rememberSaveable { mutableStateOf("") }
     var householdName by rememberSaveable { mutableStateOf("") }
-    var householdCode by rememberSaveable { mutableStateOf("") }
     var adminName by rememberSaveable { mutableStateOf("") }
     var pin by rememberSaveable { mutableStateOf("") }
     var pinAgain by rememberSaveable { mutableStateOf("") }
     var server by rememberSaveable { mutableStateOf(vm.session.value.serverUrl) }
     val problem = when {
-        householdCode.isNotEmpty() && householdCode.length < 6 -> "The household code needs at least 6 characters."
         pin.isNotEmpty() && !pin.matches(Regex("\\d{4,8}")) -> "The admin PIN must be 4 to 8 digits."
         pinAgain.isNotEmpty() && pin != pinAgain -> "The PINs don't match."
         else -> null
     }
-    val ready = setupCode.isNotBlank() && householdName.isNotBlank() && householdCode.length >= 6 &&
+    val ready = invite.isNotBlank() && householdName.isNotBlank() &&
         adminName.isNotBlank() && pin.matches(Regex("\\d{4,8}")) && pin == pinAgain
     FormScaffold("Set up household", onBack) {
         Text(
-            "You'll be the household's admin: only you can add or remove members, using your admin PIN.",
+            "You need an invite from the admin of another household. You'll be your household's admin: " +
+                "only you can add or remove members, using your admin PIN.",
             style = MaterialTheme.typography.bodyMedium,
         )
-        SecretField(setupCode, { setupCode = it }, "Setup code (from the server)")
+        CodeField(invite, { invite = it }, "Invite code", "e.g. NEW-7K3P-QX9M-2B4D")
         OutlinedTextField(householdName, { householdName = it }, label = { Text("Household name") }, singleLine = true, keyboardOptions = NEXT, modifier = Modifier.fillMaxWidth())
-        SecretField(householdCode, { householdCode = it }, "Household code (others use it to join)")
         OutlinedTextField(adminName, { adminName = it }, label = { Text("Your name") }, singleLine = true, keyboardOptions = NEXT, modifier = Modifier.fillMaxWidth())
         SecretField(pin, { pin = it }, "Admin PIN (4–8 digits)", numeric = true)
         SecretField(pinAgain, { pinAgain = it }, "Admin PIN again", numeric = true)
         ServerField(server) { server = it }
         (problem ?: vm.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
-            onClick = { vm.create(server, setupCode, householdName, householdCode, adminName, pin) },
+            onClick = { vm.create(server, invite, householdName, adminName, pin) },
             enabled = !vm.busy && ready,
             modifier = Modifier.fillMaxWidth(),
         ) { Text(if (vm.busy) "Setting up…" else "Create household") }
@@ -195,6 +194,25 @@ fun SecretField(value: String, onChange: (String) -> Unit, label: String, numeri
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(
             keyboardType = if (numeric) KeyboardType.NumberPassword else KeyboardType.Password,
+            imeAction = ImeAction.Next,
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/** A join code or invite: shown as typed (they're shared as text anyway), in capitals. */
+@Composable
+fun CodeField(value: String, onChange: (String) -> Unit, label: String, example: String) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { onChange(it.uppercase().take(24)) },
+        label = { Text(label) },
+        placeholder = { Text(example) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.Characters,
+            autoCorrectEnabled = false,
+            keyboardType = KeyboardType.Ascii,
             imeAction = ImeAction.Next,
         ),
         modifier = Modifier.fillMaxWidth(),

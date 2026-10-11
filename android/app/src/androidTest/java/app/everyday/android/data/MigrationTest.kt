@@ -177,6 +177,25 @@ class MigrationTest {
         db.query("SELECT count(*) FROM busy_event").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
     }
 
+    @Test
+    fun migrate7To8KeepsMembersChoresAndRemindersWithoutAHousehold() {
+        helper.createDatabase(DB, 7).apply {
+            execSQL("INSERT INTO member (id, displayName, updatedAt, deleted, color) VALUES ('m1', 'Sam', 1, 0, 'blue')")
+            execSQL("INSERT INTO chore (id, title, notes, weekdays, completion) VALUES ('c1', 'Bins', NULL, 1, 'ANY')")
+            execSQL("INSERT INTO reminder (id, ownerMemberId, message, mode, weekdays, active, createdAt, updatedAt, deleted, ownerReceives, dirty, choreId) VALUES ('r1', 'm1', 'Bins', 'TIMED', 1, 1, 1, 1, 0, 1, 0, 'c1')")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(DB, 8, true)
+        db.query("SELECT displayName, color, householdId FROM member").use {
+            it.moveToFirst()
+            assertEquals("Sam", it.getString(0))
+            assertEquals("blue", it.getString(1))
+            assertEquals(true, it.isNull(2))
+        }
+        db.query("SELECT title, householdId FROM chore").use { it.moveToFirst(); assertEquals("Bins", it.getString(0)); assertEquals(true, it.isNull(1)) }
+        db.query("SELECT count(*) FROM reminder").use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

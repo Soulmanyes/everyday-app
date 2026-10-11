@@ -25,12 +25,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         EventMemberEntity::class,
         BusyEventEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
-    // 1 -> 2 and 3 -> 4 add chore cache tables, 4 -> 5 the member colour, 6 -> 7 Busy events (Phase 7).
+    // 1 -> 2 and 3 -> 4 add chore cache tables, 4 -> 5 the member colour, 6 -> 7 Busy events (Phase 7),
+    // 7 -> 8 the household of members and chores (Phase 9).
     // MigrationTest checks reminders survive every step.
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 6, to = 7),
+        AutoMigration(from = 7, to = 8),
     ],
 )
 abstract class AppDatabase : RoomDatabase() {

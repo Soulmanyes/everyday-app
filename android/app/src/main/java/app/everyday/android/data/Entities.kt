@@ -23,6 +23,8 @@ data class MemberEntity(
     val deleted: Boolean = false,
     /** Palette key of the member's dot colour, from the server (household-wide). */
     val color: String? = null,
+    /** The household the member is in (Phase 9). Null for the local profile and before the first refresh. */
+    val householdId: String? = null,
 )
 
 /** SOUND is sound only (Phase 6); SOUND_VIBRATE is what SOUND used to be. */

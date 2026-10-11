@@ -52,11 +52,14 @@ class HouseholdViewModel(
         }
     }
 
-    fun create(serverUrl: String, setupCode: String, householdName: String, householdCode: String, adminName: String, pin: String) =
-        run({ manager.create(serverUrl.trim(), setupCode.trim(), householdName, householdCode, adminName, pin) })
+    /** A join code to show once: right after creating a household, or after the admin makes a new one. */
+    var shownJoinCode by mutableStateOf<String?>(null)
 
-    fun join(serverUrl: String, householdCode: String, name: String, adminPin: String? = null) =
-        run({ manager.join(serverUrl.trim(), householdCode, name.trim(), adminPin) })
+    fun create(serverUrl: String, inviteCode: String, householdName: String, adminName: String, pin: String) =
+        run({ shownJoinCode = manager.create(serverUrl.trim(), inviteCode.trim(), householdName, adminName, pin) })
+
+    fun join(serverUrl: String, joinCode: String, name: String, adminPin: String? = null) =
+        run({ manager.join(serverUrl.trim(), joinCode.trim(), name.trim(), adminPin) })
 
     /** Join requests, loaded once the admin PIN is entered. */
     var requests by mutableStateOf<List<JoinRequestInfo>>(emptyList())
