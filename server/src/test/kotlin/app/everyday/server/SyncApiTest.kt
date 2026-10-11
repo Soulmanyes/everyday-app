@@ -90,6 +90,7 @@ class SyncApiTest {
             members = members.map { EventMemberDto(it) },
             createdAt = 1_000,
             updatedAt = updatedAt,
+            endDays = 0,
         )
 
     private fun reminder(owner: String, eventId: String, updatedAt: Long = 1_000, id: String = UUID.randomUUID().toString()) =
@@ -101,6 +102,7 @@ class SyncApiTest {
             times = listOf(TimeDto(480), TimeDto(30, relative = true)),
             createdAt = 1_000,
             updatedAt = updatedAt,
+            eachDay = false,
         )
 
     @Test
@@ -337,5 +339,98 @@ class SyncApiTest {
         // Once everyone has left a shared event, it's personal again.
         client.syncOk(home, SyncRequest(home.kim, leave = listOf(LeaveSyncDto(shared.id, 5_000))))
         assertEquals(setOf(hidden.id, shared.id), client.syncOk(home, SyncRequest(home.sam)).busy.map { it.id }.toSet())
+    }
+
+    /** A weekend away: Fri 18:00 to Sun 20:00, once on a date or every week. */
+    private fun weekend(owner: String, oneOff: Boolean = true, updatedAt: Long = 1_000) = event(owner, updatedAt = updatedAt).copy(
+        weekdays = if (oneOff) 0 else 0b0010000,
+        onDate = if (oneOff) "2026-10-23" else null,
+        startMinute = 18 * 60,
+        endMinute = null,
+        endDays = 2,
+        endDayMinute = 20 * 60,
+    )
+
+    @Test
+    fun `multi-day events come back with their end day, and as first-day-only for phones before 2_2`() = api { client, home ->
+        val timed = weekend(home.sam)
+        val allDay = weekend(home.sam, oneOff = false).copy(startMinute = null, endDayMinute = null)
+        val out = client.syncOk(home, SyncRequest(home.sam, events = listOf(timed, allDay)))
+        assertTrue(out.rejected.isEmpty(), out.rejected.toString())
+        val t = out.events.single { it.id == timed.id }
+        assertEquals(2, t.endDays)
+        assertEquals(20 * 60, t.endDayMinute)
+        // Old phones: from the start until midnight of the first day.
+        assertEquals(1440, t.endMinute)
+        val a = out.events.single { it.id == allDay.id }
+        assertEquals(2, a.endDays)
+        assertNull(a.endMinute)
+        assertNull(a.endDayMinute)
+
+        // Same-day events don't change.
+        val plain = client.syncOk(home, SyncRequest(home.sam, events = listOf(event(home.sam)))).events.single { it.endDays == 0 }
+        assertEquals(18 * 60, plain.endMinute)
+        assertNull(plain.endDayMinute)
+
+        // Busy carries the span too.
+        val busy = client.syncOk(home, SyncRequest(home.alex)).busy.single { it.id == timed.id }
+        assertEquals(2, busy.endDays)
+        assertEquals(20 * 60, busy.endDayMinute)
+        assertEquals(1440, busy.endMinute)
+    }
+
+    @Test
+    fun `a phone before 2_2 editing a multi-day event keeps its end`() = api { client, home ->
+        val e = weekend(home.sam)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e)))
+        // What a 2.1 phone sends back: the first-day end it was given, and no endDays.
+        val old = e.copy(title = "Away", endMinute = 1440, endDays = null, endDayMinute = null, updatedAt = 2_000)
+        val back = client.syncOk(home, SyncRequest(home.sam, events = listOf(old))).events.single()
+        assertEquals("Away", back.title)
+        assertEquals(2, back.endDays)
+        assertEquals(20 * 60, back.endDayMinute)
+        // A 2.2 phone can make it a same-day event again.
+        val same = e.copy(endDays = 0, endMinute = 19 * 60, endDayMinute = null, updatedAt = 3_000)
+        val now = client.syncOk(home, SyncRequest(home.sam, events = listOf(same))).events.single()
+        assertEquals(0, now.endDays)
+        assertEquals(19 * 60, now.endMinute)
+    }
+
+    @Test
+    fun `multi-day rules`() = api { client, home ->
+        val ok31 = weekend(home.sam).copy(endDays = 31)
+        val tooLong = weekend(home.sam).copy(endDays = 32)
+        val weeklyOk = weekend(home.sam, oneOff = false).copy(endDays = 6)
+        val weeklyTooLong = weekend(home.sam, oneOff = false).copy(endDays = 7)
+        val weeklyTwoDays = weekend(home.sam, oneOff = false).copy(weekdays = 0b0010001)
+        val noEndTime = weekend(home.sam).copy(endDayMinute = null)
+        val endWithoutStart = weekend(home.sam).copy(startMinute = null)
+        // Ending at or before the start time is fine on a later day.
+        val early = weekend(home.sam).copy(endDays = 1, endDayMinute = 9 * 60)
+        val out = client.syncOk(home, SyncRequest(home.sam, events = listOf(ok31, tooLong, weeklyOk, weeklyTooLong, weeklyTwoDays, noEndTime, endWithoutStart, early)))
+        assertEquals(listOf(tooLong, weeklyTooLong, weeklyTwoDays, noEndTime, endWithoutStart).map { "event:${it.id}" }, out.rejected)
+
+        // A 2.1 phone can't turn a multi-day weekly event into one on several weekdays.
+        val stored = weekend(home.sam, oneOff = false)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(stored)))
+        val twoDays = stored.copy(weekdays = 0b0010001, endMinute = 1440, endDays = null, endDayMinute = null, updatedAt = 2_000)
+        assertEquals(listOf("event:${stored.id}"), client.syncOk(home, SyncRequest(home.sam, events = listOf(twoDays))).rejected)
+    }
+
+    @Test
+    fun `each day on persistent reminders, kept when a phone before 2_2 leaves it out`() = api { client, home ->
+        val e = weekend(home.sam)
+        val r = reminder(home.sam, e.id).copy(mode = "PERSISTENT", times = emptyList(), eachDay = true)
+        val out = client.syncOk(home, SyncRequest(home.sam, events = listOf(e), reminders = listOf(r)))
+        assertEquals(true, out.reminders.single().eachDay)
+        val old = r.copy(active = false, eachDay = null, updatedAt = 2_000)
+        val back = client.syncOk(home, SyncRequest(home.sam, reminders = listOf(old))).reminders.single()
+        assertEquals(false, back.active)
+        assertEquals(true, back.eachDay)
+
+        val timed = reminder(home.sam, e.id).copy(eachDay = true)
+        val withLead = r.copy(id = UUID.randomUUID().toString(), leadMinutes = 30)
+        val rejected = client.syncOk(home, SyncRequest(home.sam, reminders = listOf(timed, withLead))).rejected
+        assertEquals(listOf(timed.id, withLead.id), rejected)
     }
 }

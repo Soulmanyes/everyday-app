@@ -135,6 +135,7 @@ Decided 2026-10-12:
 - **Setting the end**: a one-off event picks an end **date** and time, as in a calendar app. A weekly one picks the **weekday it ends on** (starts every Fri 18:00, ends Sun 20:00); a weekly multi-day event starts on **one weekday only**. Stored as "ends N days after it starts" (0 = the same day, as today).
 - **Length**: up to **31 days** for a one-off event; a weekly one ends within 6 days of its start.
 - **Persistent reminders**: the person chooses **Whole event** (from X minutes before the start, or all day from the first day, until the end, across days) or **Each day** (all day on every day of the event). Done hides it until the next day, as today.
+- **Timed reminders** at fixed clock times fire on **every day** of the event; "X minutes before the start" fires once.
 - **Phones on 2.1** show a multi-day event on its first day only, until midnight; nobody is forced to update. Editing it from a 2.1 phone keeps its end day (the server keeps what an old phone doesn't send, as with Busy).
 - [ ] Events can span several days, both **one-off** (a holiday, Fri 18:00 to Sun 20:00 on chosen dates) and **weekly** (every weekend, Fri 18:00 to Sun 20:00). Today an event sits within one day.
 - [ ] They show across their days in the week and month views; Busy and shared events work the same way.
