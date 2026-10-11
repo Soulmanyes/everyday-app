@@ -39,12 +39,18 @@ fun interface PushSender {
 
 class PushStore(private val db: DataSource) {
 
-    /** Stores the phone's FCM token. A token moves to the newest device that registers it (a reinstall). */
+    /**
+     * Stores the phone's FCM token. Within a household a token moves to the newest device that registers it
+     * (a reinstall that rejoined). A phone in several households has the same token in each of them.
+     */
     fun setToken(deviceId: UUID, token: String?) = db.transaction { conn ->
         if (token != null) {
-            conn.prepareStatement("UPDATE device SET push_token = NULL WHERE push_token = ? AND id <> ?").run {
-                setString(1, token); setObject(2, deviceId); executeUpdate()
-            }
+            conn.prepareStatement(
+                """
+                UPDATE device SET push_token = NULL WHERE push_token = ? AND id <> ?
+                    AND household_id = (SELECT household_id FROM device WHERE id = ?)
+                """.trimIndent(),
+            ).run { setString(1, token); setObject(2, deviceId); setObject(3, deviceId); executeUpdate() }
         }
         conn.prepareStatement("UPDATE device SET push_token = ? WHERE id = ?").run {
             setString(1, token); setObject(2, deviceId); executeUpdate()

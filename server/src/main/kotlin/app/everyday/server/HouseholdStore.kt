@@ -31,7 +31,7 @@ class HouseholdStore(private val db: DataSource) {
 
     fun getHousehold(id: UUID): HouseholdRow? = db.transaction { conn -> conn.household(id) }
 
-    /** Creates the one household with its admin member and first device. Returns null if one already exists. */
+    /** Creates a household with its admin member and first device. Returns null on a unique violation. */
     fun createHousehold(
         name: String,
         timezone: String,

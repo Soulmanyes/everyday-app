@@ -78,7 +78,7 @@ class ApiTest {
     }
 
     @Test
-    fun `household can be created once with the setup code`() = api { client ->
+    fun `households can be created with the setup code`() = api { client ->
         assertFalse(client.get("/status").body<StatusResponse>().householdExists)
         assertEquals(HttpStatusCode.Forbidden, client.postJson("/household", createRequest(token = "wrong")).status)
 
@@ -88,7 +88,8 @@ class ApiTest {
         assertEquals(session.members.single().id, session.household.adminMemberId)
         assertTrue(client.get("/status").body<StatusResponse>().householdExists)
 
-        assertEquals(HttpStatusCode.Conflict, client.postJson("/household", createRequest()).status)
+        // More than one household per server (Phase 9).
+        assertEquals(HttpStatusCode.Created, client.postJson("/household", createRequest()).status)
     }
 
     @Test
