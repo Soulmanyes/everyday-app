@@ -19,8 +19,10 @@ Roadmap entry: Phase 9 in `ROADMAP.md`.
    picker each household has a **switch for its reminders and notifications** (on by default); a switched
    off household still syncs in the background.
 4. **Also in 2.0:** an admin can **delete their household** and all its data (admin PIN + confirmation);
-   a short **privacy note** in the app; **auto-cleanup** of households with no activity for **12 months**,
-   after warning the admin (default **30 days** before).
+   a short **privacy note** in the app; **auto-cleanup** of households no phone has contacted for **12 months**:
+   marked, then deleted **30 days** later unless a phone checks in. Changed from "after warning the admin" on
+   2026-10-11: every installed app checks in every 15 minutes, so a household only looks unused once no phone
+   is talking to the server, and then no warning could reach anyone.
 5. **Owner tool: minimal, no names.** A command on the VM lists households by id, member count, created
    and last-active dates, and who invited whom, and can remove a household together with the ones it
    invited. Nothing that identifies people. The privacy note says exactly this, and that the server owner
