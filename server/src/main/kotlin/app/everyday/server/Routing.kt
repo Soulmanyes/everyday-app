@@ -35,6 +35,11 @@ class ApiContext(
     /** Instant updates; null on a server without Firebase (and in most tests). */
     val push: Push? = null,
     val invites: InviteStore = InviteStore(store.db),
+    /**
+     * Server-wide backstop for codes that match nothing (Phase 9.7): those count per sender in [limiter], and
+     * here all together, so guessing spread over many addresses still locks.
+     */
+    val backstop: AttemptLimiter = AttemptLimiter(maxFailures = 200),
     /** How long an invite to create a household stays valid. */
     val inviteLifetime: java.time.Duration = java.time.Duration.ofDays(7),
     /** One-time invites into a household (Phase 9.5); they last [inviteLifetime] too. */
@@ -62,15 +67,15 @@ fun Application.configureRouting(api: ApiContext?) {
                 // An invite from another household's admin, or the server's own setup code.
                 val inviteHash = when {
                     !req.inviteCode.isNullOrBlank() -> {
-                        api.ensureNotLocked()
+                        api.ensureSenderNotLocked(call)
                         val invite = Codes.normalizeInvite(req.inviteCode)
-                        api.checkSecret(invite != null, INVITE_INVALID)
+                        api.checkSender(call, invite != null, INVITE_INVALID)
                         Secrets.tokenHash(invite!!)
                     }
                     !req.setupToken.isNullOrBlank() -> {
                         val setupToken = api.setupToken
                             ?: throw ApiException(HttpStatusCode.Forbidden, "Creating a household with a setup code is disabled on this server.")
-                        api.checkSecret(Secrets.constantTimeEquals(req.setupToken.trim(), setupToken), "Wrong setup code.")
+                        api.checkSender(call, Secrets.constantTimeEquals(req.setupToken.trim(), setupToken), "Wrong setup code.")
                         null
                     }
                     else -> badRequest("Enter the invite code you were given.")
@@ -93,7 +98,7 @@ fun Application.configureRouting(api: ApiContext?) {
                             now = api.clock(),
                         )
                     } catch (_: HouseholdStore.InviteInvalid) {
-                        api.checkSecret(false, INVITE_INVALID)
+                        api.checkSender(call, false, INVITE_INVALID)
                         error("unreachable")
                     }
                 }
@@ -107,7 +112,7 @@ fun Application.configureRouting(api: ApiContext?) {
             post("/join") {
                 val req = call.receive<JoinRequest>()
                 if (req.joinCode == null) throw updateApp("Update the app to join a household.")
-                api.ensureNotLocked()
+                api.ensureSenderNotLocked(call)
                 // A member invite (Phase 9.5) comes in the same field, so 2.0 apps can already join with one.
                 Codes.normalizeMemberInvite(req.joinCode)?.let { invite ->
                     api.joinWithInvite(call, req, Secrets.tokenHash(invite))
@@ -116,7 +121,7 @@ fun Application.configureRouting(api: ApiContext?) {
                 // The public part finds the household; wrong secrets count against that household only.
                 val code = Codes.parseJoinCode(req.joinCode)
                 val household = code?.let { api.store.householdByJoinId(it.joinId) }
-                api.checkSecret(household != null, WRONG_JOIN_CODE)
+                api.checkSender(call, household != null, WRONG_JOIN_CODE)
                 household!!
                 val key = household.id.toString()
                 api.ensureNotLocked(key)
@@ -401,18 +406,37 @@ private fun ApiContext.requireAdmin(call: ApplicationCall): Caller {
     return caller
 }
 
-private fun ApiContext.ensureNotLocked(key: String = AttemptLimiter.GLOBAL) {
+private fun ApiContext.ensureNotLocked(key: String, limiter: AttemptLimiter = this.limiter) {
     limiter.lockedForSeconds(key)?.let { seconds ->
         val minutes = (seconds + 59) / 60
         throw ApiException(HttpStatusCode.TooManyRequests, "Too many wrong attempts. Try again in $minutes min.")
     }
 }
 
-/** Refuses while [key] is locked out; counts a failure for [key] and rejects if [ok] is false. */
-private fun ApiContext.checkSecret(ok: Boolean, message: String, key: String = AttemptLimiter.GLOBAL) {
+/** Refuses while [key] (a household) is locked out; counts a failure for [key] and rejects if [ok] is false. */
+private fun ApiContext.checkSecret(ok: Boolean, message: String, key: String) {
     ensureNotLocked(key)
     if (!ok) {
         limiter.recordFailure(key)
+        throw ApiException(HttpStatusCode.Forbidden, message)
+    }
+}
+
+/** The lock key of the phone sending [call]: codes that match nothing count per sender. */
+private fun senderKey(call: ApplicationCall) = "ip:" + clientIp(call)
+
+/** Refuses while this sender, or the whole server (the backstop), is locked out for codes that matched nothing. */
+private fun ApiContext.ensureSenderNotLocked(call: ApplicationCall) {
+    ensureNotLocked(senderKey(call))
+    ensureNotLocked(AttemptLimiter.GLOBAL, backstop)
+}
+
+/** Like [checkSecret] for a code that matched nothing: counts against the sender and the backstop. */
+private fun ApiContext.checkSender(call: ApplicationCall, ok: Boolean, message: String) {
+    ensureSenderNotLocked(call)
+    if (!ok) {
+        limiter.recordFailure(senderKey(call))
+        backstop.recordFailure()
         throw ApiException(HttpStatusCode.Forbidden, message)
     }
 }
@@ -424,7 +448,7 @@ private fun ApiContext.checkSecret(ok: Boolean, message: String, key: String = A
  */
 private suspend fun ApiContext.joinWithInvite(call: ApplicationCall, req: JoinRequest, inviteHash: String) {
     val household = memberInvites.find(inviteHash, clock())?.let { store.getHousehold(it.first) }
-    checkSecret(household != null, MEMBER_INVITE_INVALID)
+    checkSender(call, household != null, MEMBER_INVITE_INVALID)
     household!!
     val key = household.id.toString()
     val adminId = if (!req.adminPin.isNullOrEmpty()) {
@@ -439,7 +463,7 @@ private suspend fun ApiContext.joinWithInvite(call: ApplicationCall, req: JoinRe
         store.joinWithInvite(household.id, inviteHash, Secrets.tokenHash(token), req.deviceLabel, adminId, name, clock())
     } catch (_: HouseholdStore.InviteInvalid) {
         // Someone else used it (or it was cancelled) a moment ago.
-        checkSecret(false, MEMBER_INVITE_INVALID)
+        checkSender(call, false, MEMBER_INVITE_INVALID)
     }
     if (adminId != null) {
         call.respond(SessionResponse(token, household.toDto(), store.members(household.id), memberId = adminId.toString()))

@@ -48,6 +48,6 @@ fun Application.installRateLimits(limits: RateLimits) {
  * and the API port isn't published, so the header can be trusted. Without it (tests, the test
  * stack) every request counts against the connecting address.
  */
-private fun clientIp(call: ApplicationCall): String =
+internal fun clientIp(call: ApplicationCall): String =
     call.request.headers["X-Forwarded-For"]?.substringBefore(',')?.trim()?.takeIf { it.isNotEmpty() }
         ?: call.request.origin.remoteAddress
