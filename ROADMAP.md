@@ -124,7 +124,7 @@ Built on `dev` 2026-10-11 and checked on an API 37 emulator against the test sta
 - [x] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong join codes and admin PINs lock per household (2026-10-11); malformed codes, unknown join ids, invites and setup codes still share one global lock, which per-IP rate limits back up; dependencies kept up to date by Dependabot. Per-IP rate limiting in the API was added early (2026-10-09, see "Developer and ops").
 
 ## Phase 9.5: Easier inviting into your household (2.1.0)
-Planned 2026-10-11, first in the queue. Built on `dev` 2026-10-11, not yet released.
+Planned 2026-10-11, first in the queue. Released 2026-10-12 as 2.1.0.
 - [x] **One-tap invite links** (decided 2026-10-11): Settings → **Invite someone** (admin, with the PIN) makes a one-time member invite link, valid 7 days, and opens the share sheet. No need to find or remake the join code, which can only be shown once. The person taps the link (installing the app first if needed), enters their name, and the admin approves them as today.
 - [x] The invite is stored hashed and used up when someone joins with it; the admin sees open invites and can cancel them. The household join code keeps working as well.
 

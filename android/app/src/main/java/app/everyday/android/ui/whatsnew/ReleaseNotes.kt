@@ -9,6 +9,13 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        11, "2.1.0",
+        listOf(
+            "Admins: Settings → Invite someone shares a one-time invite link. No need to find or remake the join code.",
+            "Open invite links are listed in Manage members, where you can cancel them.",
+        ),
+    ),
+    ReleaseNote(
         10, "2.0.0",
         listOf(
             "Other families can set up their own, separate household: admins make invites in Settings → Manage members.",

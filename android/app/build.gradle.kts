@@ -19,8 +19,8 @@ android {
         minSdk = 28
         targetSdk = 37
         // Bump both for every release: the app compares versionCode with the server's version.json.
-        versionCode = 10
-        versionName = "2.0.0"
+        versionCode = 11
+        versionName = "2.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
