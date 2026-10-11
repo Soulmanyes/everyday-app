@@ -129,7 +129,7 @@ Planned 2026-10-11, first in the queue. Released 2026-10-12 as 2.1.0.
 - [x] The invite is stored hashed and used up when someone joins with it; the admin sees open invites and can cancel them. The household join code keeps working as well.
 
 ## Phase 9.6: Multi-day events (2.2.0)
-Planned 2026-10-11. Started 2026-10-12 on `dev`.
+Planned 2026-10-11. Built on `dev` 2026-10-12, not yet released.
 
 Decided 2026-10-12:
 - **Setting the end**: a one-off event picks an end **date** and time, as in a calendar app. A weekly one picks the **weekday it ends on** (starts every Fri 18:00, ends Sun 20:00); a weekly multi-day event starts on **one weekday only**. Stored as "ends N days after it starts" (0 = the same day, as today).
@@ -137,10 +137,10 @@ Decided 2026-10-12:
 - **Persistent reminders**: the person chooses **Whole event** (from X minutes before the start, or all day from the first day, until the end, across days) or **Each day** (all day on every day of the event). Done hides it until the next day, as today.
 - **Timed reminders** at fixed clock times fire on **every day** of the event; "X minutes before the start" fires once.
 - **Phones on 2.1** show a multi-day event on its first day only, until midnight; nobody is forced to update. Editing it from a 2.1 phone keeps its end day (the server keeps what an old phone doesn't send, as with Busy).
-- [ ] Events can span several days, both **one-off** (a holiday, Fri 18:00 to Sun 20:00 on chosen dates) and **weekly** (every weekend, Fri 18:00 to Sun 20:00). Today an event sits within one day.
-- [ ] They show across their days in the week and month views; Busy and shared events work the same way.
-- [ ] Reminders on them: before the start (as today), and persistent reminders over the whole span or each day.
-- [ ] Server, sync and Room change (the event stores an end day as well as an end time), with migrations that keep existing events as they are.
+- [x] Events can span several days, both **one-off** (a holiday, Fri 18:00 to Sun 20:00 on chosen dates) and **weekly** (every weekend, Fri 18:00 to Sun 20:00). Today an event sits within one day.
+- [x] They show across their days in the week and month views; Busy and shared events work the same way.
+- [x] Reminders on them: before the start (as today), and persistent reminders over the whole span or each day.
+- [x] Server, sync and Room change (the event stores an end day as well as an end time), with migrations that keep existing events as they are.
 
 ## Phase 9.7: Household fixes and "Everyone" events (2.3.0)
 Gaps left by 2.0.0, and one new feature, planned 2026-10-11. Not started.
