@@ -9,6 +9,15 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        10, "2.0.0",
+        listOf(
+            "Other families can set up their own, separate household: admins make invites in Settings → Manage members.",
+            "Be in more than one household on one phone. The app asks which to open, and each has its own switch for reminders and notifications.",
+            "Join codes are now made by the app, and can be shared as a link. Admins: make a new join code in Manage members.",
+            "Admins can delete their household. Settings has a privacy note about what's stored.",
+        ),
+    ),
+    ReleaseNote(
         9, "1.6.0",
         listOf(
             "Instant updates: changes from other phones (chores, shared events, join requests) arrive straight away instead of within 15 minutes.",

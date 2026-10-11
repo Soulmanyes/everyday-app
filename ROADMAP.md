@@ -115,7 +115,7 @@ Moved out of Phase 8 on 2026-10-10 until the owner set up the Firebase project (
 - [x] Push a notification to phones when something changes (chores, shared reminders, join requests) instead of waiting for the 15-minute refresh. Uses **FCM** (decided 2026-10-10): a data-only "sync now" push, so no household data goes through Google; the 15-minute refresh stays as a fallback. Needs a Firebase project with both app IDs, `google-services.json` in the app, and a service-account key on the VM. Every other phone is pushed (decided 2026-10-11); sends use google-auth-library and the FCM HTTP v1 API, not the Firebase Admin SDK (decided 2026-10-11).
 
 ## Phase 9: Multiple households (2.0.0)
-Built on `dev` 2026-10-11 and checked on an API 37 emulator against the test stack (update from 1.6.0 keeps the phone joined; a phone in three households; invite, join code, join link). Not released yet.
+Built on `dev` 2026-10-11 and checked on an API 37 emulator against the test stack (update from 1.6.0 keeps the phone joined; a phone in three households; invite, join code, join link; notification Done in a household that isn't picked). Released 2026-10-11.
 
 - [x] Others create their own households on this server, through invites from household admins (3 each, 7 days). Notes and decisions: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
 - [x] Generated join codes (shown once, new one on demand) and join links
