@@ -50,7 +50,11 @@ class EventEditorViewModel(
         error = null
     }
 
-    fun toggleDay(bit: Int) = update { it.copy(weekdays = it.weekdays xor (1 shl bit)) }
+    /** A multi-day weekly event starts on one weekday: picking another makes it a one-day event again. */
+    fun toggleDay(bit: Int) = update {
+        val weekdays = it.weekdays xor (1 shl bit)
+        it.copy(weekdays = weekdays, endDays = if (Integer.bitCount(weekdays) == 1) it.endDays else 0)
+    }
 
     fun toggleMember(memberId: String) = update {
         it.copy(memberIds = if (memberId in it.memberIds) it.memberIds - memberId else it.memberIds + memberId)
@@ -60,13 +64,19 @@ class EventEditorViewModel(
         if (allDay) it.copy(startMinute = null, endMinute = null) else it.copy(startMinute = nextHour(), endMinute = null)
     }
 
+    /** Multi-day (Phase 9.6): ends [days] after the start day; 0 = the same day. */
+    fun setEndDays(days: Int) = update { it.copy(endDays = days, endMinute = it.endMinute.takeIf { _ -> it.startMinute != null }) }
+
     fun save(onSaved: () -> Unit) {
         val d = draft
         error = when {
             d.title.isBlank() -> "Enter a title."
             d.weekly && d.weekdays == 0 -> "Choose at least one day."
             !d.weekly && d.date == null -> "Choose a date."
-            d.startMinute != null && d.endMinute != null && d.endMinute <= d.startMinute -> "The end time must be after the start time."
+            d.endDays > 0 && d.weekly && Integer.bitCount(d.weekdays) != 1 -> "An event over several days starts on one day of the week."
+            d.endDays > (if (d.weekly) 6 else MAX_END_DAYS) -> "An event can last up to ${if (d.weekly) "a week" else "$MAX_END_DAYS days"}."
+            d.endDays > 0 && d.startMinute != null && d.endMinute == null -> "Choose when it ends."
+            d.endDays == 0 && d.startMinute != null && d.endMinute != null && d.endMinute <= d.startMinute -> "The end time must be after the start time."
             else -> null
         }
         if (error != null) return
@@ -87,6 +97,9 @@ class EventEditorViewModel(
     private fun nextHour() = minOf(LocalTime.now().hour + 1, 23) * 60
 
     companion object {
+        /** A one-off event lasts up to this many days after its start day (Phase 9.6). */
+        const val MAX_END_DAYS = 31
+
         fun factory(eventId: String?) = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as EverydayApplication

@@ -394,8 +394,7 @@ private fun AllDayRow(
     entries: List<Entry>,
     onSelect: (String) -> Unit,
 ) {
-    val allDay = entries.filter { it.isAllDay() }
-    if (allDay.isEmpty()) return
+    if (days.none { day -> entries.any { it.isAllDayOn(day) } }) return
     Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
         Text(
             "all\nday",
@@ -405,7 +404,7 @@ private fun AllDayRow(
         )
         for (day in days) {
             Column(Modifier.weight(1f).padding(horizontal = 1.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                allDay.filter { it.isOn(day) }.forEach { entry ->
+                entries.filter { it.isAllDayOn(day) }.forEach { entry ->
                     EntryBlock(entry, entry.title(), day, today, Modifier.fillMaxWidth().height(22.dp)) { onSelect(entry.key) }
                 }
             }
@@ -547,9 +546,11 @@ private fun Entry.isOn(day: LocalDate) = when (this) {
     is Entry.ChoreReminder -> isOnWeekday(view.reminder.weekdays, day)
 }
 
-private fun Entry.isAllDay() = when (this) {
-    is Entry.Event -> view.event.startMinute == null
-    is Entry.ChoreReminder -> view.reminder.mode == ReminderMode.PERSISTENT && view.windows.any { Window(it.startMinute, it.endMinute).isAllDay }
+/** Shown in the all-day row on [day]: all-day events, the middle days of multi-day ones, and all-day chore reminders. */
+private fun Entry.isAllDayOn(day: LocalDate) = when (this) {
+    is Entry.Event -> view.occurs.partOn(day)?.allDay == true
+    is Entry.ChoreReminder -> isOn(day) && view.reminder.mode == ReminderMode.PERSISTENT &&
+        view.windows.any { Window(it.startMinute, it.endMinute).isAllDay }
 }
 
 /** Calendar blocks for one day. [detailed] (day view) adds times to the labels; the week view has no room. */
@@ -558,9 +559,15 @@ private fun itemsFor(day: LocalDate, entries: List<Entry>, detailed: Boolean): L
         when (entry) {
             is Entry.Event -> {
                 val e = entry.view.event
-                val start = e.startMinute ?: return@flatMap emptyList()
-                val end = e.endMinute ?: minOf(start + TIMED_LENGTH_MINUTES, MINUTES_PER_DAY)
-                val label = if (detailed) "${formatMinute(start)}  ${e.title}" else e.title
+                // A multi-day event's part on this day: from its start, or (continuing) from midnight until its end.
+                val part = entry.view.occurs.partOn(day)?.takeUnless { it.allDay } ?: return@flatMap emptyList()
+                val start = part.fromMinute ?: return@flatMap emptyList()
+                val end = part.toMinute ?: minOf(start + TIMED_LENGTH_MINUTES, MINUTES_PER_DAY)
+                val label = when {
+                    !detailed -> e.title
+                    part.fromBefore -> "until ${formatMinute(end)}  ${e.title}"
+                    else -> "${formatMinute(start)}  ${e.title}"
+                }
                 listOf(CalendarItem(entry, start, end, label))
             }
             is Entry.ChoreReminder -> {

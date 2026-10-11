@@ -1,5 +1,7 @@
 package app.everyday.android.ui.calendar
 
+import app.everyday.android.data.occurs
+import app.everyday.android.ui.formatSpan
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -352,11 +354,12 @@ fun MonthDaySheet(day: LocalDate, items: List<MonthItem>, members: List<MemberEn
 
 /** "16:00 – 17:00", "All day · shared by Sam", "Chore · Sam, Alex", or "18:00 – 19:00 · Alex" for Busy. */
 private fun daySheetDetail(item: MonthItem, names: Map<String, String>): String = when (item) {
-    is MonthItem.Busy -> timeRange(item.busy.startMinute, item.busy.endMinute) + " · " + (names[item.busy.ownerMemberId] ?: "a removed member")
+    is MonthItem.Busy -> item.busy.occurs().let { if (it.multiDay) formatSpan(it) else timeRange(it.startMinute, it.endMinute) } +
+        " · " + (names[item.busy.ownerMemberId] ?: "a removed member")
     is MonthItem.Chore -> "Chore · " + item.details.assigneeIds.joinToString(", ") { names[it] ?: "a removed member" }
     is MonthItem.Event -> {
         val e = item.view.event
-        val time = timeRange(e.startMinute, e.endMinute)
+        val time = if (e.endDays > 0) formatSpan(item.view.occurs) else timeRange(e.startMinute, e.endMinute)
         if (item.view.isOwn) time else "$time · shared by ${names[e.ownerMemberId] ?: "a removed member"}"
     }
 }

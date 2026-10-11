@@ -196,6 +196,20 @@ class MigrationTest {
         db.query("SELECT count(*) FROM reminder").use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
     }
 
+    @Test
+    fun migrate8To9KeepsEventsOnOneDayAndRemindersOverTheWholeEvent() {
+        helper.createDatabase(DB, 8).apply {
+            execSQL("INSERT INTO event (id, ownerMemberId, title, notes, weekdays, onDate, startMinute, endMinute, createdAt, updatedAt, deleted, dirty, showBusy) VALUES ('e1', 'm1', 'Gym', NULL, 1, NULL, 600, 660, 1, 1, 0, 0, 1)")
+            execSQL("INSERT INTO busy_event (viewerMemberId, id, ownerMemberId, weekdays, onDate, startMinute, endMinute) VALUES ('m1', 'b1', 'm2', 1, NULL, 600, 660)")
+            execSQL("INSERT INTO reminder (id, ownerMemberId, message, mode, weekdays, active, createdAt, updatedAt, deleted, ownerReceives, dirty, eventId) VALUES ('r1', 'm1', '', 'PERSISTENT', 0, 1, 1, 1, 0, 1, 0, 'e1')")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(DB, 9, true)
+        db.query("SELECT endDays, endMinute FROM event").use { it.moveToFirst(); assertEquals(0, it.getInt(0)); assertEquals(660, it.getInt(1)) }
+        db.query("SELECT endDays FROM busy_event").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+        db.query("SELECT eachDay FROM reminder").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

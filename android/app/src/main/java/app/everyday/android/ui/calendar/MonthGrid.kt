@@ -3,6 +3,8 @@ package app.everyday.android.ui.calendar
 import app.everyday.android.data.BusyEventEntity
 import app.everyday.android.data.ChoreWithDetails
 import app.everyday.android.data.EventView
+import app.everyday.android.data.occurs
+import app.everyday.android.reminders.Occurs
 import app.everyday.android.reminders.isOnWeekday
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -65,7 +67,8 @@ fun MonthFilter.matches(view: EventView): Boolean =
 /** A Busy event matches the filter if its owner has their events showing. */
 fun MonthFilter.matches(busy: BusyEventEntity): Boolean = everyone || busy.ownerMemberId in eventMemberIds
 
-fun BusyEventEntity.isOn(date: LocalDate) = onDate?.let { it == date.toString() } ?: isOnWeekday(weekdays, date)
+/** Any day a Busy event covers, a multi-day one included. */
+fun BusyEventEntity.isOn(date: LocalDate) = occurs().isOn(date)
 
 /** A chore matches the filter if any of its assignees has their chores showing. */
 fun MonthFilter.matches(chore: ChoreWithDetails): Boolean = everyone || chore.assigneeIds.any { it in choreMemberIds }
@@ -81,12 +84,16 @@ fun monthItemsOn(
     filter: MonthFilter,
     busy: List<BusyEventEntity> = emptyList(),
 ): List<MonthItem> {
-    val dated = events.filter { it.isOn(date) && filter.matches(it) }.map { Dated(MonthItem.Event(it), it.event.startMinute) } +
-        busy.filter { it.isOn(date) && filter.matches(it) }.map { Dated(MonthItem.Busy(it), it.startMinute) }
+    // A multi-day event sorts by its part on this day: all day in the middle, from midnight on its last day.
+    val dated = events.filter { it.isOn(date) && filter.matches(it) }.map { Dated(MonthItem.Event(it), it.occurs.startOn(date)) } +
+        busy.filter { it.isOn(date) && filter.matches(it) }.map { Dated(MonthItem.Busy(it), it.occurs().startOn(date)) }
     val dayChores = chores.filter { isOnWeekday(it.chore.weekdays, date) && filter.matches(it) }
     return dated.sortedWith(compareBy({ it.startMinute ?: -1 }, { it.item.title.lowercase() }, { it.item.key })).map { it.item } +
         dayChores.sortedBy { it.chore.title.lowercase() }.map { MonthItem.Chore(it) }
 }
+
+/** Where an occurrence starts on [date], null if it fills the whole day. */
+private fun Occurs.startOn(date: LocalDate): Int? = partOn(date)?.takeUnless { it.allDay }?.fromMinute
 
 /** An event or Busy event with its start (null = all day), for sorting. */
 private data class Dated(val item: MonthItem, val startMinute: Int?)

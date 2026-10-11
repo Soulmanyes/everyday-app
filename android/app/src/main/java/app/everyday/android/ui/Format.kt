@@ -1,6 +1,8 @@
 package app.everyday.android.ui
 
 import app.everyday.android.data.EventEntity
+import app.everyday.android.data.occurs
+import app.everyday.android.reminders.Occurs
 import app.everyday.android.reminders.MINUTES_PER_DAY
 import app.everyday.android.reminders.Window
 import java.time.DayOfWeek
@@ -42,6 +44,7 @@ fun formatBefore(minutes: Int): String = when {
 
 /** When an event happens: "Tue, Thu · 17:00 – 18:00", "Mon 20 Oct · All day", "Every day · 08:00". */
 fun formatEventWhen(event: EventEntity): String {
+    if (event.endDays > 0) return formatSpan(event.occurs())
     val days = event.onDate?.let { LocalDate.parse(it).format(DateTimeFormatter.ofPattern("EEE d MMM yyyy")) } ?: formatWeekdays(event.weekdays)
     val time = when {
         event.startMinute == null -> "All day"
@@ -49,6 +52,20 @@ fun formatEventWhen(event: EventEntity): String {
         else -> "${formatMinute(event.startMinute)} – ${formatMinute(event.endMinute)}"
     }
     return "$days · $time"
+}
+
+/**
+ * A multi-day event's span (Phase 9.6): "Fri 23 Oct 18:00 – Sun 25 Oct 20:00", "Every Fri 18:00 – Sun 20:00",
+ * or "Fri 23 Oct – Sun 25 Oct · All day". Times show only when it has a start.
+ */
+fun formatSpan(o: Occurs): String {
+    val dated = DateTimeFormatter.ofPattern("EEE d MMM")
+    val (first, last) = o.onDate?.let { it.format(dated) to it.plusDays(o.endDays.toLong()).format(dated) } ?: run {
+        val day = DayOfWeek.of(Integer.numberOfTrailingZeros(o.weekdays) % 7 + 1)
+        "Every " + dayShort(day) to dayShort(day.plus(o.endDays.toLong()))
+    }
+    if (o.startMinute == null) return "$first – $last · All day"
+    return "$first ${formatMinute(o.startMinute)} – $last ${o.endMinute?.let(::formatMinute).orEmpty()}".trimEnd()
 }
 
 /** A persistent event reminder's lead: "From 30 min before until it ends", or "until it starts" for an event with no end time. */

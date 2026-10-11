@@ -136,9 +136,18 @@ fun EventSheet(
 
             Text("Keep a notification showing", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
             val persistent = item.persistent
+            // Over several days (Phase 9.6): all day on each day, or once over the whole event.
+            val multiDay = item.occurs.multiDay
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = persistent == Persistent.Off, onClick = { onSetPersistent(Persistent.Off) }, label = { Text("Off") })
-                FilterChip(selected = persistent == Persistent.AllDay, onClick = { onSetPersistent(Persistent.AllDay) }, label = { Text("All day") })
+                if (multiDay) {
+                    FilterChip(selected = persistent == Persistent.EachDay, onClick = { onSetPersistent(Persistent.EachDay) }, label = { Text("Each day, all day") })
+                }
+                FilterChip(
+                    selected = persistent == Persistent.AllDay,
+                    onClick = { onSetPersistent(Persistent.AllDay) },
+                    label = { Text(if (multiDay) "Whole event" else "All day") },
+                )
                 if (hasStart) {
                     FilterChip(
                         selected = persistent is Persistent.Before,
@@ -152,7 +161,12 @@ fun EventSheet(
                 }
             }
             Text(
-                "It stays in the notification bar until you tap Done.",
+                if (multiDay) {
+                    "It stays in the notification bar until you tap Done, which hides it for the rest of that day. " +
+                        "Whole event: from the first day until the event ends."
+                } else {
+                    "It stays in the notification bar until you tap Done."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

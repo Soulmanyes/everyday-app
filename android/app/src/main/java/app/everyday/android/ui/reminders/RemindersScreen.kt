@@ -153,7 +153,8 @@ private fun scheduleOf(item: ReminderView): String {
             "Timed · " + (fixed + before).joinToString(", ")
         }
         ReminderMode.PERSISTENT -> "Persistent · " + when {
-            event != null -> r.leadMinutes?.let { formatLead(it, event.endMinute != null) } ?: "All day"
+            event != null && event.endDays > 0 && r.eachDay -> "Each day, all day"
+            event != null -> r.leadMinutes?.let { formatLead(it, event.endMinute != null) } ?: if (event.endDays > 0) "Whole event" else "All day"
             else -> item.windows.sortedBy { it.startMinute }.joinToString(", ") { formatWindow(Window(it.startMinute, it.endMinute)) }
         }
     }
