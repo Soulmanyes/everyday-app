@@ -169,6 +169,18 @@ class HouseholdsTest {
     }
 
     @Test
+    fun `the server owner's protected household has no invite limit`() = api { client ->
+        val ours = client.createHousehold("Ours")
+        db.connection.use { it.createStatement().execute("UPDATE household SET protected = TRUE") }
+        repeat(5) { assertEquals(HttpStatusCode.Created, client.invite(ours.token).status) }
+        assertEquals(InviteStore.UNLIMITED_SHOWN, client.get("/invites") { admin(ours.token) }.body<InvitesResponse>().remaining)
+        // Households it invites have the normal limit.
+        val friend = client.createHousehold("Friend", invite = client.invite(ours.token).body<CreatedInviteResponse>().code)
+        repeat(3) { client.invite(friend.token) }
+        assertEquals(HttpStatusCode.Conflict, client.invite(friend.token).status)
+    }
+
+    @Test
     fun `the admin deletes the household and everything in it`() = api { client ->
         val home = client.createHousehold()
         val other = client.createHousehold("Other")

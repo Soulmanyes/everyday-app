@@ -8,14 +8,17 @@ import javax.sql.DataSource
 /**
  * Invites an admin makes for a friend to create their own household (Phase 9). Each household has
  * [limit] slots: a used invite keeps its slot, while a cancelled or expired unused one gives it back.
+ * The server owner's own (protected) household has no limit.
  */
 class InviteStore(private val db: DataSource, private val limit: Int = 3) {
 
     /** Null if the household has no free slot. */
     fun create(householdId: UUID, codeHash: String, now: Instant, expiresAt: Instant): InviteDto? = db.transaction { conn ->
         // Locking the household row serialises invites, so two at once can't both take the last slot.
-        conn.prepareStatement("SELECT 1 FROM household WHERE id = ? FOR UPDATE").run { setObject(1, householdId); executeQuery().close() }
-        if (conn.taken(householdId, now) >= limit) return@transaction null
+        val unlimited = conn.prepareStatement("SELECT protected FROM household WHERE id = ? FOR UPDATE").run {
+            setObject(1, householdId); executeQuery().use { it.next() && it.getBoolean(1) }
+        }
+        if (!unlimited && conn.taken(householdId, now) >= limit) return@transaction null
         conn.prepareStatement(
             "INSERT INTO household_invite (household_id, code_hash, created_at, expires_at) VALUES (?, ?, ?, ?) RETURNING id",
         ).run {
@@ -54,8 +57,13 @@ class InviteStore(private val db: DataSource, private val limit: Int = 3) {
         ).run { setObject(1, inviteId); setObject(2, householdId); executeUpdate() > 0 }
     }
 
-    /** How many invites the household can still make. */
-    fun remaining(householdId: UUID, now: Instant): Int = db.transaction { conn -> (limit - conn.taken(householdId, now)).coerceAtLeast(0) }
+    /** How many invites the household can still make; [UNLIMITED_SHOWN] for the protected household. */
+    fun remaining(householdId: UUID, now: Instant): Int = db.transaction { conn ->
+        val unlimited = conn.prepareStatement("SELECT protected FROM household WHERE id = ?").run {
+            setObject(1, householdId); executeQuery().use { it.next() && it.getBoolean(1) }
+        }
+        if (unlimited) UNLIMITED_SHOWN else (limit - conn.taken(householdId, now)).coerceAtLeast(0)
+    }
 
     /** Slots in use: used invites, and unused ones that are neither cancelled nor expired. */
     private fun java.sql.Connection.taken(householdId: UUID, now: Instant): Int = prepareStatement(
@@ -66,6 +74,11 @@ class InviteStore(private val db: DataSource, private val limit: Int = 3) {
     ).run {
         setObject(1, householdId); setObject(2, now.toOffset())
         executeQuery().use { it.next(); it.getInt(1) }
+    }
+
+    companion object {
+        /** What "remaining" says for an unlimited household: apps from 2.0 show the number and need it above 0. */
+        const val UNLIMITED_SHOWN = 99
     }
 
     private fun java.sql.ResultSet.millis(column: Int): Long = getObject(column, OffsetDateTime::class.java).toInstant().toEpochMilli()
