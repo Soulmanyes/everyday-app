@@ -143,13 +143,13 @@ Decided 2026-10-12:
 - [x] Server, sync and Room change (the event stores an end day as well as an end time), with migrations that keep existing events as they are.
 
 ## Phase 9.7: Household fixes and calmer views (2.3.0)
-Gaps left by 2.0.0 and view changes, planned 2026-10-11. Split from the old Phase 9.7 on 2026-10-12 (the sharing changes became 9.8, personal chores 9.9). Started 2026-10-12 on `dev`.
-- [ ] Tapping a "someone wants to join" notification opens that household (today it opens whichever household is picked).
+Gaps left by 2.0.0 and view changes, planned 2026-10-11. Split from the old Phase 9.7 on 2026-10-12 (the sharing changes became 9.8, personal chores 9.9). Built on `dev` 2026-10-12, not yet released.
+- [x] Tapping a "someone wants to join" notification opens that household (today it opens whichever household is picked).
 - [x] Wrong-code lock per sender (decided 2026-10-11): mistyped or unknown join codes, invites and setup codes count per client IP (10 in 15 minutes locks only that address), with a server-wide lock kept only as a backstop against guessing spread over many addresses (about 200 failures in 15 minutes). Wrong join codes and admin PINs for a known household keep their per-household lock.
-- [ ] The week view shows everything the month view does (decided 2026-10-11): others' Busy events (scheduling-shared ones once Phase 9.8 adds them), with the same member filter, alongside the profile's own events.
-- [ ] Settings: **Show chores on the Events tab** (decided 2026-10-11, per phone, on by default). On: chores show in the week and month views alike (as in the month view today); the week view shows them in the all-day row with the member filter, plus the profile's own chore reminders at their times (decided 2026-10-12). Off: no chores or chore reminders on the Events tab; they stay on the Chores and Reminders tabs.
-- [ ] Less cluttered month view (decided 2026-10-11): each day cell shows **one line per person** in their colour with a count ("Sam · 3") instead of every event; tapping the day still opens the day sheet with the full list.
-- [ ] The month view's member filter starts on **the profile's own events** instead of everyone; others are switched on with the existing filter.
+- [x] The week view shows everything the month view does (decided 2026-10-11): others' Busy events (scheduling-shared ones once Phase 9.8 adds them), with the same member filter, alongside the profile's own events.
+- [x] Settings: **Show chores on the Events tab** (decided 2026-10-11, per phone, on by default). On: chores show in the week and month views alike (as in the month view today); the week view shows them in the all-day row with the member filter, plus the profile's own chore reminders at their times (decided 2026-10-12). Off: no chores or chore reminders on the Events tab; they stay on the Chores and Reminders tabs.
+- [x] Less cluttered month view (decided 2026-10-11): each day cell shows **one line per person** in their colour with a count ("Sam · 3") instead of every event; tapping the day still opens the day sheet with the full list.
+- [x] The month view's member filter starts on **the profile's own events** instead of everyone; others are switched on with the existing filter.
 
 ## Phase 9.8: "Everyone" events and sharing for scheduling (2.4.0)
 Planned 2026-10-11, split out 2026-10-12. Not started.
