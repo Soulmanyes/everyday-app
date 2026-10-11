@@ -48,6 +48,10 @@ data class CreatedInviteResponse(val invite: InviteDto, val code: String)
 @Serializable
 data class InvitesResponse(val invites: List<InviteDto>, val remaining: Int)
 
+/** Open member invites (Phase 9.5); the codes themselves are shown only when made. */
+@Serializable
+data class MemberInvitesResponse(val invites: List<InviteDto>)
+
 @Serializable
 data class HouseholdDto(val id: String, val name: String, val timezone: String, val adminMemberId: String?)
 

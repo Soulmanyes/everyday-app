@@ -31,25 +31,17 @@ class MemberInviteStore(private val db: DataSource, private val maxOpen: Int = 2
         }
     }
 
-    /** The household's invites that aren't cancelled, newest first. */
-    fun list(householdId: UUID): List<InviteDto> = db.transaction { conn ->
+    /** The household's open invites (unused, not cancelled, not expired), newest first. */
+    fun listOpen(householdId: UUID, now: Instant): List<InviteDto> = db.transaction { conn ->
         conn.prepareStatement(
-            "SELECT id, created_at, expires_at, used_at FROM member_invite WHERE household_id = ? AND NOT cancelled ORDER BY created_at DESC",
+            """
+            SELECT id, created_at, expires_at FROM member_invite
+            WHERE household_id = ? AND used_at IS NULL AND NOT cancelled AND expires_at > ? ORDER BY created_at DESC
+            """.trimIndent(),
         ).run {
-            setObject(1, householdId)
+            setObject(1, householdId); setObject(2, now.toOffset())
             executeQuery().use { rs ->
-                buildList {
-                    while (rs.next()) {
-                        add(
-                            InviteDto(
-                                id = rs.getString(1),
-                                createdAt = rs.millis(2),
-                                expiresAt = rs.millis(3),
-                                usedAt = rs.getObject(4, OffsetDateTime::class.java)?.toInstant()?.toEpochMilli(),
-                            ),
-                        )
-                    }
-                }
+                buildList { while (rs.next()) add(InviteDto(id = rs.getString(1), createdAt = rs.millis(2), expiresAt = rs.millis(3))) }
             }
         }
     }
@@ -61,7 +53,10 @@ class MemberInviteStore(private val db: DataSource, private val maxOpen: Int = 2
         ).run { setObject(1, inviteId); setObject(2, householdId); executeUpdate() > 0 }
     }
 
-    /** The household and id of a usable invite (unused, not cancelled, not expired), or null. */
+    /**
+     * The household and id of a usable invite (unused, not cancelled, not expired), or null. Doesn't lock:
+     * [HouseholdStore.joinWithInvite] uses it up and checks again.
+     */
     fun find(codeHash: String, now: Instant): Pair<UUID, UUID>? = db.transaction { conn ->
         conn.prepareStatement(
             "SELECT household_id, id FROM member_invite WHERE code_hash = ? AND used_at IS NULL AND NOT cancelled AND expires_at > ?",

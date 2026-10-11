@@ -37,6 +37,8 @@ class ApiContext(
     val invites: InviteStore = InviteStore(store.db),
     /** How long an invite to create a household stays valid. */
     val inviteLifetime: java.time.Duration = java.time.Duration.ofDays(7),
+    /** One-time invites into a household (Phase 9.5); they last [inviteLifetime] too. */
+    val memberInvites: MemberInviteStore = MemberInviteStore(store.db),
 )
 
 const val ADMIN_PIN_HEADER = "X-Admin-Pin"
@@ -106,6 +108,11 @@ fun Application.configureRouting(api: ApiContext?) {
                 val req = call.receive<JoinRequest>()
                 if (req.joinCode == null) throw updateApp("Update the app to join a household.")
                 api.ensureNotLocked()
+                // A member invite (Phase 9.5) comes in the same field, so 2.0 apps can already join with one.
+                Codes.normalizeMemberInvite(req.joinCode)?.let { invite ->
+                    api.joinWithInvite(call, req, Secrets.tokenHash(invite))
+                    return@post
+                }
                 // The public part finds the household; wrong secrets count against that household only.
                 val code = Codes.parseJoinCode(req.joinCode)
                 val household = code?.let { api.store.householdByJoinId(it.joinId) }
@@ -238,6 +245,28 @@ fun Application.configureRouting(api: ApiContext?) {
             delete("/invites/{id}") {
                 val household = api.requireAdmin(call).household
                 if (!api.invites.cancel(household.id, uuidParam(call, "invite"))) throw ApiException(HttpStatusCode.NotFound, "No such unused invite.")
+                call.respond(HttpStatusCode.NoContent)
+            }
+
+            /** The household's member invites that aren't used, cancelled or expired, newest first. */
+            get("/member-invites") {
+                val household = api.requireAdmin(call).household
+                call.respond(MemberInvitesResponse(api.memberInvites.listOpen(household.id, api.clock())))
+            }
+
+            /** A one-time invite into the household, shared as a link. The code is shown once. */
+            post("/member-invites") {
+                val household = api.requireAdmin(call).household
+                val now = api.clock()
+                val code = Codes.newMemberInvite()
+                val invite = api.memberInvites.create(household.id, Secrets.tokenHash(Codes.normalizeMemberInvite(code)!!), now, now.plus(api.inviteLifetime))
+                    ?: throw ApiException(HttpStatusCode.Conflict, "This household has too many open invites. Cancel some in Manage members.")
+                call.respond(HttpStatusCode.Created, CreatedInviteResponse(invite, code))
+            }
+
+            delete("/member-invites/{id}") {
+                val household = api.requireAdmin(call).household
+                if (!api.memberInvites.cancel(household.id, uuidParam(call, "invite"))) throw ApiException(HttpStatusCode.NotFound, "No such open invite.")
                 call.respond(HttpStatusCode.NoContent)
             }
 
@@ -388,7 +417,40 @@ private fun ApiContext.checkSecret(ok: Boolean, message: String, key: String = A
     }
 }
 
+/**
+ * Joining with a member invite: like the join code, pending until the admin approves, or approved at once as
+ * the admin with their PIN. Either way the invite is used up. A bad invite counts globally, like other invites;
+ * a wrong PIN counts against the household and leaves the invite usable.
+ */
+private suspend fun ApiContext.joinWithInvite(call: ApplicationCall, req: JoinRequest, inviteHash: String) {
+    val household = memberInvites.find(inviteHash, clock())?.let { store.getHousehold(it.first) }
+    checkSecret(household != null, MEMBER_INVITE_INVALID)
+    household!!
+    val key = household.id.toString()
+    val adminId = if (!req.adminPin.isNullOrEmpty()) {
+        checkSecret(secrets.verify(req.adminPin, household.adminPinHash), "Wrong admin PIN.", key)
+        household.adminMemberId ?: throw ApiException(HttpStatusCode.Conflict, "The household has no admin.")
+    } else {
+        null
+    }
+    val name = if (adminId == null) validName(req.name, "Your name", 40) else null
+    val token = secrets.newToken()
+    try {
+        store.joinWithInvite(household.id, inviteHash, Secrets.tokenHash(token), req.deviceLabel, adminId, name, clock())
+    } catch (_: HouseholdStore.InviteInvalid) {
+        // Someone else used it (or it was cancelled) a moment ago.
+        checkSecret(false, MEMBER_INVITE_INVALID)
+    }
+    if (adminId != null) {
+        call.respond(SessionResponse(token, household.toDto(), store.members(household.id), memberId = adminId.toString()))
+    } else {
+        push?.admin(household.id)
+        call.respond(SessionResponse(token, household.toDto(), store.members(household.id), deviceStatus = "pending"))
+    }
+}
+
 private const val WRONG_JOIN_CODE = "Wrong join code."
+private const val MEMBER_INVITE_INVALID = "That invite link isn't valid. It may have been used, cancelled or expired: ask for a new one."
 private const val INVITE_INVALID = "That invite isn't valid. It may have been used, cancelled or expired."
 
 /** Apps from before 2.0. Not 401, which would send a joined phone back to the welcome screen. */

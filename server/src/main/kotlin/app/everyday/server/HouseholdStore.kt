@@ -106,6 +106,33 @@ class HouseholdStore(internal val db: DataSource) {
         conn.insertDevice(householdId, tokenHash, label, memberId = null, name = name)
     }
 
+    /**
+     * A phone joining [householdId] with a member invite (Phase 9.5): uses up the invite and adds the device in
+     * one transaction, so two phones can't both get in on one invite. Pending as [name], or approved as
+     * [memberId] (the admin with their PIN). Throws [InviteInvalid] if the invite is no longer usable.
+     */
+    fun joinWithInvite(
+        householdId: UUID,
+        inviteHash: String,
+        tokenHash: String,
+        label: String?,
+        memberId: UUID?,
+        name: String?,
+        now: java.time.Instant,
+    ) = db.transaction { conn ->
+        val used = conn.prepareStatement(
+            """
+            UPDATE member_invite SET used_at = ?
+            WHERE code_hash = ? AND household_id = ? AND used_at IS NULL AND NOT cancelled AND expires_at > ?
+            """.trimIndent(),
+        ).run {
+            setObject(1, now.toOffset()); setString(2, inviteHash); setObject(3, householdId); setObject(4, now.toOffset())
+            executeUpdate()
+        }
+        if (used == 0) throw InviteInvalid
+        conn.insertDevice(householdId, tokenHash, label, memberId, name)
+    }
+
     fun joinRequests(householdId: UUID): List<JoinRequestDto> = db.transaction { conn ->
         conn.prepareStatement(
             "SELECT id, requested_name, label, created_at FROM device WHERE household_id = ? AND status = 'pending' AND NOT revoked ORDER BY created_at",
