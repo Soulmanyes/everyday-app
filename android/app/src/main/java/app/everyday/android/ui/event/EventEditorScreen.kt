@@ -30,6 +30,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,6 +58,9 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -65,6 +69,7 @@ fun EventEditorScreen(eventId: String?, onDone: () -> Unit) {
     val draft = vm.draft
     val members by vm.members.collectAsStateWithLifecycle()
     var pickingDate by remember { mutableStateOf(false) }
+    var pickingEndDate by remember { mutableStateOf(false) }
     var pickingStart by remember { mutableStateOf(false) }
     var pickingEnd by remember { mutableStateOf(false) }
 
@@ -101,7 +106,13 @@ fun EventEditorScreen(eventId: String?, onDone: () -> Unit) {
                 listOf(true, false).forEachIndexed { i, weekly ->
                     SegmentedButton(
                         selected = draft.weekly == weekly,
-                        onClick = { vm.update { it.copy(weekly = weekly) } },
+                        onClick = {
+                            vm.update {
+                                // A weekly event over several days starts on one weekday and lasts under a week.
+                                val fits = !weekly || (it.endDays <= 6 && Integer.bitCount(it.weekdays) == 1)
+                                it.copy(weekly = weekly, endDays = if (fits) it.endDays else 0)
+                            }
+                        },
                         shape = SegmentedButtonDefaults.itemShape(i, 2),
                     ) { Text(if (weekly) "Every week" else "Once") }
                 }
@@ -116,17 +127,55 @@ fun EventEditorScreen(eventId: String?, onDone: () -> Unit) {
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AssistChip(onClick = { vm.update { it.copy(weekdays = 0b1111111) } }, label = { Text("Every day") })
-                        AssistChip(onClick = { vm.update { it.copy(weekdays = 0b0011111) } }, label = { Text("Weekdays") })
-                        AssistChip(onClick = { vm.update { it.copy(weekdays = 0b1100000) } }, label = { Text("Weekends") })
+                        AssistChip(onClick = { vm.update { it.copy(weekdays = 0b1111111, endDays = 0) } }, label = { Text("Every day") })
+                        AssistChip(onClick = { vm.update { it.copy(weekdays = 0b0011111, endDays = 0) } }, label = { Text("Weekdays") })
+                        AssistChip(onClick = { vm.update { it.copy(weekdays = 0b1100000, endDays = 0) } }, label = { Text("Weekends") })
+                    }
+                }
+                // Phase 9.6: an event on one day of the week can go on for several days (e.g. Fri to Sun).
+                if (Integer.bitCount(draft.weekdays) == 1) {
+                    val startDay = DayOfWeek.of(Integer.numberOfTrailingZeros(draft.weekdays) + 1)
+                    Section("Ends on") {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            (0..6).forEach { days ->
+                                FilterChip(
+                                    selected = draft.endDays == days,
+                                    onClick = { vm.setEndDays(days) },
+                                    label = { Text(if (days == 0) "Same day" else dayName(startDay.plus(days.toLong()))) },
+                                )
+                            }
+                        }
                     }
                 }
             } else {
+                val dates = DateTimeFormatter.ofPattern("EEE d MMM yyyy")
                 Section("Date") {
-                    AssistChip(
-                        onClick = { pickingDate = true },
-                        label = { Text(draft.date?.format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy")) ?: "Choose a date") },
-                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AssistChip(
+                            onClick = { pickingDate = true },
+                            label = { Text((if (draft.endDays > 0) "Starts " else "") + (draft.date?.format(dates) ?: "Choose a date")) },
+                        )
+                        // Phase 9.6: an end date makes it last several days.
+                        val date = draft.date
+                        if (date != null && draft.endDays == 0) {
+                            AssistChip(
+                                onClick = { pickingEndDate = true },
+                                label = { Text("Add end date") },
+                                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, Modifier.size(18.dp)) },
+                            )
+                        } else if (date != null) {
+                            InputChip(
+                                selected = false,
+                                onClick = { pickingEndDate = true },
+                                label = { Text("Ends " + date.plusDays(draft.endDays.toLong()).format(dates)) },
+                                trailingIcon = {
+                                    IconButton(onClick = { vm.setEndDays(0) }, Modifier.size(24.dp)) {
+                                        Icon(Icons.Default.Close, contentDescription = "Remove end date", Modifier.size(16.dp))
+                                    }
+                                },
+                            )
+                        }
+                    }
                 }
             }
 
@@ -146,14 +195,14 @@ fun EventEditorScreen(eventId: String?, onDone: () -> Unit) {
                         if (end == null) {
                             AssistChip(
                                 onClick = { pickingEnd = true },
-                                label = { Text("Add end time") },
+                                label = { Text(if (draft.endDays > 0) "Add end time (on the last day)" else "Add end time") },
                                 leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, Modifier.size(18.dp)) },
                             )
                         } else {
                             InputChip(
                                 selected = false,
                                 onClick = { pickingEnd = true },
-                                label = { Text("Ends " + formatMinute(end)) },
+                                label = { Text((if (draft.endDays > 0) "Ends on the last day " else "Ends ") + formatMinute(end)) },
                                 trailingIcon = {
                                     IconButton(onClick = { vm.update { it.copy(endMinute = null) } }, Modifier.size(24.dp)) {
                                         Icon(Icons.Default.Close, contentDescription = "Remove end time", Modifier.size(16.dp))
@@ -223,9 +272,34 @@ fun EventEditorScreen(eventId: String?, onDone: () -> Unit) {
             dismissButton = { TextButton(onClick = { pickingDate = false }) { Text("Cancel") } },
         ) { DatePicker(state = state) }
     }
+    if (pickingEndDate) {
+        val start = draft.date ?: LocalDate.now()
+        val last = start.plusDays(EventEditorViewModel.MAX_END_DAYS.toLong())
+        val utcMillis = { d: LocalDate -> d.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }
+        val state = rememberDatePickerState(
+            initialSelectedDateMillis = utcMillis(start.plusDays(maxOf(draft.endDays, 1).toLong())),
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis in utcMillis(start)..utcMillis(last)
+            },
+        )
+        DatePickerDialog(
+            onDismissRequest = { pickingEndDate = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { millis ->
+                        val end = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                        vm.setEndDays(ChronoUnit.DAYS.between(start, end).toInt())
+                    }
+                    pickingEndDate = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { pickingEndDate = false }) { Text("Cancel") } },
+        ) { DatePicker(state = state, title = { Text("Ends on", Modifier.padding(start = 24.dp, top = 16.dp)) }) }
+    }
     if (pickingStart) {
         TimeDialog("Starts", initialMinute = draft.startMinute ?: (9 * 60), onDismiss = { pickingStart = false }) { start ->
-            vm.update { it.copy(startMinute = start, endMinute = it.endMinute?.takeIf { end -> end > start }) }
+            // Over several days the end is on another day, so it can be before the start time.
+            vm.update { it.copy(startMinute = start, endMinute = it.endMinute?.takeIf { end -> it.endDays > 0 || end > start }) }
             pickingStart = false
         }
     }
@@ -238,3 +312,5 @@ fun EventEditorScreen(eventId: String?, onDone: () -> Unit) {
         }
     }
 }
+
+private fun dayName(day: DayOfWeek): String = day.getDisplayName(TextStyle.SHORT, Locale.getDefault())

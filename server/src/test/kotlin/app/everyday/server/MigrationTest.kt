@@ -3,6 +3,7 @@ package app.everyday.server
 import org.flywaydb.core.Flyway
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class MigrationTest {
@@ -209,5 +210,36 @@ class MigrationTest {
             conn.createStatement().executeQuery("SELECT show_busy FROM event").use { rs -> rs.next(); rs.getBoolean(1) }
         }
         assertTrue(busy)
+    }
+
+    @Test
+    fun `V13 keeps existing events on one day and reminders over the whole event`() {
+        db.connection.use { it.createStatement().execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;") }
+        Flyway.configure().dataSource(db).target("12").load().migrate()
+        db.connection.use { conn ->
+            conn.createStatement().execute(
+                """
+                INSERT INTO household (id, name, code_hash, timezone, admin_pin_hash)
+                    VALUES ('00000000-0000-0000-0000-000000000001', 'Home', 'x', 'Europe/London', 'y');
+                INSERT INTO member (id, household_id, display_name)
+                    VALUES ('00000000-0000-0000-0000-0000000000aa', '00000000-0000-0000-0000-000000000001', 'Sam');
+                INSERT INTO event (id, owner_member_id, title, weekdays, start_minute, end_minute, created_at, updated_at)
+                    VALUES ('00000000-0000-0000-0000-000000000e01', '00000000-0000-0000-0000-0000000000aa', 'Gym', 1, 600, 660, now(), now());
+                INSERT INTO reminder (id, owner_member_id, event_id, message, mode, weekdays, created_at, updated_at)
+                    VALUES ('00000000-0000-0000-0000-000000000b01', '00000000-0000-0000-0000-0000000000aa',
+                        '00000000-0000-0000-0000-000000000e01', '', 'PERSISTENT', 0, now(), now());
+                """.trimIndent(),
+            )
+        }
+        migrate(db)
+        db.connection.use { conn ->
+            conn.createStatement().executeQuery("SELECT end_days FROM event").use { rs -> rs.next(); assertEquals(0, rs.getInt(1)) }
+            conn.createStatement().executeQuery("SELECT each_day FROM reminder").use { rs -> rs.next(); assertFalse(rs.getBoolean(1)) }
+            // The end must still come after the start on the same day.
+            val bad = runCatching {
+                conn.createStatement().execute("UPDATE event SET end_minute = 500")
+            }
+            assertTrue(bad.isFailure)
+        }
     }
 }

@@ -174,6 +174,11 @@ data class EventMemberDto(val memberId: String, val updatedAt: Long = 0)
 /**
  * Something on the timetable: weekly on [weekdays], or once on [onDate] (ISO date), exactly one of the two.
  * No [startMinute] means all day; [endMinute] is optional.
+ *
+ * Multi-day events (Phase 9.6) end [endDays] after the day they start, at [endDayMinute] on that day (null
+ * for an all-day event). For phones before 2.2, which only know [endMinute], a multi-day event reads as
+ * lasting from its start until midnight of its first day: the server sends [endMinute] 1440 (null when all
+ * day). Those phones don't send [endDays], and the server then keeps the stored end.
  */
 @Serializable
 data class EventSyncDto(
@@ -194,6 +199,10 @@ data class EventSyncDto(
      * which keeps the stored value (Busy for a new event).
      */
     val showBusy: Boolean? = null,
+    /** Days after the start day the event ends (0 = the same day). Null from phones before 2.2. */
+    val endDays: Int? = null,
+    /** With [endDays] > 0: the end on the last day. */
+    val endDayMinute: Int? = null,
 )
 
 /** Another member's personal event shown as "Busy": its days and times only, never its title or notes. */
@@ -205,6 +214,9 @@ data class BusyDto(
     val onDate: String? = null,
     val startMinute: Int? = null,
     val endMinute: Int? = null,
+    /** As in [EventSyncDto]. */
+    val endDays: Int = 0,
+    val endDayMinute: Int? = null,
 )
 
 /** A reminder time: a minute of the day, or with [relative] the minutes before the event starts. */
@@ -233,6 +245,11 @@ data class ReminderSyncDto(
     val createdAt: Long,
     val updatedAt: Long,
     val deleted: Boolean = false,
+    /**
+     * A persistent reminder on a multi-day event (Phase 9.6): all day on each of its days (true), or over the
+     * whole event (false). Null from phones before 2.2, which keeps the stored value.
+     */
+    val eachDay: Boolean? = null,
 )
 
 /** Done/snooze state of one reminder for the syncing member. [doneOn] is an ISO date. */

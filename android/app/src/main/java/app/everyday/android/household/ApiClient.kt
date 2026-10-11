@@ -323,7 +323,10 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
         .put("weekdays", event.weekdays)
         .put("onDate", event.onDate ?: JSONObject.NULL)
         .put("startMinute", event.startMinute ?: JSONObject.NULL)
-        .put("endMinute", event.endMinute ?: JSONObject.NULL)
+        // Same-day ends in endMinute, multi-day ones in endDayMinute (phones before 2.2 only read endMinute).
+        .put("endMinute", (if (event.endDays == 0) event.endMinute else null) ?: JSONObject.NULL)
+        .put("endDays", event.endDays)
+        .put("endDayMinute", (if (event.endDays > 0) event.endMinute else null) ?: JSONObject.NULL)
         .put("members", JSONArray(members.map { JSONObject().put("memberId", it.memberId).put("updatedAt", it.updatedAt) }))
         .put("createdAt", event.createdAt)
         .put("updatedAt", event.updatedAt)
@@ -342,6 +345,7 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
         .put("times", JSONArray(times.map { JSONObject().put("minute", it.minute).put("relative", it.relative) }))
         .put("windows", JSONArray(windows.map { JSONObject().put("startMinute", it.startMinute).put("endMinute", it.endMinute) }))
         .put("leadMinutes", reminder.leadMinutes ?: JSONObject.NULL)
+        .put("eachDay", reminder.eachDay)
         .put("createdAt", reminder.createdAt)
         .put("updatedAt", reminder.updatedAt)
         .put("deleted", reminder.deleted)
@@ -361,6 +365,9 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
 
     private fun JSONObject.optIntOrNull(name: String) = if (isNull(name)) null else getInt(name)
 
+    /** An event's end time: on its last day for a multi-day event (endMinute is then only for older apps). */
+    private fun JSONObject.end() = if (optInt("endDays", 0) > 0) optIntOrNull("endDayMinute") else optIntOrNull("endMinute")
+
     /** An unknown sound (from a newer app on another phone) falls back to the default instead of failing sync. */
     private fun sound(name: String, default: SoundMode) = runCatching { SoundMode.valueOf(name) }.getOrDefault(default)
 
@@ -376,11 +383,12 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
                     weekdays = e.optInt("weekdays", 0),
                     onDate = e.optStringOrNull("onDate"),
                     startMinute = e.optIntOrNull("startMinute"),
-                    endMinute = e.optIntOrNull("endMinute"),
+                    endMinute = e.end(),
                     createdAt = e.getLong("createdAt"),
                     updatedAt = e.getLong("updatedAt"),
                     deleted = e.optBoolean("deleted", false),
                     showBusy = e.optBoolean("showBusy", true),
+                    endDays = e.optInt("endDays", 0),
                 ),
                 members = e.optArray("members").objects().map {
                     EventMemberEntity(id, it.getString("memberId"), updatedAt = it.optLong("updatedAt", 0))
@@ -402,6 +410,7 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
                     deleted = r.optBoolean("deleted", false),
                     eventId = r.optStringOrNull("eventId"),
                     leadMinutes = r.optIntOrNull("leadMinutes"),
+                    eachDay = r.optBoolean("eachDay", false),
                 ),
                 times = r.optArray("times").objects().map { SyncedTime(it.getInt("minute"), it.optBoolean("relative", false)) },
                 windows = r.optArray("windows").objects().map { Window(it.getInt("startMinute"), it.getInt("endMinute")) },
@@ -428,7 +437,8 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
                 weekdays = b.optInt("weekdays", 0),
                 onDate = b.optStringOrNull("onDate"),
                 startMinute = b.optIntOrNull("startMinute"),
-                endMinute = b.optIntOrNull("endMinute"),
+                endMinute = b.end(),
+                endDays = b.optInt("endDays", 0),
             )
         }
         return SyncSnapshot(events, reminders, states, settings, rejected, busy)

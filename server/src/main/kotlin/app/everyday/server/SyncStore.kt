@@ -61,19 +61,27 @@ class SyncStore(private val db: DataSource) {
 
     private fun Connection.pushEvent(householdId: UUID, me: UUID, e: EventSyncDto): Boolean {
         val id = parseId(e.id) ?: reject("bad id")
-        val existing = prepareStatement("SELECT owner_member_id, updated_at FROM event WHERE id = ? FOR UPDATE").run {
+        val existing = prepareStatement("SELECT owner_member_id, updated_at, end_days, end_minute FROM event WHERE id = ? FOR UPDATE").run {
             setObject(1, id)
-            executeQuery().use { rs -> if (rs.next()) rs.getObject(1, UUID::class.java) to rs.millis(2) else null }
+            executeQuery().use { rs ->
+                if (rs.next()) StoredEvent(rs.getObject(1, UUID::class.java), rs.millis(2), rs.getInt(3), rs.getObject(4) as Int?) else null
+            }
         }
         // Only the owner writes an event.
-        val owner = existing?.first ?: parseId(e.ownerMemberId)
+        val owner = existing?.owner ?: parseId(e.ownerMemberId)
         if (owner != me) reject("not the owner")
-        if (existing != null && existing.second >= e.updatedAt) return false // An older write loses.
+        if (existing != null && existing.updatedAt >= e.updatedAt) return false // An older write loses.
 
         val onDate = e.onDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() ?: reject("bad date") }
         if (e.weekdays !in 0..127 || (onDate == null) == (e.weekdays == 0)) reject("pick days or a date")
         if (e.startMinute != null && e.startMinute !in 0..1439) reject("bad start")
-        if (e.endMinute != null && (e.startMinute == null || e.endMinute !in 1..1440 || e.endMinute <= e.startMinute)) reject("bad end")
+        // Phones before 2.2 don't send endDays: a multi-day event keeps its stored end (they only saw its first day).
+        val (endDays, endMinute) = when {
+            e.endDays != null -> e.endDays to if (e.endDays > 0) e.endDayMinute else e.endMinute
+            existing != null && existing.endDays > 0 -> existing.endDays to existing.endMinute
+            else -> 0 to e.endMinute
+        }
+        validEnd(endDays, e.startMinute, endMinute, e.weekdays, onDate != null)
         val added = e.members.associate { (parseId(it.memberId) ?: reject("bad member id")) to it.updatedAt }
         val members = added.keys
         val title = e.title.trim()
@@ -87,18 +95,20 @@ class SyncStore(private val db: DataSource) {
 
         prepareStatement(
             """
-            INSERT INTO event (id, owner_member_id, title, notes, weekdays, on_date, start_minute, end_minute, created_at, updated_at, deleted, show_busy)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, TRUE))
+            INSERT INTO event (id, owner_member_id, title, notes, weekdays, on_date, start_minute, end_minute, created_at, updated_at, deleted,
+                show_busy, end_days)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, TRUE), ?)
             ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, notes = EXCLUDED.notes, weekdays = EXCLUDED.weekdays,
                 on_date = EXCLUDED.on_date, start_minute = EXCLUDED.start_minute, end_minute = EXCLUDED.end_minute,
-                updated_at = EXCLUDED.updated_at, deleted = EXCLUDED.deleted, show_busy = COALESCE(?, event.show_busy)
+                updated_at = EXCLUDED.updated_at, deleted = EXCLUDED.deleted, show_busy = COALESCE(?, event.show_busy),
+                end_days = EXCLUDED.end_days
             """.trimIndent(),
         ).run {
             setObject(1, id); setObject(2, me); setString(3, title); setString(4, notes); setInt(5, e.weekdays); setObject(6, onDate)
-            setObject(7, e.startMinute); setObject(8, e.endMinute)
+            setObject(7, e.startMinute); setObject(8, endMinute)
             setObject(9, e.createdAt.toTime()); setObject(10, e.updatedAt.toTime()); setBoolean(11, e.deleted)
             // Phones before 1.4.0 don't send showBusy: keep what's stored.
-            setObject(12, e.showBusy); setObject(13, e.showBusy)
+            setObject(12, e.showBusy); setInt(13, endDays); setObject(14, e.showBusy)
             executeUpdate()
         }
         if (e.deleted) {
@@ -132,6 +142,23 @@ class SyncStore(private val db: DataSource) {
             executeBatch()
         }
         return true
+    }
+
+    private data class StoredEvent(val owner: UUID, val updatedAt: Long, val endDays: Int, val endMinute: Int?)
+
+    /**
+     * An event's end: on its start day after the start, or (multi-day, Phase 9.6) [endDays] later at any time,
+     * needing an end time exactly when it has a start. One-off events last up to 31 days; a weekly one starts
+     * on one weekday and ends within 6 days, before its next week.
+     */
+    private fun validEnd(endDays: Int, start: Int?, end: Int?, weekdays: Int, oneOff: Boolean) {
+        if (endDays !in 0..(if (oneOff) 31 else 6)) reject("too long")
+        if (endDays == 0) {
+            if (end != null && (start == null || end !in 1..1440 || end <= start)) reject("bad end")
+            return
+        }
+        if (!oneOff && Integer.bitCount(weekdays) != 1) reject("a multi-day weekly event starts on one weekday")
+        if ((start == null) != (end == null) || (end != null && end !in 1..1440)) reject("bad end")
     }
 
     /** A member leaves (or declines) an event shared with them, which deletes their reminders on it. */
@@ -174,10 +201,12 @@ class SyncStore(private val db: DataSource) {
                 if (r.windows.isNotEmpty()) reject("event reminders have no windows")
                 if (r.mode == "TIMED") {
                     if (r.leadMinutes != null) reject("lead is for persistent reminders")
+                    if (r.eachDay == true) reject("each day is for persistent reminders")
                     if (r.times.any { it.minute !in 0..1439 }) reject("bad time")
                     if (r.times.any { it.relative } && start.isEmpty) reject("all-day events have no start")
                 } else {
                     if (r.times.isNotEmpty()) reject("persistent reminders have no times")
+                    if (r.eachDay == true && r.leadMinutes != null) reject("each day is all day")
                     if (r.leadMinutes != null && (r.leadMinutes !in 0..1439 || start.isEmpty)) reject("bad lead")
                 }
             } else {
@@ -185,6 +214,7 @@ class SyncStore(private val db: DataSource) {
                 if (message.isEmpty() || message.length > 200) reject("bad message")
                 if (r.times.any { it.relative || it.minute !in 0..1439 }) reject("bad time")
                 if (r.leadMinutes != null) reject("chore reminders have no lead")
+                if (r.eachDay == true) reject("chore reminders have no each day")
                 validWindows(r.windows)
                 if (!isAssigned(householdId, choreId!!, me)) reject("not assigned to the chore")
             }
@@ -192,16 +222,20 @@ class SyncStore(private val db: DataSource) {
 
         prepareStatement(
             """
-            INSERT INTO reminder (id, owner_member_id, event_id, chore_id, message, mode, weekdays, active, lead_minutes, created_at, updated_at, deleted)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO reminder (id, owner_member_id, event_id, chore_id, message, mode, weekdays, active, lead_minutes, created_at, updated_at,
+                deleted, each_day)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, FALSE))
             ON CONFLICT (id) DO UPDATE SET event_id = EXCLUDED.event_id, chore_id = EXCLUDED.chore_id, message = EXCLUDED.message,
                 mode = EXCLUDED.mode, weekdays = EXCLUDED.weekdays, active = EXCLUDED.active, lead_minutes = EXCLUDED.lead_minutes,
-                updated_at = EXCLUDED.updated_at, deleted = EXCLUDED.deleted
+                updated_at = EXCLUDED.updated_at, deleted = EXCLUDED.deleted, each_day = COALESCE(?, reminder.each_day)
             """.trimIndent(),
         ).run {
             setObject(1, id); setObject(2, me); setObject(3, eventId); setObject(4, choreId); setString(5, r.message.trim())
             setString(6, r.mode); setInt(7, r.weekdays); setBoolean(8, r.active); setObject(9, r.leadMinutes)
             setObject(10, r.createdAt.toTime()); setObject(11, r.updatedAt.toTime()); setBoolean(12, r.deleted)
+            // Phones before 2.2 don't send eachDay: keep what's stored, unless they set a lead (that's never each day).
+            val eachDay = r.eachDay ?: if (r.leadMinutes != null) false else null
+            setObject(13, eachDay); setObject(14, eachDay)
             executeUpdate()
         }
         if (r.deleted) return true
@@ -298,7 +332,7 @@ class SyncStore(private val db: DataSource) {
         val events = prepareStatement(
             """
             SELECT e.id, e.owner_member_id, e.title, e.notes, e.weekdays, e.on_date, e.start_minute, e.end_minute,
-                   e.created_at, e.updated_at, e.deleted, e.show_busy
+                   e.created_at, e.updated_at, e.deleted, e.show_busy, e.end_days
             FROM event e
             WHERE e.owner_member_id = ? OR EXISTS (
                 SELECT 1 FROM event_member em WHERE em.event_id = e.id AND em.member_id = ? AND NOT em.deleted)
@@ -310,6 +344,7 @@ class SyncStore(private val db: DataSource) {
                 buildList {
                     while (rs.next()) {
                         eventIds += rs.getObject("id", UUID::class.java)
+                        val end = rs.end()
                         add(
                             EventSyncDto(
                                 id = rs.getString("id"),
@@ -319,7 +354,9 @@ class SyncStore(private val db: DataSource) {
                                 weekdays = rs.getInt("weekdays"),
                                 onDate = rs.getObject("on_date", LocalDate::class.java)?.toString(),
                                 startMinute = rs.getObject("start_minute") as Int?,
-                                endMinute = rs.getObject("end_minute") as Int?,
+                                endMinute = end.forOldPhones,
+                                endDays = end.days,
+                                endDayMinute = end.dayMinute,
                                 createdAt = rs.millis("created_at"),
                                 updatedAt = rs.millis("updated_at"),
                                 deleted = rs.getBoolean("deleted"),
@@ -343,7 +380,8 @@ class SyncStore(private val db: DataSource) {
         val reminderIds = mutableListOf<UUID>()
         val rows = prepareStatement(
             """
-            SELECT id, owner_member_id, event_id, chore_id, message, mode, weekdays, active, lead_minutes, created_at, updated_at, deleted
+            SELECT id, owner_member_id, event_id, chore_id, message, mode, weekdays, active, lead_minutes, created_at, updated_at, deleted,
+                   each_day
             FROM reminder WHERE owner_member_id = ? AND (event_id IS NOT NULL OR chore_id IS NOT NULL)
             ORDER BY created_at, id
             """.trimIndent(),
@@ -367,6 +405,7 @@ class SyncStore(private val db: DataSource) {
                                 createdAt = rs.millis("created_at"),
                                 updatedAt = rs.millis("updated_at"),
                                 deleted = rs.getBoolean("deleted"),
+                                eachDay = rs.getBoolean("each_day"),
                             ),
                         )
                     }
@@ -416,7 +455,7 @@ class SyncStore(private val db: DataSource) {
         // leave the server. Events whose members have all left count as personal again.
         val busy = prepareStatement(
             """
-            SELECT e.id, e.owner_member_id, e.weekdays, e.on_date, e.start_minute, e.end_minute
+            SELECT e.id, e.owner_member_id, e.weekdays, e.on_date, e.start_minute, e.end_minute, e.end_days
             FROM event e JOIN member m ON m.id = e.owner_member_id
             WHERE e.owner_member_id <> ? AND NOT e.deleted AND e.show_busy AND NOT m.deleted
                 AND m.household_id = (SELECT household_id FROM member WHERE id = ?)
@@ -428,6 +467,7 @@ class SyncStore(private val db: DataSource) {
             executeQuery().use { rs ->
                 buildList {
                     while (rs.next()) {
+                        val end = rs.end()
                         add(
                             BusyDto(
                                 id = rs.getString("id"),
@@ -435,7 +475,9 @@ class SyncStore(private val db: DataSource) {
                                 weekdays = rs.getInt("weekdays"),
                                 onDate = rs.getObject("on_date", LocalDate::class.java)?.toString(),
                                 startMinute = rs.getObject("start_minute") as Int?,
-                                endMinute = rs.getObject("end_minute") as Int?,
+                                endMinute = end.forOldPhones,
+                                endDays = end.days,
+                                endDayMinute = end.dayMinute,
                             ),
                         )
                     }
@@ -484,3 +526,18 @@ private fun Long.toTime(): OffsetDateTime = OffsetDateTime.ofInstant(Instant.ofE
 private fun java.sql.ResultSet.millis(column: Int): Long = getObject(column, OffsetDateTime::class.java).toInstant().toEpochMilli()
 
 private fun java.sql.ResultSet.millis(column: String): Long = getObject(column, OffsetDateTime::class.java).toInstant().toEpochMilli()
+
+
+/**
+ * An event's end as sent to phones. Phones before 2.2 only know [forOldPhones]: a multi-day event lasts for
+ * them from its start until midnight of its first day.
+ */
+private data class SentEnd(val forOldPhones: Int?, val days: Int, val dayMinute: Int?)
+
+private fun java.sql.ResultSet.end(): SentEnd {
+    val days = getInt("end_days")
+    val minute = getObject("end_minute") as Int?
+    if (days == 0) return SentEnd(minute, 0, null)
+    val start = getObject("start_minute") as Int?
+    return SentEnd(if (start != null) 1440 else null, days, minute)
+}
