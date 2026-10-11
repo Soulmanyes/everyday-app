@@ -123,10 +123,11 @@ Built on `dev` 2026-10-11 and checked on an API 37 emulator against the test sta
 - [x] Admin deletes the household; unused households are cleaned up after a year; owner tool without names; privacy note
 - [x] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong join codes and admin PINs lock per household (2026-10-11); malformed codes, unknown join ids, invites and setup codes still share one global lock, which per-IP rate limits back up; dependencies kept up to date by Dependabot. Per-IP rate limiting in the API was added early (2026-10-09, see "Developer and ops").
 
-## Phase 9.5: Household fixes (2.0.1)
-Gaps left by 2.0.0, planned 2026-10-11. Not started.
+## Phase 9.5: Household fixes and "Everyone" events (2.1.0)
+Gaps left by 2.0.0, and one new feature, planned 2026-10-11. Not started.
 - [ ] Tapping a "someone wants to join" notification opens that household (today it opens whichever household is picked).
 - [ ] Wrong-code lock per sender (decided 2026-10-11): mistyped or unknown join codes, invites and setup codes count per client IP (10 in 15 minutes locks only that address), with a server-wide lock kept only as a backstop against guessing spread over many addresses (about 200 failures in 15 minutes). Wrong join codes and admin PINs for a known household keep their per-household lock.
+- [ ] Events: **Share with: Everyone** (decided 2026-10-11). The event is shared with the whole household, including members who join later: the event stores "everyone" rather than a member list (server and sync change). Members can still leave it.
 
 ## Developer and ops (any time, no app release)
 - [x] CI: GitHub Actions building the server and the debug APK and running the unit tests (2026-10-09)
