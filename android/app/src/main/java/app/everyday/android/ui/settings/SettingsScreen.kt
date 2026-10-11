@@ -27,6 +27,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -54,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.everyday.android.data.SoundMode
 import app.everyday.android.ui.household.HouseholdViewModel
+import app.everyday.android.ui.household.InviteSomeoneDialog
 import app.everyday.android.ui.household.PrivacyDialog
 
 private val SNOOZE_OPTIONS = listOf(5, 10, 15, 30, 60)
@@ -241,6 +243,7 @@ private fun HouseholdSection(vm: HouseholdViewModel, onManageMembers: () -> Unit
     val members by vm.members.collectAsStateWithLifecycle()
     var confirmLeave by remember { mutableStateOf(false) }
     var privacy by remember { mutableStateOf(false) }
+    var inviting by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Household", style = MaterialTheme.typography.titleMedium)
         if (!session.joined) {
@@ -267,6 +270,10 @@ private fun HouseholdSection(vm: HouseholdViewModel, onManageMembers: () -> Unit
             enabled = !vm.busy,
             onPick = vm::setMyColor,
         )
+        // Phase 9.5: the admin shares a one-time invite link without going through Manage members.
+        if (session.memberId != null && session.memberId == session.adminMemberId) {
+            Button(onClick = { vm.error = null; inviting = true }) { Text("Invite someone") }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onManageMembers) {
                 Text(if (session.pendingRequests > 0) "Manage members (${session.pendingRequests} waiting)" else "Manage members")
@@ -282,6 +289,7 @@ private fun HouseholdSection(vm: HouseholdViewModel, onManageMembers: () -> Unit
         vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
     if (privacy) PrivacyDialog(onDismiss = { privacy = false })
+    if (inviting) InviteSomeoneDialog(vm, onDismiss = { inviting = false; vm.error = null })
     if (confirmLeave) {
         AlertDialog(
             onDismissRequest = { confirmLeave = false },

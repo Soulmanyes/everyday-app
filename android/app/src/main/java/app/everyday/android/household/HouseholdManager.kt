@@ -106,6 +106,13 @@ class HouseholdManager(
 
     suspend fun cancelInvite(pin: String, id: String) = client().cancelInvite(pin, id)
 
+    suspend fun memberInvites(pin: String) = client().memberInvites(pin)
+
+    /** A one-time invite link into the picked household (Phase 9.5). Shown only once. */
+    suspend fun createMemberInvite(pin: String): String = client().createMemberInvite(pin)
+
+    suspend fun cancelMemberInvite(pin: String, id: String) = client().cancelMemberInvite(pin, id)
+
     /** Deletes the picked household and everything in it, for every member. */
     suspend fun deleteHousehold(pin: String) {
         val token = session.current.token ?: return

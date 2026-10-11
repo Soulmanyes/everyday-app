@@ -130,6 +130,21 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
         call("DELETE", "/invites/$id", adminPin = pin)
     }
 
+    // Phase 9.5, admin only (with the PIN): one-time invite links into this household.
+
+    /** The household's open member invites (unused, not cancelled, not expired). */
+    suspend fun memberInvites(pin: String): List<InviteInfo> =
+        call("GET", "/member-invites", adminPin = pin).getJSONArray("invites").objects().map {
+            InviteInfo(it.getString("id"), it.getLong("createdAt"), it.getLong("expiresAt"), usedAt = null)
+        }
+
+    /** A new member invite code (`JOIN-...`), shown only this once. */
+    suspend fun createMemberInvite(pin: String): String = call("POST", "/member-invites", JSONObject(), pin).getString("code")
+
+    suspend fun cancelMemberInvite(pin: String, id: String) {
+        call("DELETE", "/member-invites/$id", adminPin = pin)
+    }
+
     suspend fun deleteHousehold(pin: String) {
         call("DELETE", "/household", adminPin = pin)
     }

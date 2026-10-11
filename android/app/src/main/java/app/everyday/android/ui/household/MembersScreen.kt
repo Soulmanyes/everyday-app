@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -214,16 +215,43 @@ private fun RequestCard(request: JoinRequestInfo, members: List<MemberEntity>, v
 @Composable
 private fun AdminSections(vm: HouseholdViewModel, hasJoinCode: Boolean, onDeleteHousehold: () -> Unit) {
     var confirmNewCode by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val session by vm.session.collectAsStateWithLifecycle()
+    val dates = remember { DateTimeFormatter.ofPattern("d MMM") }
+    fun day(millis: Long) = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(dates)
+
+    HorizontalDivider()
+    Text("Invite links", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "A link lets one person ask to join, within 7 days. You still approve them. Cancel a link you no longer need.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    vm.memberInvites.forEach { invite ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Made ${day(invite.createdAt)}, works until ${day(invite.expiresAt)}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = { vm.cancelMemberInvite(invite.id) }, enabled = !vm.busy) { Text("Cancel") }
+        }
+    }
+    OutlinedButton(
+        onClick = {
+            vm.adminPin?.let { pin ->
+                vm.inviteSomeone(pin) { code -> shareMemberInvite(context, code, session.householdName ?: "my household", session.serverUrl) }
+            }
+        },
+        enabled = !vm.busy,
+    ) { Text("Share a new invite link") }
+
     HorizontalDivider()
     Text("Join code", style = MaterialTheme.typography.titleMedium)
     Text(
         if (hasJoinCode) {
             "People join with the household's join code. It's shown only when it's made: if you've lost it, make a new one."
         } else {
-            "Nobody new can join until you make a join code (codes chosen before version 2.0 stopped working)."
+            "There's no join code (codes chosen before version 2.0 stopped working). Invite links work without one."
         },
         style = MaterialTheme.typography.bodySmall,
-        color = if (hasJoinCode) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     OutlinedButton(onClick = { if (hasJoinCode) confirmNewCode = true else vm.newJoinCode() }, enabled = !vm.busy) {
         Text(if (hasJoinCode) "New join code" else "Make a join code")
@@ -237,8 +265,6 @@ private fun AdminSections(vm: HouseholdViewModel, hasJoinCode: Boolean, onDelete
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    val dates = remember { DateTimeFormatter.ofPattern("d MMM") }
-    fun day(millis: Long) = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(dates)
     vm.invites.forEach { invite ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             val now = System.currentTimeMillis()

@@ -136,6 +136,22 @@ class HouseholdViewModel(
         invitesLeft = left
     }
 
+    /** Open invite links into this household (Phase 9.5), loaded with the admin PIN. */
+    var memberInvites by mutableStateOf<List<InviteInfo>>(emptyList())
+        private set
+
+    /** Makes an invite link with [pin] and hands its code to [onCode] (which opens the share sheet). */
+    fun inviteSomeone(pin: String, onCode: (String) -> Unit) {
+        var code: String? = null
+        run({
+            code = manager.createMemberInvite(pin)
+            if (adminPin == pin) memberInvites = manager.memberInvites(pin)
+        }) { code?.let(onCode) }
+    }
+
+    fun cancelMemberInvite(id: String) =
+        adminPin?.let { pin -> run({ manager.cancelMemberInvite(pin, id); memberInvites = manager.memberInvites(pin) }) }
+
     fun newJoinCode() = adminPin?.let { pin -> run({ shownJoinCode = manager.newJoinCode(pin) }) }
 
     fun createInvite() = adminPin?.let { pin -> run({ shownInvite = manager.createInvite(pin); loadInvites(pin) }) }
@@ -150,7 +166,12 @@ class HouseholdViewModel(
 
     fun refresh() = viewModelScope.launch { manager.refresh() }
 
-    fun unlockAdmin(pin: String, onUnlocked: () -> Unit) = run({ manager.verifyAdminPin(pin); requests = manager.joinRequests(pin); loadInvites(pin) }) {
+    fun unlockAdmin(pin: String, onUnlocked: () -> Unit) = run({
+        manager.verifyAdminPin(pin)
+        requests = manager.joinRequests(pin)
+        loadInvites(pin)
+        memberInvites = manager.memberInvites(pin)
+    }) {
         adminPin = pin
         onUnlocked()
     }
@@ -160,6 +181,7 @@ class HouseholdViewModel(
         adminPin = null
         requests = emptyList()
         invites = emptyList()
+        memberInvites = emptyList()
         error = null
     }
 
