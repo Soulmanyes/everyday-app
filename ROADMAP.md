@@ -133,6 +133,9 @@ Gaps left by 2.0.0, and one new feature, planned 2026-10-11. Not started.
   - **Share for scheduling**: they can see it but aren't taking part. They see the title and times (like Busy, but with the title), with no reminders and no notification. Works with "Everyone" too.
 - [ ] The week view shows everything the month view does (decided 2026-10-11): others' Busy and scheduling-shared events, with the same member filter, alongside the profile's own events.
 - [ ] Settings: **Show chores on the Events tab** (decided 2026-10-11, per phone, on by default). On: chores show in the week and month views alike (as in the month view today). Off: no chores or chore reminders on the Events tab; they stay on the Chores and Reminders tabs.
+- [ ] Less cluttered month view (decided 2026-10-11): each day cell shows **one line per person** in their colour with a count ("Sam · 3") instead of every event; tapping the day still opens the day sheet with the full list.
+- [ ] The month view's member filter starts on **the profile's own events** instead of everyone; others are switched on with the existing filter.
+- [ ] **Personal chores** (decided 2026-10-11): a "Personal (only I see it)" switch in the chore editor, offered only when you're the chore's only assignee **and you created it yourself** (not when someone else assigned it to you). Other members don't see a personal chore at all. Needs the server to store who created each chore.
 
 ## Developer and ops (any time, no app release)
 - [x] CI: GitHub Actions building the server and the debug APK and running the unit tests (2026-10-09)
