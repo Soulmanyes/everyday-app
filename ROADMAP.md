@@ -131,7 +131,8 @@ Gaps left by 2.0.0, and one new feature, planned 2026-10-11. Not started.
 - [ ] Events: two clearly different ways to involve someone (decided 2026-10-11), named so the difference is obvious in the editor:
   - **Add to the event**: they take part, as sharing works today. It's on their timetable, they can set reminders, and they're told "Sam added you to …".
   - **Share for scheduling**: they can see it but aren't taking part. They see the title and times (like Busy, but with the title), with no reminders and no notification. Works with "Everyone" too.
-- [ ] The week view shows everything the month view does (decided 2026-10-11): others' Busy and scheduling-shared events and all household chores, with the same member filter, alongside the profile's own events and chore reminders.
+- [ ] The week view shows everything the month view does (decided 2026-10-11): others' Busy and scheduling-shared events, with the same member filter, alongside the profile's own events.
+- [ ] Settings: **Show chores on the Events tab** (decided 2026-10-11, per phone, on by default). On: chores show in the week and month views alike (as in the month view today). Off: no chores or chore reminders on the Events tab; they stay on the Chores and Reminders tabs.
 
 ## Developer and ops (any time, no app release)
 - [x] CI: GitHub Actions building the server and the debug APK and running the unit tests (2026-10-09)
