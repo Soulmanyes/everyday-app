@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "741630034332",
+    "project_id": "everyday-app-a684a",
+    "storage_bucket": "everyday-app-a684a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:741630034332:android:704d0426428f826f0f0859",
+        "android_client_info": {
+          "package_name": "app.everyday.android"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBGMvIkf0_Jr2YIfpUIbeU-VdfhSA1gnX0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:741630034332:android:14fa7db1e6ac25350f0859",
+        "android_client_info": {
+          "package_name": "app.everyday.android.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBGMvIkf0_Jr2YIfpUIbeU-VdfhSA1gnX0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

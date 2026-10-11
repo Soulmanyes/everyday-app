@@ -30,3 +30,7 @@ deploy/pgdata/
 
 # OS
 .DS_Store
+
+# Firebase service-account keys (the server's FCM key lives in ~/secrets on the VM)
+*firebase-adminsdk*.json
+firebase-service-account.json

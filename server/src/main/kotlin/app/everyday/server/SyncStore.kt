@@ -18,7 +18,8 @@ import javax.sql.DataSource
 class SyncStore(private val db: DataSource) {
 
     sealed interface Result {
-        data class Ok(val response: SyncResponse) : Result
+        /** [changed]: something was written, so other phones should sync (instant updates). */
+        data class Ok(val response: SyncResponse, val changed: Boolean) : Result
         data object UnknownMember : Result
     }
 
@@ -26,14 +27,15 @@ class SyncStore(private val db: DataSource) {
         val me = parseId(req.memberId)
         if (me == null || !conn.isActiveMember(householdId, me)) return@transaction Result.UnknownMember
         val rejected = mutableListOf<String>()
+        var changed = false
         // Events first, so a new event and the reminders on it can arrive in the same sync.
-        req.events.forEach { e -> conn.attempt(rejected, "event:${e.id}") { pushEvent(householdId, me, e) } }
-        req.leave.forEach { l -> conn.attempt(rejected, "leave:${l.eventId}") { pushLeave(me, l) } }
-        req.reminders.forEach { r -> conn.attempt(rejected, r.id) { pushReminder(householdId, me, r) } }
-        req.states.forEach { s -> conn.attempt(rejected, "state:${s.reminderId}") { pushState(me, s) } }
-        req.settings?.let { s -> conn.attempt(rejected, "settings") { pushSettings(me, s) } }
+        req.events.forEach { e -> changed = conn.attempt(rejected, "event:${e.id}") { pushEvent(householdId, me, e) } || changed }
+        req.leave.forEach { l -> changed = conn.attempt(rejected, "leave:${l.eventId}") { pushLeave(me, l) } || changed }
+        req.reminders.forEach { r -> changed = conn.attempt(rejected, r.id) { pushReminder(householdId, me, r) } || changed }
+        req.states.forEach { s -> changed = conn.attempt(rejected, "state:${s.reminderId}") { pushState(me, s) } || changed }
+        req.settings?.let { s -> changed = conn.attempt(rejected, "settings") { pushSettings(me, s) } || changed }
         conn.deleteOrphanedEvents()
-        Result.Ok(conn.snapshot(me, rejected))
+        Result.Ok(conn.snapshot(me, rejected), changed)
     }
 
     /** A pushed row that breaks a rule. Only that row is skipped. */
@@ -41,20 +43,23 @@ class SyncStore(private val db: DataSource) {
 
     private fun reject(message: String): Nothing = throw Rejected(message)
 
-    /** Runs [block] in a savepoint, so a rejected or failing row is rolled back on its own. */
-    private fun Connection.attempt(rejected: MutableList<String>, id: String, block: Connection.() -> Unit) {
+    /**
+     * Runs [block] in a savepoint, so a rejected or failing row is rolled back on its own.
+     * Returns whether the row changed anything (an older write that lost changes nothing).
+     */
+    private fun Connection.attempt(rejected: MutableList<String>, id: String, block: Connection.() -> Boolean): Boolean {
         val savepoint = setSavepoint()
-        try {
-            block()
-            releaseSavepoint(savepoint)
+        return try {
+            block().also { releaseSavepoint(savepoint) }
         } catch (e: Exception) {
             if (e !is Rejected && e !is SQLException) throw e
             rollback(savepoint)
             rejected += id
+            false
         }
     }
 
-    private fun Connection.pushEvent(householdId: UUID, me: UUID, e: EventSyncDto) {
+    private fun Connection.pushEvent(householdId: UUID, me: UUID, e: EventSyncDto): Boolean {
         val id = parseId(e.id) ?: reject("bad id")
         val existing = prepareStatement("SELECT owner_member_id, updated_at FROM event WHERE id = ? FOR UPDATE").run {
             setObject(1, id)
@@ -63,7 +68,7 @@ class SyncStore(private val db: DataSource) {
         // Only the owner writes an event.
         val owner = existing?.first ?: parseId(e.ownerMemberId)
         if (owner != me) reject("not the owner")
-        if (existing != null && existing.second >= e.updatedAt) return // An older write loses.
+        if (existing != null && existing.second >= e.updatedAt) return false // An older write loses.
 
         val onDate = e.onDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() ?: reject("bad date") }
         if (e.weekdays !in 0..127 || (onDate == null) == (e.weekdays == 0)) reject("pick days or a date")
@@ -101,7 +106,7 @@ class SyncStore(private val db: DataSource) {
             prepareStatement("UPDATE reminder SET deleted = TRUE, updated_at = ? WHERE event_id = ? AND NOT deleted").run {
                 setObject(1, e.updatedAt.toTime()); setObject(2, id); executeUpdate()
             }
-            return
+            return true
         }
 
         // Members: new ones are added, removed ones are tombstoned together with their reminders on it.
@@ -126,26 +131,28 @@ class SyncStore(private val db: DataSource) {
             added.forEach { (member, at) -> setObject(1, id); setObject(2, member); setObject(3, at.toTime()); addBatch() }
             executeBatch()
         }
+        return true
     }
 
     /** A member leaves (or declines) an event shared with them, which deletes their reminders on it. */
-    private fun Connection.pushLeave(me: UUID, l: LeaveSyncDto) {
+    private fun Connection.pushLeave(me: UUID, l: LeaveSyncDto): Boolean {
         val eventId = parseId(l.eventId) ?: reject("bad id")
         val row = prepareStatement("SELECT deleted, updated_at FROM event_member WHERE event_id = ? AND member_id = ? FOR UPDATE").run {
             setObject(1, eventId); setObject(2, me)
             executeQuery().use { rs -> if (rs.next()) rs.getBoolean(1) to rs.millis(2) else null }
         } ?: reject("not shared with you")
         // Already gone, or added again after this phone left: nothing to do.
-        if (row.first || row.second >= l.updatedAt) return
+        if (row.first || row.second >= l.updatedAt) return false
         prepareStatement("UPDATE event_member SET deleted = TRUE, updated_at = ? WHERE event_id = ? AND member_id = ?").run {
             setObject(1, l.updatedAt.toTime()); setObject(2, eventId); setObject(3, me); executeUpdate()
         }
         prepareStatement("UPDATE reminder SET deleted = TRUE, updated_at = ? WHERE event_id = ? AND owner_member_id = ? AND NOT deleted").run {
             setObject(1, l.updatedAt.toTime()); setObject(2, eventId); setObject(3, me); executeUpdate()
         }
+        return true
     }
 
-    private fun Connection.pushReminder(householdId: UUID, me: UUID, r: ReminderSyncDto) {
+    private fun Connection.pushReminder(householdId: UUID, me: UUID, r: ReminderSyncDto): Boolean {
         val id = parseId(r.id) ?: reject("bad id")
         val existing = prepareStatement("SELECT owner_member_id, updated_at FROM reminder WHERE id = ? FOR UPDATE").run {
             setObject(1, id)
@@ -154,7 +161,7 @@ class SyncStore(private val db: DataSource) {
         // Only the owner writes a reminder.
         val owner = existing?.first ?: parseId(r.ownerMemberId)
         if (owner != me) reject("not the owner")
-        if (existing != null && existing.second >= r.updatedAt) return // An older write loses.
+        if (existing != null && existing.second >= r.updatedAt) return false // An older write loses.
 
         val eventId = r.eventId?.let { parseId(it) ?: reject("bad event id") }
         val choreId = r.choreId?.let { parseId(it) ?: reject("bad chore id") }
@@ -197,7 +204,7 @@ class SyncStore(private val db: DataSource) {
             setObject(10, r.createdAt.toTime()); setObject(11, r.updatedAt.toTime()); setBoolean(12, r.deleted)
             executeUpdate()
         }
-        if (r.deleted) return
+        if (r.deleted) return true
 
         // Times and windows are replaced as a whole with their reminder.
         prepareStatement("DELETE FROM reminder_time WHERE reminder_id = ?").run { setObject(1, id); executeUpdate() }
@@ -210,6 +217,7 @@ class SyncStore(private val db: DataSource) {
             r.windows.forEach { setObject(1, UUID.randomUUID()); setObject(2, id); setInt(3, it.startMinute); setInt(4, it.endMinute); addBatch() }
             executeBatch()
         }
+        return true
     }
 
     /**
@@ -234,14 +242,14 @@ class SyncStore(private val db: DataSource) {
         if (sorted.zipWithNext().any { (a, b) -> b.startMinute < a.endMinute }) reject("overlapping windows")
     }
 
-    private fun Connection.pushState(me: UUID, s: StateSyncDto) {
+    private fun Connection.pushState(me: UUID, s: StateSyncDto): Boolean {
         val reminderId = parseId(s.reminderId) ?: reject("bad id")
         val mine = prepareStatement("SELECT 1 FROM reminder WHERE id = ? AND owner_member_id = ?").run {
             setObject(1, reminderId); setObject(2, me); executeQuery().use { it.next() }
         }
         if (!mine) reject("not your reminder")
         val doneOn = s.doneOn?.let { runCatching { LocalDate.parse(it) }.getOrNull() ?: reject("bad date") }
-        prepareStatement(
+        return prepareStatement(
             """
             INSERT INTO reminder_state (reminder_id, member_id, done_on, snooze_until, updated_at) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (reminder_id, member_id) DO UPDATE SET done_on = EXCLUDED.done_on,
@@ -250,13 +258,13 @@ class SyncStore(private val db: DataSource) {
             """.trimIndent(),
         ).run {
             setObject(1, reminderId); setObject(2, me); setObject(3, doneOn); setObject(4, s.snoozeUntil?.toTime())
-            setObject(5, s.updatedAt.toTime()); executeUpdate()
+            setObject(5, s.updatedAt.toTime()); executeUpdate() > 0
         }
     }
 
-    private fun Connection.pushSettings(me: UUID, s: SettingsSyncDto) {
+    private fun Connection.pushSettings(me: UUID, s: SettingsSyncDto): Boolean {
         if (s.snoozeMinutes !in 1..240 || s.timedSound !in SOUNDS || s.persistentSound !in SOUNDS) reject("bad settings")
-        prepareStatement(
+        return prepareStatement(
             """
             INSERT INTO member_settings (member_id, snooze_minutes, timed_sound, persistent_sound, updated_at) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (member_id) DO UPDATE SET snooze_minutes = EXCLUDED.snooze_minutes, timed_sound = EXCLUDED.timed_sound,
@@ -265,7 +273,7 @@ class SyncStore(private val db: DataSource) {
             """.trimIndent(),
         ).run {
             setObject(1, me); setInt(2, s.snoozeMinutes); setString(3, s.timedSound); setString(4, s.persistentSound)
-            setObject(5, s.updatedAt.toTime()); executeUpdate()
+            setObject(5, s.updatedAt.toTime()); executeUpdate() > 0
         }
     }
 

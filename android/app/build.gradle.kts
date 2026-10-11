@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
+    // Reads google-services.json (Firebase project, both app ids) for instant updates.
+    alias(libs.plugins.google.services)
 }
 
 android {
@@ -90,6 +92,9 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
     implementation(libs.work.runtime.ktx)
+    // Instant updates: data-only "sync now" pushes from the server.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)
@@ -100,5 +105,7 @@ dependencies {
     constraints {
         // room-testing needs 1.8.1, and the test APK must use the app's version (1.7.3 via navigation).
         implementation(libs.kotlinx.serialization.core) { because("align with room-testing for MigrationTest") }
+        // Firebase brings fragment 1.1.0, which mishandles the notification-permission request (lint fails release builds).
+        implementation(libs.androidx.fragment) { because("ActivityResult APIs need fragment 1.3.0+") }
     }
 }

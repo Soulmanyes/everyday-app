@@ -26,6 +26,18 @@ services:
       PORT: "8080"
       # One-time code for creating the household. Remove it from .env once the household exists.
       SETUP_TOKEN: ${SETUP_TOKEN:-}
+      # Instant updates (FCM): the Firebase service-account key, mounted below.
+      FCM_CREDENTIALS: /run/secrets/firebase-service-account.json
+    volumes:
+      # Kept outside the code folder (rsync never touches it) in ~/secrets on the VM. The file must be
+      # readable by the container's user (mode 644; the 700 folder keeps other users out). If it's
+      # missing the API doesn't start, instead of Docker creating an empty folder in its place.
+      - type: bind
+        source: ${FCM_KEY_FILE:-/home/opc/secrets/firebase-service-account.json}
+        target: /run/secrets/firebase-service-account.json
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       db:
         condition: service_healthy

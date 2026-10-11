@@ -13,10 +13,15 @@ import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respond
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 
 fun main() {
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
     val dataSource = createDataSource(DatabaseConfig.fromEnv())
+    val pushStore = PushStore(dataSource)
+    // Instant updates need the Firebase key (FCM_CREDENTIALS); without it phones rely on their 15-minute refresh.
+    val push = FcmSender.fromEnv(pushStore)?.let { Push(pushStore, it) }
+    LoggerFactory.getLogger("app.everyday.server").info("Instant updates (FCM): {}", if (push != null) "on" else "off")
     val api = ApiContext(
         store = HouseholdStore(dataSource),
         chores = ChoreStore(dataSource),
@@ -24,6 +29,7 @@ fun main() {
         secrets = Secrets(),
         limiter = AttemptLimiter(),
         setupToken = System.getenv("SETUP_TOKEN")?.takeIf { it.isNotBlank() },
+        push = push,
     )
     embeddedServer(Netty, port = port, host = "0.0.0.0") {
         module(api)

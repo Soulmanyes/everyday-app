@@ -121,6 +121,11 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
 
     suspend fun setMyColor(color: String): Member = call("PUT", "/me/color", JSONObject().put("color", color)).toMember()
 
+    /** Registers this phone's FCM token for instant updates (null stops them). */
+    suspend fun setPushToken(pushToken: String?) {
+        call("PUT", "/me/push-token", JSONObject().put("token", pushToken ?: JSONObject.NULL))
+    }
+
     suspend fun removeMember(pin: String, id: String) {
         call("DELETE", "/members/$id", adminPin = pin)
     }
