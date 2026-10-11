@@ -233,8 +233,9 @@ class SyncStore(private val db: DataSource) {
             setObject(1, id); setObject(2, me); setObject(3, eventId); setObject(4, choreId); setString(5, r.message.trim())
             setString(6, r.mode); setInt(7, r.weekdays); setBoolean(8, r.active); setObject(9, r.leadMinutes)
             setObject(10, r.createdAt.toTime()); setObject(11, r.updatedAt.toTime()); setBoolean(12, r.deleted)
-            // Phones before 2.2 don't send eachDay: keep what's stored.
-            setObject(13, r.eachDay); setObject(14, r.eachDay)
+            // Phones before 2.2 don't send eachDay: keep what's stored, unless they set a lead (that's never each day).
+            val eachDay = r.eachDay ?: if (r.leadMinutes != null) false else null
+            setObject(13, eachDay); setObject(14, eachDay)
             executeUpdate()
         }
         if (r.deleted) return true

@@ -428,6 +428,10 @@ class SyncApiTest {
         assertEquals(false, back.active)
         assertEquals(true, back.eachDay)
 
+        // A 2.1 phone setting a lead makes it a whole-event reminder again.
+        val lead = r.copy(leadMinutes = 30, eachDay = null, updatedAt = 3_000)
+        assertEquals(false, client.syncOk(home, SyncRequest(home.sam, reminders = listOf(lead))).reminders.single().eachDay)
+
         val timed = reminder(home.sam, e.id).copy(eachDay = true)
         val withLead = r.copy(id = UUID.randomUUID().toString(), leadMinutes = 30)
         val rejected = client.syncOk(home, SyncRequest(home.sam, reminders = listOf(timed, withLead))).rejected
