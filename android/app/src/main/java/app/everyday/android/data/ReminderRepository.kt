@@ -87,6 +87,8 @@ class ReminderRepository(
     private val currentMemberId: () -> String,
     /** Emits the current profile id whenever it changes, so observed data follows profile switches. */
     private val memberIdChanges: Flow<String>,
+    /** Emits the picked household's id (null before joining, or before the first refresh after updating to 2.0). */
+    private val householdIdChanges: Flow<String?>,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val reminders = db.reminderDao()
@@ -103,6 +105,11 @@ class ReminderRepository(
     fun observeReminders(): Flow<List<ReminderView>> = memberIdChanges.flatMapLatest { id ->
         combine(reminders.observeVisible(id), reminders.observeVisibleEvents(id)) { list, events -> views(id, list, events) }
     }
+
+    suspend fun getReminder(id: String) = reminders.getReminder(id)
+
+    /** Who's on the event (not the owner). */
+    suspend fun eventMemberIds(eventId: String): List<String> = reminders.getEvent(eventId)?.members.orEmpty().map { it.memberId }
 
     suspend fun getReminders(memberId: String = currentMemberId()) =
         views(memberId, reminders.getVisible(memberId), reminders.getVisibleEvents(memberId))
@@ -184,8 +191,9 @@ class ReminderRepository(
     }
 
     /** The current profile leaves (or declines) a shared event: it's removed from it, with its reminders on it. */
-    suspend fun leaveEvent(eventId: String) = db.withTransaction {
-        val me = currentMemberId()
+    /** Leaves (or declines) an event as [memberId], the picked profile by default. */
+    suspend fun leaveEvent(eventId: String, memberId: String? = null) = db.withTransaction {
+        val me = memberId ?: currentMemberId()
         val row = reminders.getEventMember(eventId, me) ?: return@withTransaction
         reminders.upsertEventMembers(listOf(row.copy(hidden = true, updatedAt = clock(), dirty = true)))
         reminders.softDeleteMineOnEvent(eventId, me, clock())
@@ -325,14 +333,15 @@ class ReminderRepository(
 
     suspend fun setActive(id: String, active: Boolean) = reminders.setActive(id, active, clock())
 
-    suspend fun setDone(id: String, date: LocalDate?) {
-        val me = currentMemberId()
+    /** Done today, for [memberId]: the reminder's owner (the picked profile by default). */
+    suspend fun setDone(id: String, date: LocalDate?, memberId: String? = null) {
+        val me = memberId ?: currentMemberId()
         val state = reminders.getState(id, me) ?: ReminderStateEntity(id, me)
         reminders.upsertState(state.copy(doneOn = date?.toString(), updatedAt = clock(), dirty = true))
     }
 
-    suspend fun setSnooze(id: String, until: Instant?) {
-        val me = currentMemberId()
+    suspend fun setSnooze(id: String, until: Instant?, memberId: String? = null) {
+        val me = memberId ?: currentMemberId()
         val state = reminders.getState(id, me) ?: ReminderStateEntity(id, me)
         reminders.upsertState(state.copy(snoozeUntil = until?.toEpochMilli(), updatedAt = clock(), dirty = true))
     }
@@ -345,12 +354,13 @@ class ReminderRepository(
     suspend fun saveSettings(settings: MemberSettingsEntity) =
         members.upsertSettings(settings.copy(updatedAt = clock(), dirty = true))
 
-    fun observeMembers() = members.observeMembers()
+    /** The picked household's members. */
+    fun observeMembers(): Flow<List<MemberEntity>> = householdIdChanges.flatMapLatest { members.observeMembers(it) }
 
-    /** Replaces the cached household members with the server's list. */
-    suspend fun cacheMembers(list: List<MemberEntity>) = db.withTransaction {
-        members.upsertMembers(list.map { it.copy(updatedAt = clock()) })
-        members.markOthersDeleted(list.map { it.id })
+    /** Replaces one household's cached members with the server's list. */
+    suspend fun cacheMembers(householdId: String, list: List<MemberEntity>) = db.withTransaction {
+        members.upsertMembers(list.map { it.copy(updatedAt = clock(), householdId = householdId) })
+        members.markOthersDeleted(householdId, list.map { it.id })
     }
 
     /** Gives the reminders and settings made before joining to [memberId], then removes the local profile. */

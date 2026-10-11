@@ -114,9 +114,14 @@ Moved out of Phase 8 on 2026-10-10 until the owner set up the Firebase project (
 
 - [x] Push a notification to phones when something changes (chores, shared reminders, join requests) instead of waiting for the 15-minute refresh. Uses **FCM** (decided 2026-10-10): a data-only "sync now" push, so no household data goes through Google; the 15-minute refresh stays as a fallback. Needs a Firebase project with both app IDs, `google-services.json` in the app, and a service-account key on the VM. Every other phone is pushed (decided 2026-10-11); sends use google-auth-library and the FCM HTTP v1 API, not the Firebase Admin SDK (decided 2026-10-11).
 
-## Phase 9: Multiple households (1.7.0)
-- [ ] Others create their own households on this server. Notes: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
-- [ ] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong-code/PIN limits per household and per sender instead of one global lock, dependencies kept up to date. Per-IP rate limiting in the API was added early (2026-10-09, see "Developer and ops").
+## Phase 9: Multiple households (2.0.0)
+Built on `dev` 2026-10-11 and checked on an API 37 emulator against the test stack (update from 1.6.0 keeps the phone joined; a phone in three households; invite, join code, join link). Not released yet.
+
+- [x] Others create their own households on this server, through invites from household admins (3 each, 7 days). Notes and decisions: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
+- [x] Generated join codes (shown once, new one on demand) and join links
+- [x] A phone in several households: household picker at start, per-household notification switch
+- [x] Admin deletes the household; unused households are cleaned up after a year; owner tool without names; privacy note
+- [x] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong join codes and admin PINs lock per household (2026-10-11); malformed codes, unknown join ids, invites and setup codes still share one global lock, which per-IP rate limits back up; dependencies kept up to date by Dependabot. Per-IP rate limiting in the API was added early (2026-10-09, see "Developer and ops").
 
 ## Developer and ops (any time, no app release)
 - [x] CI: GitHub Actions building the server and the debug APK and running the unit tests (2026-10-09)

@@ -54,14 +54,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.everyday.android.data.SoundMode
 import app.everyday.android.ui.household.HouseholdViewModel
+import app.everyday.android.ui.household.PrivacyDialog
 
 private val SNOOZE_OPTIONS = listOf(5, 10, 15, 30, 60)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onManageMembers: () -> Unit, onWhatsNew: () -> Unit) {
+fun SettingsScreen(household: HouseholdViewModel, onBack: () -> Unit, onManageMembers: () -> Unit, onWhatsNew: () -> Unit) {
+    // [household] is the app's shared one: switching or adding a household here changes the app's top screen.
     val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
-    val household: HouseholdViewModel = viewModel(factory = HouseholdViewModel.Factory)
     val settings by vm.settings.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -239,6 +240,7 @@ private fun HouseholdSection(vm: HouseholdViewModel, onManageMembers: () -> Unit
     val session by vm.session.collectAsStateWithLifecycle()
     val members by vm.members.collectAsStateWithLifecycle()
     var confirmLeave by remember { mutableStateOf(false) }
+    var privacy by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Household", style = MaterialTheme.typography.titleMedium)
         if (!session.joined) {
@@ -271,13 +273,20 @@ private fun HouseholdSection(vm: HouseholdViewModel, onManageMembers: () -> Unit
             }
             OutlinedButton(onClick = { confirmLeave = true }) { Text("Leave") }
         }
+        // Phase 9: a phone can be in several households.
+        if (session.memberships.size > 1) {
+            OutlinedButton(onClick = vm::showPicker) { Text("Switch household (${session.memberships.size})") }
+        }
+        OutlinedButton(onClick = vm::startAddingHousehold) { Text("Join or set up another household") }
+        TextButton(onClick = { privacy = true }) { Text("Privacy: what's stored, and who can see it") }
         vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
+    if (privacy) PrivacyDialog(onDismiss = { privacy = false })
     if (confirmLeave) {
         AlertDialog(
             onDismissRequest = { confirmLeave = false },
-            title = { Text("Leave household?") },
-            text = { Text("This phone stops syncing with the household. Reminders of this profile are hidden until you join again and pick it.") },
+            title = { Text("Leave ${session.householdName ?: "household"}?") },
+            text = { Text("This phone stops syncing with it. Your reminders there are hidden until you join again. Other households on this phone stay.") },
             confirmButton = { TextButton(onClick = { confirmLeave = false; vm.leave {} }) { Text("Leave") } },
             dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Cancel") } },
         )

@@ -2,7 +2,9 @@ package app.everyday.android.data
 
 import app.everyday.android.chores.ChoreRules
 import app.everyday.android.chores.Completion
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
 import java.time.LocalDate
 
 /** A server snapshot of the household's chores, ready to replace the cache. */
@@ -15,14 +17,24 @@ data class ChoreSnapshot(
     val slots: List<ChoreSlotEntity> = emptyList(),
 )
 
-/** The cached chores. Only [replace] writes them; changes go through the server (see ChoreManager). */
-class ChoreRepository(private val db: AppDatabase) {
+/**
+ * The cached chores of every household this phone is in. Only [replace] writes them; changes go through
+ * the server (see ChoreManager).
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class ChoreRepository(
+    private val db: AppDatabase,
+    /** Emits the picked household's id, so the screens show its chores. */
+    private val householdIdChanges: Flow<String?>,
+) {
     private val chores = db.choreDao()
 
-    fun observeChores(): Flow<List<ChoreWithDetails>> = chores.observeChores()
+    /** The picked household's chores. */
+    fun observeChores(): Flow<List<ChoreWithDetails>> = householdIdChanges.flatMapLatest { chores.observeChores(it) }
 
-    suspend fun replace(snapshot: ChoreSnapshot) = chores.replaceAll(
-        snapshot.chores,
+    suspend fun replace(householdId: String, snapshot: ChoreSnapshot) = chores.replaceHousehold(
+        householdId,
+        snapshot.chores.map { it.copy(householdId = householdId) },
         snapshot.chores.flatMap { c ->
             snapshot.assignees[c.id].orEmpty().mapIndexed { i, member -> ChoreAssignmentEntity(c.id, member, i) }
         },

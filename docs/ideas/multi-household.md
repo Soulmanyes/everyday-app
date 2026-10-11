@@ -1,7 +1,32 @@
 # Idea: let others create their own households
 
-Status: **not started, not yet discussed in detail** (noted 2026-10-09).
-Roadmap entry: "Later / ideas" in `ROADMAP.md`.
+Status: **decided 2026-10-11, being built as Phase 9 (2.0.0)** (noted 2026-10-09).
+Roadmap entry: Phase 9 in `ROADMAP.md`.
+
+## Decisions (2026-10-11)
+
+1. **Who creates a household: admins invite admins.** Any household admin makes a one-time invite in
+   Settings (admin PIN) and shares it. A friend uses it to create their own, fully separate household and
+   becomes its admin. Defaults: invites expire after **7 days**, **3 per household** in total (cancelling an
+   unused one gives the slot back). The server owner's own household starts the chain. No `SETUP_TOKEN`
+   any more.
+2. **Joining: one generated code plus a share link.** Each household gets a server-made code like
+   `HZ7K-2P9X-QM4T`: the first part finds the household, the rest is the secret (hashed as today). Members
+   type the code or tap a link that fills it in. Existing households get a new code; joined phones are
+   unaffected.
+3. **Several households per phone.** A phone can be in more than one household (a member in each). When
+   it's in more than one, the app opens on a **household picker**; with one, it goes straight in. On the
+   picker each household has a **switch for its reminders and notifications** (on by default); a switched
+   off household still syncs in the background.
+4. **Also in 2.0:** an admin can **delete their household** and all its data (admin PIN + confirmation);
+   a short **privacy note** in the app; **auto-cleanup** of households no phone has contacted for **12 months**:
+   marked, then deleted **30 days** later unless a phone checks in. Changed from "after warning the admin" on
+   2026-10-11: every installed app checks in every 15 minutes, so a household only looks unused once no phone
+   is talking to the server, and then no warning could reach anyone.
+5. **Owner tool: minimal, no names.** A command on the VM lists households by id, member count, created
+   and last-active dates, and who invited whom, and can remove a household together with the ones it
+   invited. Nothing that identifies people. The privacy note says exactly this, and that the server owner
+   can technically read the database.
 
 ## Goal
 

@@ -31,6 +31,8 @@ import kotlin.test.assertTrue
 class ApiTest {
     private lateinit var api: ApiContext
     private var now = Instant.parse("2026-10-08T12:00:00Z")
+    /** The join code of the household made by [createHousehold]. */
+    private var code = ""
 
     @BeforeTest
     fun setUp() {
@@ -64,7 +66,6 @@ class ApiTest {
     private fun createRequest(token: String = SETUP) = CreateHouseholdRequest(
         setupToken = token,
         householdName = "Home",
-        householdCode = CODE,
         timezone = "Europe/London",
         adminName = "Sam",
         adminPin = PIN,
@@ -74,11 +75,11 @@ class ApiTest {
     private suspend fun HttpClient.createHousehold(): SessionResponse {
         val response = postJson("/household", createRequest())
         assertEquals(HttpStatusCode.Created, response.status)
-        return response.body()
+        return response.body<SessionResponse>().also { code = it.joinCode!! }
     }
 
     @Test
-    fun `household can be created once with the setup code`() = api { client ->
+    fun `households can be created with the setup code`() = api { client ->
         assertFalse(client.get("/status").body<StatusResponse>().householdExists)
         assertEquals(HttpStatusCode.Forbidden, client.postJson("/household", createRequest(token = "wrong")).status)
 
@@ -88,7 +89,8 @@ class ApiTest {
         assertEquals(session.members.single().id, session.household.adminMemberId)
         assertTrue(client.get("/status").body<StatusResponse>().householdExists)
 
-        assertEquals(HttpStatusCode.Conflict, client.postJson("/household", createRequest()).status)
+        // More than one household per server (Phase 9).
+        assertEquals(HttpStatusCode.Created, client.postJson("/household", createRequest()).status)
     }
 
     @Test
@@ -99,8 +101,9 @@ class ApiTest {
 
     @Test
     fun `invalid household details are rejected`() = api { client ->
-        val short = createRequest().copy(householdCode = "12345")
-        assertEquals(HttpStatusCode.BadRequest, client.postJson("/household", short).status)
+        // Apps before 2.0 chose their own code: they're told to update.
+        val old = createRequest().copy(householdCode = "kitchen-table")
+        assertEquals(HttpStatusCode.Gone, client.postJson("/household", old).status)
         val badPin = createRequest().copy(adminPin = "12ab")
         assertEquals(HttpStatusCode.BadRequest, client.postJson("/household", badPin).status)
         val badZone = createRequest().copy(timezone = "Mars/Base")
@@ -109,7 +112,7 @@ class ApiTest {
 
     /** Joins as [name] and has the admin approve it, as a new member or linked to [linkTo]. Returns (token, memberId). */
     private suspend fun HttpClient.joinApproved(adminToken: String, name: String, linkTo: String? = null): Pair<String, String> {
-        val token = postJson("/join", JoinRequest(CODE, name)).body<SessionResponse>().token
+        val token = postJson("/join", JoinRequest(code, name)).body<SessionResponse>().token
         val request = get("/join-requests") {
             header(HttpHeaders.Authorization, "Bearer $adminToken"); header(ADMIN_PIN_HEADER, PIN)
         }.body<List<JoinRequestDto>>().single { it.name == name }
@@ -122,12 +125,12 @@ class ApiTest {
 
     @Test
     fun `joining needs the right household code and a name`() = api { client ->
-        assertEquals(HttpStatusCode.NotFound, client.postJson("/join", JoinRequest(CODE, "Alex")).status)
+        assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest("HZ7K-2P9X-QM4T", "Alex")).status)
         client.createHousehold()
         assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest("not-the-code", "Alex")).status)
-        assertEquals(HttpStatusCode.BadRequest, client.postJson("/join", JoinRequest(CODE, " ")).status)
+        assertEquals(HttpStatusCode.BadRequest, client.postJson("/join", JoinRequest(code, " ")).status)
 
-        val joined = client.postJson("/join", JoinRequest(CODE, "Alex", "Tablet"))
+        val joined = client.postJson("/join", JoinRequest(code, "Alex", "Tablet"))
         assertEquals(HttpStatusCode.OK, joined.status)
         assertEquals("pending", joined.body<SessionResponse>().deviceStatus)
     }
@@ -135,7 +138,7 @@ class ApiTest {
     @Test
     fun `a joining phone waits for the admin, who approves it as a new member`() = api { client ->
         val admin = client.createHousehold()
-        val token = client.postJson("/join", JoinRequest(CODE, "Alex", "Tablet")).body<SessionResponse>().token
+        val token = client.postJson("/join", JoinRequest(code, "Alex", "Tablet")).body<SessionResponse>().token
 
         // Pending: it can see its status, but nothing else.
         val pending = client.me(token)
@@ -195,8 +198,8 @@ class ApiTest {
     @Test
     fun `the admin rejoins on a new phone with the admin PIN`() = api { client ->
         val admin = client.createHousehold()
-        assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest(CODE, adminPin = "0000")).status)
-        val session = client.postJson("/join", JoinRequest(CODE, deviceLabel = "New phone", adminPin = PIN)).body<SessionResponse>()
+        assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest(code, adminPin = "0000")).status)
+        val session = client.postJson("/join", JoinRequest(code, deviceLabel = "New phone", adminPin = PIN)).body<SessionResponse>()
         assertEquals("approved", session.deviceStatus)
         assertEquals(admin.household.adminMemberId, session.memberId)
         assertEquals(admin.household.adminMemberId, client.me(session.token).memberId)
@@ -210,7 +213,7 @@ class ApiTest {
         assertEquals(kim, linked)
         assertEquals(listOf("Sam", "Kim"), client.me(admin.token).members.map { it.displayName })
 
-        val token = client.postJson("/join", JoinRequest(CODE, "Stranger")).body<SessionResponse>().token
+        val token = client.postJson("/join", JoinRequest(code, "Stranger")).body<SessionResponse>().token
         val id = client.me(admin.token).pendingRequestIds.single()
         assertEquals(HttpStatusCode.NoContent, client.postJson("/join-requests/$id/reject", ApproveRequest(), admin.token, PIN).status)
         assertEquals(HttpStatusCode.Unauthorized, client.get("/me") { header(HttpHeaders.Authorization, "Bearer $token") }.status)
@@ -286,16 +289,16 @@ class ApiTest {
     fun `too many wrong codes lock joining, even with the right code`() = api { client ->
         client.createHousehold()
         repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest("wrong-code", "Alex")).status) }
-        assertEquals(HttpStatusCode.TooManyRequests, client.postJson("/join", JoinRequest(CODE, "Alex")).status)
+        assertEquals(HttpStatusCode.TooManyRequests, client.postJson("/join", JoinRequest(code, "Alex")).status)
         now = now.plusSeconds(16 * 60)
-        assertEquals(HttpStatusCode.OK, client.postJson("/join", JoinRequest(CODE, "Alex")).status)
+        assertEquals(HttpStatusCode.OK, client.postJson("/join", JoinRequest(code, "Alex")).status)
     }
 
     @Test
     fun `the lockout keeps its own message`() = api { client ->
         client.createHousehold()
         repeat(5) { client.postJson("/join", JoinRequest("wrong-code", "Alex")) }
-        val response = client.postJson("/join", JoinRequest(CODE, "Alex"))
+        val response = client.postJson("/join", JoinRequest(code, "Alex"))
         assertEquals(HttpStatusCode.TooManyRequests, response.status)
         assertTrue(response.body<ErrorResponse>().error.startsWith("Too many wrong attempts."))
     }
@@ -307,7 +310,7 @@ class ApiTest {
     private suspend fun HttpClient.joinFrom(ip: String): HttpResponse = post("/join") {
         contentType(ContentType.Application.Json)
         header("X-Forwarded-For", ip)
-        setBody(JoinRequest(CODE, "Alex"))
+        setBody(JoinRequest(code, "Alex"))
     }
 
     @Test
@@ -487,7 +490,6 @@ class ApiTest {
 
     companion object {
         const val SETUP = "setup-secret"
-        const val CODE = "kitchen-table"
         const val PIN = "4821"
 
         val postgres: EmbeddedPostgres by lazy { EmbeddedPostgres.start() }

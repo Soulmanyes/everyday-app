@@ -7,6 +7,7 @@ import androidx.room.withTransaction
 import app.everyday.android.data.AppDatabase
 import app.everyday.android.household.ApiClient
 import app.everyday.android.household.ApiError
+import app.everyday.android.household.Membership
 import app.everyday.android.household.Session
 import app.everyday.android.reminders.Notifier
 import app.everyday.android.reminders.ReminderEngine
@@ -18,8 +19,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Syncs the picked profile's events, reminders, done/snooze state, settings and the events it left
- * with the server (see CLAUDE.md, "Sync"). Room stays the source for alarms; offline, changes stay
+ * Syncs each household's member on this phone: their events, reminders, done/snooze state, settings and
+ * the events they left (see CLAUDE.md, "Sync"). Room stays the source for alarms; offline, changes stay
  * dirty and go up on the next sync.
  */
 class SyncManager(
@@ -38,10 +39,20 @@ class SyncManager(
         scope.launch { runCatching { sync() } }
     }
 
-    /** One round trip for the picked profile. Throws [ApiError] if the server can't be reached. */
+    /**
+     * One round trip per household this phone is a member of. Every household is tried; then the first
+     * failure is thrown ([ApiError] if a server can't be reached).
+     */
     suspend fun sync() = mutex.withLock {
-        val state = session.current
-        val me = state.memberId?.takeIf { state.joined } ?: return@withLock
+        val failures = session.current.memberships.filter { it.memberId != null }.mapNotNull { m ->
+            runCatching { syncOne(m) }.exceptionOrNull()
+        }
+        engine.recompute()
+        failures.firstOrNull()?.let { throw it }
+    }
+
+    private suspend fun syncOne(m: Membership) {
+        val me = m.memberId ?: return
         val reminders = db.reminderDao()
         val members = db.memberDao()
 
@@ -59,20 +70,20 @@ class SyncManager(
         )
 
         val snapshot = try {
-            ApiClient(state.serverUrl, state.token).sync(me, events, leaves, dirty, states, settings)
+            ApiClient(m.serverUrl, m.token).sync(me, events, leaves, dirty, states, settings)
         } catch (e: ApiError) {
-            if (e.isUnauthorized) {
-                session.clear()
-                engine.recompute()
-            }
+            if (e.isUnauthorized) session.remove(m.token)
             throw e
         }
         if (snapshot.rejected.isNotEmpty()) Log.w(TAG, "Server refused: ${snapshot.rejected}")
 
         db.withTransaction {
-            val plan = SyncMerge.plan(
-                me, reminders.getEventsForSync(), reminders.getForSync(), reminders.getStates(me), members.getSettings(me), pushed, snapshot,
-            )
+            // Only this household's rows: the merge removes rows missing from the snapshot.
+            val householdOf = members.getAllMembers().associate { it.id to it.householdId }
+            val single = session.current.memberships.size == 1
+            val localEvents = SyncMerge.inHousehold(reminders.getEventsForSync(), { it.event.ownerMemberId }, m.householdId, householdOf, single)
+            val localReminders = SyncMerge.inHousehold(reminders.getForSync(), { it.reminder.ownerMemberId }, m.householdId, householdOf, single)
+            val plan = SyncMerge.plan(me, localEvents, localReminders, reminders.getStates(me), members.getSettings(me), pushed, snapshot)
             plan.saveEvents.forEach { e -> reminders.saveEvent(e.event, e.members) }
             plan.deleteEvents.forEach { reminders.deleteEventLocal(it) }
             plan.clearDirtyEvents.forEach { reminders.clearEventDirty(it) }
@@ -85,8 +96,7 @@ class SyncManager(
             reminders.replaceBusy(me, snapshot.busy)
             if (plan.clearDirtySettings) members.getSettings(me)?.let { members.upsertSettings(it.copy(dirty = false)) }
         }
-        engine.recompute()
-        announceSharedEvents(me)
+        if (m.notificationsOn) announceSharedEvents(me)
     }
 
     /**

@@ -12,25 +12,29 @@ import kotlin.coroutines.suspendCoroutine
 
 /**
  * Instant updates (Phase 8.5): tells the server this phone's FCM token, so it can send a "sync now"
- * push when something changes. Sent once per (server, household token, FCM token); a failure (no
- * network, a server without the route) is retried on the next refresh.
+ * push when something changes. Sent to every household the phone is in, once per (server, household
+ * token, FCM token); a failure (no network, a server without the route) is retried on the next refresh.
  */
 class PushRegistration(context: Context, private val session: Session) {
     private val prefs = context.getSharedPreferences("push", Context.MODE_PRIVATE)
     private val mutex = Mutex()
 
     suspend fun ensureRegistered() = mutex.withLock {
-        val current = session.current
-        val token = current.token ?: return@withLock
+        val memberships = session.current.memberships
+        if (memberships.isEmpty()) return@withLock
         val fcmToken = fcmToken() ?: return@withLock
-        val key = "${current.serverUrl}|$token|$fcmToken".hashCode().toString()
-        if (prefs.getString(KEY_SENT, null) == key) return@withLock
-        runCatching { ApiClient(current.serverUrl, token).setPushToken(fcmToken) }
-            .onSuccess { prefs.edit { putString(KEY_SENT, key) } }
+        val sent = prefs.getStringSet(KEY_SENT_ALL, emptySet())!!
+        val now = memberships.mapNotNull { m ->
+            val key = "${m.serverUrl}|${m.token}|$fcmToken".hashCode().toString()
+            if (key in sent) return@mapNotNull key
+            runCatching { ApiClient(m.serverUrl, m.token).setPushToken(fcmToken) }.getOrNull()?.let { key }
+        }
+        // Keys of households the phone has left go too.
+        prefs.edit { putStringSet(KEY_SENT_ALL, now.toSet()) }
     }
 
-    /** FCM gave the phone a new token: send it again. */
-    fun forget() = prefs.edit { remove(KEY_SENT) }
+    /** FCM gave the phone a new token: send it again everywhere. */
+    fun forget() = prefs.edit { remove(KEY_SENT_ALL) }
 
     private suspend fun fcmToken(): String? = suspendCoroutine { cont ->
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
@@ -39,6 +43,7 @@ class PushRegistration(context: Context, private val session: Session) {
     }
 
     private companion object {
-        const val KEY_SENT = "sent"
+        /** Sent registrations; 1.6.0 kept a single one under "sent". */
+        const val KEY_SENT_ALL = "sent_all"
     }
 }

@@ -30,6 +30,7 @@ import java.time.LocalDate
 data class Member(val id: String, val displayName: String, val color: String? = null)
 
 data class HouseholdInfo(
+    val id: String,
     val name: String,
     val adminMemberId: String?,
     val members: List<Member>,
@@ -39,12 +40,18 @@ data class HouseholdInfo(
     val memberId: String? = null,
     /** Pending join requests; only sent to the admin's phone. */
     val pendingRequestIds: List<String> = emptyList(),
+    /** False until the admin generates a join code (households from before 2.0). */
+    val hasJoinCode: Boolean = true,
 )
+
+/** An invite for a friend to create their own household (Phase 9). */
+data class InviteInfo(val id: String, val createdAt: Long, val expiresAt: Long, val usedAt: Long?)
 
 /** A phone waiting for the admin's approval. */
 data class JoinRequestInfo(val id: String, val name: String, val deviceLabel: String?)
 
-data class JoinResult(val token: String, val household: HouseholdInfo)
+/** [joinCode] is set for a newly created household: it's shown once. */
+data class JoinResult(val token: String, val household: HouseholdInfo, val joinCode: String? = null)
 
 /** A failed API call. [status] is 0 when the server couldn't be reached. */
 class ApiError(val status: Int, override val message: String) : Exception(message) {
@@ -59,10 +66,10 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
 
     suspend fun householdExists(): Boolean = call("GET", "/status").getBoolean("householdExists")
 
+    /** Creates a household with an invite from another household's admin (or the server's setup code). */
     suspend fun createHousehold(
-        setupToken: String,
+        inviteCode: String,
         householdName: String,
-        householdCode: String,
         timezone: String,
         adminName: String,
         adminPin: String,
@@ -71,20 +78,20 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
         "POST",
         "/household",
         JSONObject()
-            .put("setupToken", setupToken)
+            // The server owner can use the server's setup code in place of an invite.
+            .put(if (inviteCode.trim().startsWith("NEW", ignoreCase = true)) "inviteCode" else "setupToken", inviteCode.trim())
             .put("householdName", householdName)
-            .put("householdCode", householdCode)
             .put("timezone", timezone)
             .put("adminName", adminName)
             .put("adminPin", adminPin)
             .put("deviceLabel", deviceLabel),
     ).toJoinResult()
 
-    /** Asks to join as [name]. The phone stays pending until the admin approves it. */
-    suspend fun join(householdCode: String, name: String, deviceLabel: String, adminPin: String? = null): JoinResult = call(
+    /** Asks to join as [name] with the household's join code. The phone stays pending until the admin approves it. */
+    suspend fun join(joinCode: String, name: String, deviceLabel: String, adminPin: String? = null): JoinResult = call(
         "POST",
         "/join",
-        JSONObject().put("householdCode", householdCode).put("name", name).put("deviceLabel", deviceLabel)
+        JSONObject().put("joinCode", joinCode).put("name", name).put("deviceLabel", deviceLabel)
             .put("adminPin", adminPin ?: JSONObject.NULL),
     ).toJoinResult()
 
@@ -103,6 +110,29 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
     }
 
     suspend fun me(): HouseholdInfo = call("GET", "/me").toHousehold()
+
+    // Phase 9, admin only (with the PIN): join codes, invites, deleting the household.
+
+    /** A new join code; the old one stops working. The server shows it only this once. */
+    suspend fun newJoinCode(pin: String): String = call("POST", "/household/join-code", JSONObject(), pin).getString("joinCode")
+
+    /** The household's invites and how many it can still make. */
+    suspend fun invites(pin: String): Pair<List<InviteInfo>, Int> = call("GET", "/invites", adminPin = pin).let { o ->
+        o.getJSONArray("invites").objects().map {
+            InviteInfo(it.getString("id"), it.getLong("createdAt"), it.getLong("expiresAt"), it.optLongOrNull("usedAt"))
+        } to o.getInt("remaining")
+    }
+
+    /** A new invite code, shown only this once. */
+    suspend fun createInvite(pin: String): String = call("POST", "/invites", JSONObject(), pin).getString("code")
+
+    suspend fun cancelInvite(pin: String, id: String) {
+        call("DELETE", "/invites/$id", adminPin = pin)
+    }
+
+    suspend fun deleteHousehold(pin: String) {
+        call("DELETE", "/household", adminPin = pin)
+    }
 
     suspend fun leave() {
         call("DELETE", "/device")
@@ -221,17 +251,19 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
             }
         }
 
-    private fun JSONObject.toJoinResult() = JoinResult(getString("token"), toHousehold())
+    private fun JSONObject.toJoinResult() = JoinResult(getString("token"), toHousehold(), optStringOrNull("joinCode"))
 
     private fun JSONObject.toHousehold(): HouseholdInfo {
         val household = getJSONObject("household")
         return HouseholdInfo(
+            id = household.getString("id"),
             name = household.getString("name"),
             adminMemberId = household.optString("adminMemberId").takeIf { it.isNotEmpty() && it != "null" },
             members = getJSONArray("members").toMembers(),
             approved = optString("deviceStatus", "approved") == "approved",
             memberId = optStringOrNull("memberId"),
             pendingRequestIds = optArray("pendingRequestIds").let { a -> (0 until a.length()).map { a.getString(it) } },
+            hasJoinCode = optBoolean("hasJoinCode", true),
         )
     }
 

@@ -8,25 +8,26 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ChoreDao {
+    /** The chores of [householdId]. Chores cached before 2.0 have no household and show until replaced. */
     @Transaction
-    @Query("SELECT * FROM chore ORDER BY title COLLATE NOCASE, id")
-    fun observeChores(): Flow<List<ChoreWithDetails>>
+    @Query("SELECT * FROM chore WHERE householdId = :householdId OR householdId IS NULL ORDER BY title COLLATE NOCASE, id")
+    fun observeChores(householdId: String?): Flow<List<ChoreWithDetails>>
 
     @Transaction
     @Query("SELECT * FROM chore ORDER BY title COLLATE NOCASE, id")
     suspend fun getChores(): List<ChoreWithDetails>
 
-    @Query("DELETE FROM chore")
-    suspend fun deleteChores()
+    @Query("DELETE FROM chore WHERE householdId = :householdId OR householdId IS NULL")
+    suspend fun deleteChores(householdId: String)
 
-    @Query("DELETE FROM chore_assignment")
-    suspend fun deleteAssignments()
+    @Query("DELETE FROM chore_assignment WHERE choreId IN (SELECT id FROM chore WHERE householdId = :householdId OR householdId IS NULL)")
+    suspend fun deleteAssignments(householdId: String)
 
-    @Query("DELETE FROM chore_completion")
-    suspend fun deleteCompletions()
+    @Query("DELETE FROM chore_completion WHERE choreId IN (SELECT id FROM chore WHERE householdId = :householdId OR householdId IS NULL)")
+    suspend fun deleteCompletions(householdId: String)
 
-    @Query("DELETE FROM chore_slot")
-    suspend fun deleteSlots()
+    @Query("DELETE FROM chore_slot WHERE choreId IN (SELECT id FROM chore WHERE householdId = :householdId OR householdId IS NULL)")
+    suspend fun deleteSlots(householdId: String)
 
     @Insert
     suspend fun insertSlots(slots: List<ChoreSlotEntity>)
@@ -40,18 +41,20 @@ interface ChoreDao {
     @Insert
     suspend fun insertCompletions(completions: List<ChoreCompletionEntity>)
 
-    /** Replaces the whole cache with a server snapshot. */
+    /** Replaces one household's cache with a server snapshot (and any chores cached before 2.0). */
     @Transaction
-    suspend fun replaceAll(
+    suspend fun replaceHousehold(
+        householdId: String,
         chores: List<ChoreEntity>,
         assignments: List<ChoreAssignmentEntity>,
         completions: List<ChoreCompletionEntity>,
         slots: List<ChoreSlotEntity>,
     ) {
-        deleteChores()
-        deleteAssignments()
-        deleteCompletions()
-        deleteSlots()
+        // Rows that point at the chores go first, while the chores still say which household they're in.
+        deleteAssignments(householdId)
+        deleteCompletions(householdId)
+        deleteSlots(householdId)
+        deleteChores(householdId)
         insertChores(chores)
         insertAssignments(assignments)
         insertCompletions(completions)

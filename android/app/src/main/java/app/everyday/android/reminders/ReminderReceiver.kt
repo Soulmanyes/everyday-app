@@ -32,23 +32,26 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 
     /**
-     * Hides the reminder for today, then also ticks its chore (if it has one) for the picked profile.
-     * Ticking needs the server; offline it is skipped and only the reminder is hidden. The time
-     * limit keeps the receiver within the system's limit for goAsync().
+     * Hides the reminder for today, then also ticks its chore (if it has one) for the reminder's owner, in
+     * their household (which may not be the picked one). Ticking needs the server; offline it is skipped and
+     * only the reminder is hidden. The time limit keeps the receiver within the system's limit for goAsync().
      */
     private suspend fun onDone(context: Context, reminderId: String) {
         val app = context.app
         app.engine.setDoneToday(reminderId, true)
         app.sync.requestSync()
-        val choreId = app.repository.getDraft(reminderId)?.choreId ?: return
-        withTimeoutOrNull(8_000) { runCatching { app.chores.markDone(choreId) } }
+        val reminder = app.repository.getReminder(reminderId)?.reminder ?: return
+        val choreId = reminder.choreId ?: return
+        withTimeoutOrNull(8_000) { runCatching { app.chores.markDoneAs(choreId, reminder.ownerMemberId) } }
     }
 
-    /** "Decline" on "Sam added you to …": removes the picked profile from the shared event. */
+    /** "Decline" on "Sam added you to …": removes this phone's member on the event (in any of its households). */
     private suspend fun onDecline(context: Context, eventId: String) {
         val app = context.app
         Notifier(context).cancelAddedToEvent(eventId)
-        app.repository.leaveEvent(eventId)
+        val mine = app.session.current.memberships.mapNotNull { it.memberId }.toSet()
+        val me = app.repository.eventMemberIds(eventId).firstOrNull { it in mine }
+        app.repository.leaveEvent(eventId, me)
         app.engine.recompute()
         app.sync.requestSync()
     }

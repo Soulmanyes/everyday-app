@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
 import app.everyday.android.household.JoinRequestInfo
 import androidx.compose.material3.OutlinedButton
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Button
@@ -58,6 +61,7 @@ fun MembersScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
     var renaming by remember { mutableStateOf<MemberEntity?>(null) }
     var removing by remember { mutableStateOf<MemberEntity?>(null) }
     var coloring by remember { mutableStateOf<MemberEntity?>(null) }
+    var deletingHousehold by remember { mutableStateOf(false) }
 
     FormScaffold("Household members", onBack) {
         vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -95,6 +99,15 @@ fun MembersScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
             icon = { Icon(Icons.Default.Add, contentDescription = null) },
             text = { Text("Add member") },
         )
+        if (vm.adminPin != null) AdminSections(vm, session.hasJoinCode, onDeleteHousehold = { deletingHousehold = true })
+    }
+
+    vm.shownInvite?.let { code -> InviteDialog(code, session.serverUrl, onDismiss = { vm.shownInvite = null }) }
+    if (deletingHousehold) {
+        DeleteHouseholdDialog(session.householdName.orEmpty(), onDismiss = { deletingHousehold = false }) {
+            deletingHousehold = false
+            vm.deleteHousehold(onDone = onBack)
+        }
     }
 
     if (adding) {
@@ -195,4 +208,94 @@ private fun RequestCard(request: JoinRequestInfo, members: List<MemberEntity>, v
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+/** Admin only (Phase 9): the join code, invites for other households, and deleting the household. */
+@Composable
+private fun AdminSections(vm: HouseholdViewModel, hasJoinCode: Boolean, onDeleteHousehold: () -> Unit) {
+    var confirmNewCode by remember { mutableStateOf(false) }
+    HorizontalDivider()
+    Text("Join code", style = MaterialTheme.typography.titleMedium)
+    Text(
+        if (hasJoinCode) {
+            "People join with the household's join code. It's shown only when it's made: if you've lost it, make a new one."
+        } else {
+            "Nobody new can join until you make a join code (codes chosen before version 2.0 stopped working)."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = if (hasJoinCode) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+    )
+    OutlinedButton(onClick = { if (hasJoinCode) confirmNewCode = true else vm.newJoinCode() }, enabled = !vm.busy) {
+        Text(if (hasJoinCode) "New join code" else "Make a join code")
+    }
+
+    HorizontalDivider()
+    Text("Invite another household", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "An invite lets a friend set up their own, separate household on this server. It works once, within 7 days. " +
+            "You can make ${vm.invitesLeft} more.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    val dates = remember { DateTimeFormatter.ofPattern("d MMM") }
+    fun day(millis: Long) = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(dates)
+    vm.invites.forEach { invite ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            val now = System.currentTimeMillis()
+            Text(
+                when {
+                    invite.usedAt != null -> "Used ${day(invite.usedAt)}"
+                    invite.expiresAt < now -> "Expired ${day(invite.expiresAt)}"
+                    else -> "Made ${day(invite.createdAt)}, unused until ${day(invite.expiresAt)}"
+                },
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (invite.usedAt == null && invite.expiresAt >= System.currentTimeMillis()) {
+                TextButton(onClick = { vm.cancelInvite(invite.id) }, enabled = !vm.busy) { Text("Cancel") }
+            }
+        }
+    }
+    OutlinedButton(onClick = vm::createInvite, enabled = !vm.busy && vm.invitesLeft > 0) { Text("New invite") }
+
+    HorizontalDivider()
+    Text("Delete household", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Deletes the household and everything in it from the server, for everyone: members, chores, events and reminders.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    OutlinedButton(onClick = onDeleteHousehold, enabled = !vm.busy) { Text("Delete household", color = MaterialTheme.colorScheme.error) }
+
+    if (confirmNewCode) {
+        AlertDialog(
+            onDismissRequest = { confirmNewCode = false },
+            title = { Text("Make a new join code?") },
+            text = { Text("The current code stops working. People already in the household aren't affected.") },
+            confirmButton = { TextButton(onClick = { vm.newJoinCode(); confirmNewCode = false }) { Text("New code") } },
+            dismissButton = { TextButton(onClick = { confirmNewCode = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** Deleting can't be undone, so the admin types the household's name to confirm. */
+@Composable
+private fun DeleteHouseholdDialog(householdName: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    var typed by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete $householdName?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Everything in it is deleted for everyone, and every phone leaves it. This can't be undone. Type the household's name to confirm.")
+                OutlinedTextField(typed, { typed = it }, label = { Text(householdName) }, singleLine = true)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = typed.trim().equals(householdName.trim(), ignoreCase = true)) {
+                Text("Delete", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

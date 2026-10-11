@@ -239,8 +239,12 @@ interface MemberDao {
     @Upsert
     suspend fun upsertSettings(settings: MemberSettingsEntity)
 
-    @Query("SELECT * FROM member WHERE deleted = 0 AND id != :excludeId ORDER BY displayName COLLATE NOCASE")
-    fun observeMembers(excludeId: String = LOCAL_MEMBER_ID): Flow<List<MemberEntity>>
+    /** The members of [householdId]. Members cached before 2.0 have no household and show until the next refresh. */
+    @Query(
+        "SELECT * FROM member WHERE deleted = 0 AND id != :excludeId AND (householdId = :householdId OR householdId IS NULL) " +
+            "ORDER BY displayName COLLATE NOCASE",
+    )
+    fun observeMembers(householdId: String?, excludeId: String = LOCAL_MEMBER_ID): Flow<List<MemberEntity>>
 
     @Upsert
     suspend fun upsertMembers(members: List<MemberEntity>)
@@ -249,9 +253,9 @@ interface MemberDao {
     @Query("SELECT * FROM member")
     suspend fun getAllMembers(): List<MemberEntity>
 
-    /** Marks cached members that the server no longer lists as deleted. */
-    @Query("UPDATE member SET deleted = 1 WHERE id NOT IN (:keepIds) AND id != :localId")
-    suspend fun markOthersDeleted(keepIds: List<String>, localId: String = LOCAL_MEMBER_ID)
+    /** Marks cached members of [householdId] that the server no longer lists as deleted, and any left from before 2.0. */
+    @Query("UPDATE member SET deleted = 1 WHERE id NOT IN (:keepIds) AND id != :localId AND (householdId = :householdId OR householdId IS NULL)")
+    suspend fun markOthersDeleted(householdId: String, keepIds: List<String>, localId: String = LOCAL_MEMBER_ID)
 
     @Query("DELETE FROM member_settings WHERE memberId = :memberId")
     suspend fun deleteSettings(memberId: String)

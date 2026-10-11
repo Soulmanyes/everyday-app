@@ -27,6 +27,8 @@ class PushApiTest {
     private lateinit var api: ApiContext
     private val db get() = ApiTest.postgres.postgresDatabase
 
+    private var joinCode = ""
+
     /** Each send, as the set of push tokens it went to. */
     private val sent = mutableListOf<Set<String>>()
 
@@ -43,26 +45,27 @@ class PushApiTest {
     }
 
     /** Sam (admin) and Alex, each with one phone registered as push token "fcm-<name>". */
-    private class Home(val sam: String, val samToken: String, val alex: String, val alexToken: String)
+    private class Home(val id: String, val sam: String, val samToken: String, val alex: String, val alexToken: String)
 
     private fun api(block: suspend ApplicationTestBuilder.(HttpClient, Home) -> Unit) = testApplication {
         application { module(api) }
         val client = createClient { install(ContentNegotiation) { json() } }
         val session = client.post("/household") {
             contentType(ContentType.Application.Json)
-            setBody(CreateHouseholdRequest("setup", "Home", "kitchen-table", "Europe/London", "Sam", "4821"))
+            setBody(CreateHouseholdRequest("Home", "Europe/London", "Sam", "4821", setupToken = "setup"))
         }.body<SessionResponse>()
+        joinCode = session.joinCode!!
         client.registerPush(session.token, "fcm-sam")
         val alexToken = client.join("Alex")
         client.registerPush(alexToken, "fcm-alex")
         val alex = client.approve(session.token, client.pendingIds(session.token).single()).id
         sent.clear()
-        block(client, Home(session.household.adminMemberId!!, session.token, alex, alexToken))
+        block(client, Home(session.household.id, session.household.adminMemberId!!, session.token, alex, alexToken))
     }
 
     private suspend fun HttpClient.join(name: String): String = post("/join") {
         contentType(ContentType.Application.Json)
-        setBody(JoinRequest("kitchen-table", name))
+        setBody(JoinRequest(joinCode, name))
     }.body<SessionResponse>().token
 
     private suspend fun HttpClient.registerPush(token: String, pushToken: String?): HttpResponse = put("/me/push-token") {
@@ -154,7 +157,7 @@ class PushApiTest {
             header(ADMIN_PIN_HEADER, "4821")
         }
         assertEquals(setOf("fcm-alex"), sent.first())
-        assertEquals(emptyList(), PushStore(db).householdTokens(api.store.getHousehold()!!.id, null) - "fcm-sam")
+        assertEquals(emptyList(), PushStore(db).householdTokens(UUID.fromString(home.id), null) - "fcm-sam")
     }
 
     @Test

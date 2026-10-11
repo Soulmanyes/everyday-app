@@ -24,6 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -42,7 +43,9 @@ import app.everyday.android.ui.calendar.CalendarScreen
 import app.everyday.android.ui.chores.ChoreEditorScreen
 import app.everyday.android.ui.chores.ChoresScreen
 import app.everyday.android.ui.editor.EditorScreen
+import app.everyday.android.ui.household.HouseholdPicker
 import app.everyday.android.ui.household.HouseholdViewModel
+import app.everyday.android.ui.household.JoinCodeDialog
 import app.everyday.android.ui.household.MembersScreen
 import app.everyday.android.ui.household.WaitingScreen
 import app.everyday.android.ui.household.SetupFlow
@@ -76,10 +79,21 @@ private object Routes {
 fun EverydayApp() {
     val household: HouseholdViewModel = viewModel(factory = HouseholdViewModel.Factory)
     val session by household.session.collectAsStateWithLifecycle()
+    val app = LocalContext.current.app
+    val joinLink by app.joinLink.collectAsStateWithLifecycle()
+    LaunchedEffect(joinLink) {
+        joinLink?.let { household.openJoinLink(it); app.joinLink.value = null }
+    }
     when {
+        household.addingHousehold -> SetupFlow(household, onCancel = { household.addingHousehold = false })
         !session.joined && !session.skippedSetup -> SetupFlow(household)
+        // Phase 9: a phone in several households asks which one to open each time the app starts.
+        session.memberships.size > 1 && !household.pickerDone -> HouseholdPicker(household)
         session.joined && session.memberId == null -> WaitingScreen(household)
         else -> MainNav(household)
+    }
+    household.shownJoinCode?.let { code ->
+        JoinCodeDialog(code, session.householdName.orEmpty(), session.serverUrl, onDismiss = { household.shownJoinCode = null })
     }
 }
 
@@ -123,6 +137,7 @@ private fun MainNav(household: HouseholdViewModel) {
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(
+                household = household,
                 onBack = { nav.popBackStack() },
                 onManageMembers = { nav.navigate(Routes.MEMBERS) },
                 onWhatsNew = { nav.navigate(Routes.WHATS_NEW) },

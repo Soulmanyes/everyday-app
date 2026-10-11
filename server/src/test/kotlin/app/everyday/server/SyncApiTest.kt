@@ -44,12 +44,12 @@ class SyncApiTest {
         val client = createClient { install(ContentNegotiation) { json() } }
         val session = client.post("/household") {
             contentType(ContentType.Application.Json)
-            setBody(CreateHouseholdRequest("setup", "Home", "kitchen-table", "Europe/London", "Sam", "4821"))
+            setBody(CreateHouseholdRequest("Home", "Europe/London", "Sam", "4821", setupToken = "setup"))
         }.body<SessionResponse>()
         suspend fun phoneFor(name: String): Pair<String, String> {
             val token = client.post("/join") {
                 contentType(ContentType.Application.Json)
-                setBody(JoinRequest("kitchen-table", name))
+                setBody(JoinRequest(session.joinCode, name))
             }.body<SessionResponse>().token
             val requestId = client.get("/me") { header(HttpHeaders.Authorization, "Bearer ${session.token}") }
                 .body<HouseholdResponse>().pendingRequestIds.single()
