@@ -137,6 +137,12 @@ Gaps left by 2.0.0, and one new feature, planned 2026-10-11. Not started.
 - [ ] The month view's member filter starts on **the profile's own events** instead of everyone; others are switched on with the existing filter.
 - [ ] **Personal chores** (decided 2026-10-11): a "Personal (only I see it)" switch in the chore editor, offered only when you're the chore's only assignee **and you created it yourself** (not when someone else assigned it to you). Other members don't see a personal chore at all. Needs the server to store who created each chore.
 
+## Phase 10: Import from Google Calendar (2.2.0)
+Planned 2026-10-11. Not started. App only: no server change.
+- [ ] One-time import from the **phone's own calendar** (Google Calendar syncs onto the phone; read with `READ_CALENDAR`, no Google sign-in or API). Pick calendars, then tick the coming events to import; each becomes one of the profile's events.
+- [ ] Weekly repeats and one-off events import as they are. Other repeats (daily, every 2 weeks, monthly, yearly) become one-off events for the next 3 months. Multi-day events (holidays) are skipped with a note, since Everyday events sit within one day.
+- [ ] No ongoing sync: later changes in Google Calendar don't follow. Importing the same event again is recognised and skipped (the Google event id is remembered).
+
 ## Developer and ops (any time, no app release)
 - [x] CI: GitHub Actions building the server and the debug APK and running the unit tests (2026-10-09)
 - [x] CI: Dependabot flags outdated dependencies with weekly PRs into `dev` (2026-10-09)
