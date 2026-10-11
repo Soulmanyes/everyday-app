@@ -123,14 +123,19 @@ Built on `dev` 2026-10-11 and checked on an API 37 emulator against the test sta
 - [x] Admin deletes the household; unused households are cleaned up after a year; owner tool without names; privacy note
 - [x] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong join codes and admin PINs lock per household (2026-10-11); malformed codes, unknown join ids, invites and setup codes still share one global lock, which per-IP rate limits back up; dependencies kept up to date by Dependabot. Per-IP rate limiting in the API was added early (2026-10-09, see "Developer and ops").
 
-## Phase 9.5: Multi-day events (2.1.0)
-Planned 2026-10-11, first in the queue. Not started. Details to decide when it starts.
+## Phase 9.5: Easier inviting into your household (2.1.0)
+Planned 2026-10-11, first in the queue. Not started.
+- [ ] **One-tap invite links** (decided 2026-10-11): Settings → **Invite someone** (admin, with the PIN) makes a one-time member invite link, valid 7 days, and opens the share sheet. No need to find or remake the join code, which can only be shown once. The person taps the link (installing the app first if needed), enters their name, and the admin approves them as today.
+- [ ] The invite is stored hashed and used up when someone joins with it; the admin sees open invites and can cancel them. The household join code keeps working as well.
+
+## Phase 9.6: Multi-day events (2.2.0)
+Planned 2026-10-11. Not started. Details to decide when it starts.
 - [ ] Events can span several days, both **one-off** (a holiday, Fri 18:00 to Sun 20:00 on chosen dates) and **weekly** (every weekend, Fri 18:00 to Sun 20:00). Today an event sits within one day.
 - [ ] They show across their days in the week and month views; Busy and shared events work the same way.
 - [ ] Reminders on them: before the start (as today), and persistent reminders over the whole span or each day.
 - [ ] Server, sync and Room change (the event stores an end day as well as an end time), with migrations that keep existing events as they are.
 
-## Phase 9.6: Household fixes and "Everyone" events (2.2.0)
+## Phase 9.7: Household fixes and "Everyone" events (2.3.0)
 Gaps left by 2.0.0, and one new feature, planned 2026-10-11. Not started.
 - [ ] Tapping a "someone wants to join" notification opens that household (today it opens whichever household is picked).
 - [ ] Wrong-code lock per sender (decided 2026-10-11): mistyped or unknown join codes, invites and setup codes count per client IP (10 in 15 minutes locks only that address), with a server-wide lock kept only as a backstop against guessing spread over many addresses (about 200 failures in 15 minutes). Wrong join codes and admin PINs for a known household keep their per-household lock.
@@ -144,10 +149,10 @@ Gaps left by 2.0.0, and one new feature, planned 2026-10-11. Not started.
 - [ ] The month view's member filter starts on **the profile's own events** instead of everyone; others are switched on with the existing filter.
 - [ ] **Personal chores** (decided 2026-10-11): a "Personal (only I see it)" switch in the chore editor, offered only when you're the chore's only assignee **and you created it yourself** (not when someone else assigned it to you). Other members don't see a personal chore at all. Needs the server to store who created each chore.
 
-## Phase 10: Import from Google Calendar (2.3.0)
+## Phase 10: Import from Google Calendar (2.4.0)
 Planned 2026-10-11. Not started. App only: no server change.
 - [ ] One-time import from the **phone's own calendar** (Google Calendar syncs onto the phone; read with `READ_CALENDAR`, no Google sign-in or API). Pick calendars, then tick the coming events to import; each becomes one of the profile's events.
-- [ ] Weekly repeats and one-off events import as they are. Other repeats (daily, every 2 weeks, monthly, yearly) become one-off events for the next 3 months. Multi-day events import as multi-day events (Phase 9.5).
+- [ ] Weekly repeats and one-off events import as they are. Other repeats (daily, every 2 weeks, monthly, yearly) become one-off events for the next 3 months. Multi-day events import as multi-day events (Phase 9.6).
 - [ ] No ongoing sync: later changes in Google Calendar don't follow. Importing the same event again is recognised and skipped (the Google event id is remembered).
 
 ## Developer and ops (any time, no app release)
