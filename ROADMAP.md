@@ -128,6 +128,10 @@ Gaps left by 2.0.0, and one new feature, planned 2026-10-11. Not started.
 - [ ] Tapping a "someone wants to join" notification opens that household (today it opens whichever household is picked).
 - [ ] Wrong-code lock per sender (decided 2026-10-11): mistyped or unknown join codes, invites and setup codes count per client IP (10 in 15 minutes locks only that address), with a server-wide lock kept only as a backstop against guessing spread over many addresses (about 200 failures in 15 minutes). Wrong join codes and admin PINs for a known household keep their per-household lock.
 - [ ] Events: **Share with: Everyone** (decided 2026-10-11). The event is shared with the whole household, including members who join later: the event stores "everyone" rather than a member list (server and sync change). Members can still leave it.
+- [ ] Events: two clearly different ways to involve someone (decided 2026-10-11), named so the difference is obvious in the editor:
+  - **Add to the event**: they take part, as sharing works today. It's on their timetable, they can set reminders, and they're told "Sam added you to …".
+  - **Share for scheduling**: they can see it but aren't taking part. They see the title and times (like Busy, but with the title), with no reminders and no notification. Works with "Everyone" too.
+- [ ] The week view shows everything the month view does (decided 2026-10-11): others' Busy and scheduling-shared events and all household chores, with the same member filter, alongside the profile's own events and chore reminders.
 
 ## Developer and ops (any time, no app release)
 - [x] CI: GitHub Actions building the server and the debug APK and running the unit tests (2026-10-09)
