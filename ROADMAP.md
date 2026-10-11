@@ -114,7 +114,7 @@ Moved out of Phase 8 on 2026-10-10 until the owner set up the Firebase project (
 
 - [x] Push a notification to phones when something changes (chores, shared reminders, join requests) instead of waiting for the 15-minute refresh. Uses **FCM** (decided 2026-10-10): a data-only "sync now" push, so no household data goes through Google; the 15-minute refresh stays as a fallback. Needs a Firebase project with both app IDs, `google-services.json` in the app, and a service-account key on the VM. Every other phone is pushed (decided 2026-10-11); sends use google-auth-library and the FCM HTTP v1 API, not the Firebase Admin SDK (decided 2026-10-11).
 
-## Phase 9: Multiple households (1.7.0)
+## Phase 9: Multiple households (2.0.0)
 - [ ] Others create their own households on this server. Notes: [docs/ideas/multi-household.md](docs/ideas/multi-household.md)
 - [ ] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong-code/PIN limits per household and per sender instead of one global lock, dependencies kept up to date. Per-IP rate limiting in the API was added early (2026-10-09, see "Developer and ops").
 
