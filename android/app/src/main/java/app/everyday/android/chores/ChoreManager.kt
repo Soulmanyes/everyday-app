@@ -39,6 +39,15 @@ class ChoreManager(
     /** Marks the chore done today for the picked profile (for ANY it's done for everyone). */
     suspend fun markDone(id: String) = write { markChoreDone(id, requireMember()) }
 
+    /**
+     * Marks the chore done as [memberId], in whichever of this phone's households that member is in: a
+     * notification's Done can come from a household that isn't picked (Phase 9).
+     */
+    suspend fun markDoneAs(id: String, memberId: String) {
+        val m = session.current.memberships.firstOrNull { it.memberId == memberId } ?: return
+        write(m) { markChoreDone(id, memberId) }
+    }
+
     /** ANY: clears today's completion. EACH: clears only the picked profile's part. */
     suspend fun undoDone(id: String) = write { undoChoreDone(id, requireMember()) }
 

@@ -108,6 +108,9 @@ class ReminderRepository(
 
     suspend fun getReminder(id: String) = reminders.getReminder(id)
 
+    /** Who's on the event (not the owner). */
+    suspend fun eventMemberIds(eventId: String): List<String> = reminders.getEvent(eventId)?.members.orEmpty().map { it.memberId }
+
     suspend fun getReminders(memberId: String = currentMemberId()) =
         views(memberId, reminders.getVisible(memberId), reminders.getVisibleEvents(memberId))
 
@@ -188,8 +191,9 @@ class ReminderRepository(
     }
 
     /** The current profile leaves (or declines) a shared event: it's removed from it, with its reminders on it. */
-    suspend fun leaveEvent(eventId: String) = db.withTransaction {
-        val me = currentMemberId()
+    /** Leaves (or declines) an event as [memberId], the picked profile by default. */
+    suspend fun leaveEvent(eventId: String, memberId: String? = null) = db.withTransaction {
+        val me = memberId ?: currentMemberId()
         val row = reminders.getEventMember(eventId, me) ?: return@withTransaction
         reminders.upsertEventMembers(listOf(row.copy(hidden = true, updatedAt = clock(), dirty = true)))
         reminders.softDeleteMineOnEvent(eventId, me, clock())

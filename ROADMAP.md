@@ -121,7 +121,7 @@ Built on `dev` 2026-10-11 and checked on an API 37 emulator against the test sta
 - [x] Generated join codes (shown once, new one on demand) and join links
 - [x] A phone in several households: household picker at start, per-household notification switch
 - [x] Admin deletes the household; unused households are cleaned up after a year; owner tool without names; privacy note
-- [x] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong-code/PIN limits per household instead of one global lock (2026-10-11); dependencies kept up to date by Dependabot. Per-IP rate limiting in the API was added early (2026-10-09, see "Developer and ops").
+- [x] Server hardening for a public, multi-household server (instead of Tailscale, decided 2026-10-09): wrong join codes and admin PINs lock per household (2026-10-11); malformed codes, unknown join ids, invites and setup codes still share one global lock, which per-IP rate limits back up; dependencies kept up to date by Dependabot. Per-IP rate limiting in the API was added early (2026-10-09, see "Developer and ops").
 
 ## Developer and ops (any time, no app release)
 - [x] CI: GitHub Actions building the server and the debug APK and running the unit tests (2026-10-09)
