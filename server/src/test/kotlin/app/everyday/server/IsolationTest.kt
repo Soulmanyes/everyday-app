@@ -61,7 +61,7 @@ class IsolationTest {
 
     private suspend fun HttpClient.home(name: String, adminName: String, otherName: String, pushToken: String): Home {
         val session = post("/household") {
-            json(CreateHouseholdRequest("setup", name, "code-$name", "Europe/London", adminName, "4821"))
+            json(CreateHouseholdRequest(name, "Europe/London", adminName, "4821", setupToken = "setup"))
         }.also { assertEquals(HttpStatusCode.Created, it.status) }.body<SessionResponse>()
         val token = session.token
         val admin = session.household.adminMemberId!!

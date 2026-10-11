@@ -13,40 +13,76 @@ data class HouseholdRow(
     val id: UUID,
     val name: String,
     val timezone: String,
-    val codeHash: String,
+    /** Null until the admin generates a join code (households from before 2.0): nobody new can join. */
+    val codeHash: String?,
     val adminMemberId: UUID?,
     val adminPinHash: String,
+    val joinId: String? = null,
+    /** The server owner's own household: never removed by the cleanup or the owner tool. */
+    val protected: Boolean = false,
+    /** When the admin was warned that the unused household will be deleted. */
+    val cleanupWarnedAt: java.time.Instant? = null,
 ) {
     fun toDto() = HouseholdDto(id.toString(), name, timezone, adminMemberId?.toString())
 }
 
 /** SQL for households, members and devices. Every method runs in its own transaction. */
-class HouseholdStore(private val db: DataSource) {
+class HouseholdStore(internal val db: DataSource) {
 
     fun householdExists(): Boolean = db.transaction { conn ->
         conn.prepareStatement("SELECT 1 FROM household").executeQuery().use { it.next() }
     }
 
-    fun getHousehold(): HouseholdRow? = db.transaction { conn -> conn.household() }
-
     fun getHousehold(id: UUID): HouseholdRow? = db.transaction { conn -> conn.household(id) }
 
-    /** Creates a household with its admin member and first device. Returns null on a unique violation. */
+    /** The household a join code's public part points at. */
+    fun householdByJoinId(joinId: String): HouseholdRow? = db.transaction { conn -> conn.household(joinId = joinId) }
+
+    /** Thrown when an invite is unknown, used, cancelled or expired. */
+    object InviteInvalid : RuntimeException()
+
+    /** Thrown when a generated join id is already taken (very rare): generate another and retry. */
+    object JoinIdTaken : RuntimeException()
+
+    /**
+     * Creates a household with its admin member and first device, using up the invite with [inviteHash]
+     * (null: created with the server's setup code). Throws [InviteInvalid] or [JoinIdTaken].
+     */
     fun createHousehold(
         name: String,
         timezone: String,
+        joinId: String,
         codeHash: String,
         adminName: String,
         adminPinHash: String,
         deviceTokenHash: String,
         deviceLabel: String?,
-    ): Pair<HouseholdRow, List<MemberDto>>? = try {
+        inviteHash: String?,
+        now: java.time.Instant,
+    ): Pair<HouseholdRow, List<MemberDto>> = try {
         db.transaction { conn ->
+            val invite = inviteHash?.let { hash ->
+                conn.prepareStatement(
+                    """
+                    SELECT id, household_id FROM household_invite
+                    WHERE code_hash = ? AND used_at IS NULL AND NOT cancelled AND expires_at > ? FOR UPDATE
+                    """.trimIndent(),
+                ).run {
+                    setString(1, hash); setObject(2, now.toOffset())
+                    executeQuery().use { rs -> if (rs.next()) rs.getObject(1, UUID::class.java) to rs.getObject(2, UUID::class.java) else null }
+                } ?: throw InviteInvalid
+            }
             val householdId = conn.prepareStatement(
-                "INSERT INTO household (name, timezone, code_hash, admin_pin_hash) VALUES (?, ?, ?, ?) RETURNING id",
+                "INSERT INTO household (name, timezone, join_id, code_hash, admin_pin_hash, invited_by) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
             ).run {
-                setString(1, name); setString(2, timezone); setString(3, codeHash); setString(4, adminPinHash)
+                setString(1, name); setString(2, timezone); setString(3, joinId); setString(4, codeHash); setString(5, adminPinHash)
+                setObject(6, invite?.second)
                 executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
+            }
+            invite?.let { (inviteId, _) ->
+                conn.prepareStatement("UPDATE household_invite SET used_at = ?, used_by = ? WHERE id = ?").run {
+                    setObject(1, now.toOffset()); setObject(2, householdId); setObject(3, inviteId); executeUpdate()
+                }
             }
             val admin = conn.insertMember(householdId, adminName, null)
             conn.prepareStatement("UPDATE household SET admin_member_id = ? WHERE id = ?").run {
@@ -57,7 +93,7 @@ class HouseholdStore(private val db: DataSource) {
             conn.household(householdId)!! to conn.members(householdId)
         }
     } catch (e: SQLException) {
-        if (e.sqlState == UNIQUE_VIOLATION) null else throw e
+        if (e.sqlState == UNIQUE_VIOLATION && e.message.orEmpty().contains("join_id")) throw JoinIdTaken else throw e
     }
 
     /** The admin's own new phone, approved at once (the admin PIN was checked). */
@@ -151,6 +187,23 @@ class HouseholdStore(private val db: DataSource) {
 
     fun members(householdId: UUID): List<MemberDto> = db.transaction { conn -> conn.members(householdId) }
 
+    /** A new join code for the household; the old one stops working. Throws [JoinIdTaken]. */
+    fun setJoinCode(householdId: UUID, joinId: String, codeHash: String) = try {
+        db.transaction { conn ->
+            conn.prepareStatement("UPDATE household SET join_id = ?, code_hash = ?, updated_at = now() WHERE id = ?").run {
+                setString(1, joinId); setString(2, codeHash); setObject(3, householdId); executeUpdate()
+            }
+        }
+    } catch (e: SQLException) {
+        if (e.sqlState == UNIQUE_VIOLATION) throw JoinIdTaken else throw e
+    }
+
+    /**
+     * Deletes the household and everything in it: members, phones, chores, events, reminders, invites.
+     * Households it invited stay (their `invited_by` becomes null). Returns false if there was none.
+     */
+    fun deleteHousehold(householdId: UUID): Boolean = db.transaction { conn -> conn.deleteHousehold(householdId) }
+
     /** Throws [NameTaken] if another member already has this name. */
     fun addMember(householdId: UUID, name: String, color: String?): MemberDto = nameMustBeFree {
         db.transaction { conn -> conn.insertMember(householdId, name, color) }
@@ -231,11 +284,11 @@ class HouseholdStore(private val db: DataSource) {
         }
     }
 
-    private fun Connection.household(id: UUID? = null): HouseholdRow? {
-        val sql = "SELECT id, name, timezone, code_hash, admin_member_id, admin_pin_hash FROM household" +
-            if (id != null) " WHERE id = ?" else ""
+    private fun Connection.household(id: UUID? = null, joinId: String? = null): HouseholdRow? {
+        val sql = "SELECT id, name, timezone, code_hash, admin_member_id, admin_pin_hash, join_id, protected, cleanup_warned_at FROM household " +
+            if (id != null) "WHERE id = ?" else "WHERE join_id = ?"
         return prepareStatement(sql).run {
-            if (id != null) setObject(1, id)
+            if (id != null) setObject(1, id) else setString(1, joinId)
             executeQuery().use { rs ->
                 if (!rs.next()) null else HouseholdRow(
                     id = rs.getObject("id", UUID::class.java),
@@ -244,6 +297,9 @@ class HouseholdStore(private val db: DataSource) {
                     codeHash = rs.getString("code_hash"),
                     adminMemberId = rs.getObject("admin_member_id", UUID::class.java),
                     adminPinHash = rs.getString("admin_pin_hash"),
+                    joinId = rs.getString("join_id"),
+                    protected = rs.getBoolean("protected"),
+                    cleanupWarnedAt = rs.getObject("cleanup_warned_at", java.time.OffsetDateTime::class.java)?.toInstant(),
                 )
             }
         }
@@ -297,3 +353,19 @@ class HouseholdStore(private val db: DataSource) {
         const val UNIQUE_VIOLATION = "23505"
     }
 }
+
+/**
+ * Hard-deletes a household. Rows that point at members (reminders, event members, state) go through
+ * ON DELETE CASCADE from member and event; the admin link is cleared first because it has no cascade.
+ */
+fun Connection.deleteHousehold(householdId: UUID): Boolean {
+    prepareStatement("UPDATE household SET admin_member_id = NULL WHERE id = ?").run { setObject(1, householdId); executeUpdate() }
+    // Events and devices reference members without a cascade of their own; remove them before the members.
+    prepareStatement("DELETE FROM event WHERE owner_member_id IN (SELECT id FROM member WHERE household_id = ?)").run {
+        setObject(1, householdId); executeUpdate()
+    }
+    prepareStatement("DELETE FROM device WHERE household_id = ?").run { setObject(1, householdId); executeUpdate() }
+    return prepareStatement("DELETE FROM household WHERE id = ?").run { setObject(1, householdId); executeUpdate() > 0 }
+}
+
+fun java.time.Instant.toOffset(): java.time.OffsetDateTime = java.time.OffsetDateTime.ofInstant(this, java.time.ZoneOffset.UTC)

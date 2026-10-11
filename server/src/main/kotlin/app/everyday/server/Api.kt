@@ -6,25 +6,47 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class StatusResponse(val householdExists: Boolean)
 
+/**
+ * Creates a household with an [inviteCode] from another household's admin, or with the server's
+ * [setupToken] (the owner's own way in). The server generates the join code. Apps before 2.0 send
+ * [householdCode] (a code the admin chose) and are told to update.
+ */
 @Serializable
 data class CreateHouseholdRequest(
-    val setupToken: String,
     val householdName: String,
-    val householdCode: String,
     val timezone: String,
     val adminName: String,
     val adminPin: String,
     val deviceLabel: String? = null,
+    val inviteCode: String? = null,
+    val setupToken: String? = null,
+    val householdCode: String? = null,
 )
 
+/** Joining with a household's [joinCode]. Apps before 2.0 send only [householdCode] and are told to update. */
 @Serializable
 data class JoinRequest(
-    val householdCode: String,
+    val joinCode: String? = null,
     val name: String = "",
     val deviceLabel: String? = null,
     /** The admin joining from a new phone: with the right PIN the phone is approved as the admin at once. */
     val adminPin: String? = null,
+    val householdCode: String? = null,
 )
+
+/** A household's new join code, shown once to the admin (the server keeps only a hash of its secret part). */
+@Serializable
+data class JoinCodeResponse(val joinCode: String)
+
+/** An invite to create a household. The code itself is shown only when it's made ([CreatedInviteResponse]). */
+@Serializable
+data class InviteDto(val id: String, val createdAt: Long, val expiresAt: Long, val usedAt: Long? = null)
+
+@Serializable
+data class CreatedInviteResponse(val invite: InviteDto, val code: String)
+
+@Serializable
+data class InvitesResponse(val invites: List<InviteDto>, val remaining: Int)
 
 @Serializable
 data class HouseholdDto(val id: String, val name: String, val timezone: String, val adminMemberId: String?)
@@ -43,6 +65,8 @@ data class SessionResponse(
     val members: List<MemberDto>,
     val deviceStatus: String = "approved",
     val memberId: String? = null,
+    /** The new household's join code, shown once to its creator (Phase 9). */
+    val joinCode: String? = null,
 )
 
 @Serializable
@@ -53,6 +77,8 @@ data class HouseholdResponse(
     val memberId: String? = null,
     /** Pending join request ids; only sent to the admin's phone, so it can notify. */
     val pendingRequestIds: List<String> = emptyList(),
+    /** False until the admin generates a join code (households from before 2.0): nobody new can join. */
+    val hasJoinCode: Boolean = true,
 )
 
 /** A phone waiting for the admin's approval. */

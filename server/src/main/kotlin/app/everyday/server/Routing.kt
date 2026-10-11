@@ -34,6 +34,9 @@ class ApiContext(
     val rateLimits: RateLimits = RateLimits(),
     /** Instant updates; null on a server without Firebase (and in most tests). */
     val push: Push? = null,
+    val invites: InviteStore = InviteStore(store.db),
+    /** How long an invite to create a household stays valid. */
+    val inviteLifetime: java.time.Duration = java.time.Duration.ofDays(7),
 )
 
 const val ADMIN_PIN_HEADER = "X-Admin-Pin"
@@ -49,38 +52,72 @@ fun Application.configureRouting(api: ApiContext?) {
         rateLimit(SECRETS_LIMIT) {
             post("/household") {
                 val req = call.receive<CreateHouseholdRequest>()
-                val setupToken = api.setupToken
-                    ?: throw ApiException(HttpStatusCode.Forbidden, "Creating a household is disabled on this server.")
-                api.checkSecret(Secrets.constantTimeEquals(req.setupToken.trim(), setupToken), "Wrong setup code.")
+                if (req.householdCode != null) throw updateApp("Update the app to set up a household.")
                 val name = validName(req.householdName, "Household name", 60)
                 val adminName = validName(req.adminName, "Your name", 40)
-                validCode(req.householdCode)
                 validPin(req.adminPin)
                 val zone = runCatching { ZoneId.of(req.timezone) }.getOrNull() ?: badRequest("Unknown timezone.")
+                // An invite from another household's admin, or the server's own setup code.
+                val inviteHash = when {
+                    !req.inviteCode.isNullOrBlank() -> {
+                        api.ensureNotLocked()
+                        val invite = Codes.normalizeInvite(req.inviteCode)
+                        api.checkSecret(invite != null, INVITE_INVALID)
+                        Secrets.tokenHash(invite!!)
+                    }
+                    !req.setupToken.isNullOrBlank() -> {
+                        val setupToken = api.setupToken
+                            ?: throw ApiException(HttpStatusCode.Forbidden, "Creating a household with a setup code is disabled on this server.")
+                        api.checkSecret(Secrets.constantTimeEquals(req.setupToken.trim(), setupToken), "Wrong setup code.")
+                        null
+                    }
+                    else -> badRequest("Enter the invite code you were given.")
+                }
 
                 val token = api.secrets.newToken()
-                val (household, members) = api.store.createHousehold(
-                    name = name,
-                    timezone = zone.id,
-                    codeHash = api.secrets.hash(req.householdCode),
-                    adminName = adminName,
-                    adminPinHash = api.secrets.hash(req.adminPin),
-                    deviceTokenHash = Secrets.tokenHash(token),
-                    deviceLabel = req.deviceLabel,
-                ) ?: throw ApiException(HttpStatusCode.Conflict, "A household already exists on this server.")
-                call.respond(HttpStatusCode.Created, SessionResponse(token, household.toDto(), members, memberId = household.adminMemberId?.toString()))
+                val pinHash = api.secrets.hash(req.adminPin)
+                val (code, created) = api.withNewJoinCode { code, codeHash ->
+                    try {
+                        api.store.createHousehold(
+                            name = name,
+                            timezone = zone.id,
+                            joinId = code.joinId,
+                            codeHash = codeHash,
+                            adminName = adminName,
+                            adminPinHash = pinHash,
+                            deviceTokenHash = Secrets.tokenHash(token),
+                            deviceLabel = req.deviceLabel,
+                            inviteHash = inviteHash,
+                            now = api.clock(),
+                        )
+                    } catch (_: HouseholdStore.InviteInvalid) {
+                        api.checkSecret(false, INVITE_INVALID)
+                        error("unreachable")
+                    }
+                }
+                val (household, members) = created
+                call.respond(
+                    HttpStatusCode.Created,
+                    SessionResponse(token, household.toDto(), members, memberId = household.adminMemberId?.toString(), joinCode = code.toString()),
+                )
             }
 
             post("/join") {
                 val req = call.receive<JoinRequest>()
+                if (req.joinCode == null) throw updateApp("Update the app to join a household.")
                 api.ensureNotLocked()
-                val household = api.store.getHousehold()
-                    ?: throw ApiException(HttpStatusCode.NotFound, "No household has been set up yet.")
-                api.checkSecret(api.secrets.verify(req.householdCode, household.codeHash), "Wrong household code.")
+                // The public part finds the household; wrong secrets count against that household only.
+                val code = Codes.parseJoinCode(req.joinCode)
+                val household = code?.let { api.store.householdByJoinId(it.joinId) }
+                api.checkSecret(household != null, WRONG_JOIN_CODE)
+                household!!
+                val key = household.id.toString()
+                api.ensureNotLocked(key)
+                api.checkSecret(household.codeHash != null && api.secrets.verify(code!!.secret, household.codeHash), WRONG_JOIN_CODE, key)
                 val token = api.secrets.newToken()
                 // The admin on a new phone (or after reinstalling): nobody else could approve it.
                 if (!req.adminPin.isNullOrEmpty()) {
-                    api.checkSecret(api.secrets.verify(req.adminPin, household.adminPinHash), "Wrong admin PIN.")
+                    api.checkSecret(api.secrets.verify(req.adminPin, household.adminPinHash), "Wrong admin PIN.", key)
                     val adminId = household.adminMemberId ?: throw ApiException(HttpStatusCode.Conflict, "The household has no admin.")
                     api.store.addAdminDevice(household.id, Secrets.tokenHash(token), req.deviceLabel, adminId)
                     call.respond(SessionResponse(token, household.toDto(), api.store.members(household.id), memberId = adminId.toString()))
@@ -105,6 +142,7 @@ fun Application.configureRouting(api: ApiContext?) {
                     deviceStatus = if (session.approved) "approved" else "pending",
                     memberId = session.memberId?.toString(),
                     pendingRequestIds = if (isAdmin) api.store.joinRequests(household.id).map { it.id } else emptyList(),
+                    hasJoinCode = household.codeHash != null,
                 ),
             )
         }
@@ -163,6 +201,43 @@ fun Application.configureRouting(api: ApiContext?) {
                 val tokens = api.push?.store?.deviceTokens(household.id, id).orEmpty()
                 if (!api.store.reject(household.id, id)) throw ApiException(HttpStatusCode.NotFound, "No such request.")
                 api.push?.tokens(tokens)
+                call.respond(HttpStatusCode.NoContent)
+            }
+
+            /** A new join code; the old one stops working. Shown once: the server keeps only a hash. */
+            post("/household/join-code") {
+                val household = api.requireAdmin(call).household
+                val (code, _) = api.withNewJoinCode { code, codeHash -> api.store.setJoinCode(household.id, code.joinId, codeHash) }
+                call.respond(JoinCodeResponse(code.toString()))
+            }
+
+            /** Deletes the household and everything in it. Its other phones are sent back to the welcome screen. */
+            delete("/household") {
+                val admin = api.requireAdmin(call)
+                val tokens = api.push?.store?.householdTokens(admin.household.id, exceptDevice = admin.deviceId).orEmpty()
+                if (!api.store.deleteHousehold(admin.household.id)) throw unauthorized()
+                api.push?.tokens(tokens)
+                call.respond(HttpStatusCode.NoContent)
+            }
+
+            get("/invites") {
+                val household = api.requireAdmin(call).household
+                call.respond(InvitesResponse(api.invites.list(household.id), api.invites.remaining(household.id, api.clock())))
+            }
+
+            /** An invite for a friend to create their own household. The code is shown once. */
+            post("/invites") {
+                val household = api.requireAdmin(call).household
+                val now = api.clock()
+                val code = Codes.newInvite()
+                val invite = api.invites.create(household.id, Secrets.tokenHash(Codes.normalizeInvite(code)!!), now, now.plus(api.inviteLifetime))
+                    ?: throw ApiException(HttpStatusCode.Conflict, "This household has used all its invites.")
+                call.respond(HttpStatusCode.Created, CreatedInviteResponse(invite, code))
+            }
+
+            delete("/invites/{id}") {
+                val household = api.requireAdmin(call).household
+                if (!api.invites.cancel(household.id, uuidParam(call, "invite"))) throw ApiException(HttpStatusCode.NotFound, "No such unused invite.")
                 call.respond(HttpStatusCode.NoContent)
             }
 
@@ -291,24 +366,45 @@ private fun ApiContext.authenticate(call: ApplicationCall): DeviceSession {
 private fun ApiContext.requireAdmin(call: ApplicationCall): Caller {
     val caller = member(call)
     val pin = call.request.headers[ADMIN_PIN_HEADER].orEmpty()
-    checkSecret(pin.isNotEmpty() && secrets.verify(pin, caller.household.adminPinHash), "Wrong admin PIN.")
+    val key = caller.household.id.toString()
+    ensureNotLocked(key)
+    checkSecret(pin.isNotEmpty() && secrets.verify(pin, caller.household.adminPinHash), "Wrong admin PIN.", key)
     return caller
 }
 
-private fun ApiContext.ensureNotLocked() {
-    limiter.lockedForSeconds()?.let { seconds ->
+private fun ApiContext.ensureNotLocked(key: String = AttemptLimiter.GLOBAL) {
+    limiter.lockedForSeconds(key)?.let { seconds ->
         val minutes = (seconds + 59) / 60
         throw ApiException(HttpStatusCode.TooManyRequests, "Too many wrong attempts. Try again in $minutes min.")
     }
 }
 
-/** Refuses while locked out; counts a failure and rejects if [ok] is false. */
-private fun ApiContext.checkSecret(ok: Boolean, message: String) {
-    ensureNotLocked()
+/** Refuses while [key] is locked out; counts a failure for [key] and rejects if [ok] is false. */
+private fun ApiContext.checkSecret(ok: Boolean, message: String, key: String = AttemptLimiter.GLOBAL) {
+    ensureNotLocked(key)
     if (!ok) {
-        limiter.recordFailure()
+        limiter.recordFailure(key)
         throw ApiException(HttpStatusCode.Forbidden, message)
     }
+}
+
+private const val WRONG_JOIN_CODE = "Wrong join code."
+private const val INVITE_INVALID = "That invite isn't valid. It may have been used, cancelled or expired."
+
+/** Apps from before 2.0. Not 401, which would send a joined phone back to the welcome screen. */
+private fun updateApp(message: String) = ApiException(HttpStatusCode.Gone, message)
+
+/** Runs [block] with a fresh join code and its hash, trying another code if the join id is taken. */
+private fun <T> ApiContext.withNewJoinCode(block: (Codes.JoinCode, String) -> T): Pair<Codes.JoinCode, T> {
+    repeat(5) {
+        val code = Codes.newJoinCode()
+        try {
+            return code to block(code, secrets.hash(code.secret))
+        } catch (_: HouseholdStore.JoinIdTaken) {
+            // Another household has this join id: try another.
+        }
+    }
+    error("No free join id")
 }
 
 private fun memberId(call: ApplicationCall): UUID = uuidParam(call, "member")
@@ -368,11 +464,6 @@ private fun validName(value: String, field: String, max: Int): String {
     if (trimmed.isEmpty()) badRequest("$field can't be empty.")
     if (trimmed.length > max) badRequest("$field is too long (max $max characters).")
     return trimmed
-}
-
-private fun validCode(code: String) {
-    if (code.length < 6) badRequest("The household code must be at least 6 characters.")
-    if (code.length > 64) badRequest("The household code is too long.")
 }
 
 private fun validPin(pin: String) {

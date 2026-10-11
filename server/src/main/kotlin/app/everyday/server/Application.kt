@@ -31,6 +31,8 @@ fun main() {
         setupToken = System.getenv("SETUP_TOKEN")?.takeIf { it.isNotBlank() },
         push = push,
     )
+    // Deletes households no phone has used for a year (Phase 9).
+    Cleanup(dataSource).schedule()
     embeddedServer(Netty, port = port, host = "0.0.0.0") {
         module(api)
         monitor.subscribe(ApplicationStopped) { dataSource.close() }
