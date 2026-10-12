@@ -143,7 +143,7 @@ Decided 2026-10-12:
 - [x] Server, sync and Room change (the event stores an end day as well as an end time), with migrations that keep existing events as they are.
 
 ## Phase 9.7: Household fixes and calmer views (2.3.0)
-Gaps left by 2.0.0 and view changes, planned 2026-10-11. Split from the old Phase 9.7 on 2026-10-12 (the sharing changes became 9.8, personal chores 9.9). Built on `dev` 2026-10-12, not yet released.
+Gaps left by 2.0.0 and view changes, planned 2026-10-11. Split from the old Phase 9.7 on 2026-10-12 (the sharing changes became 9.8, personal chores 9.9). Released 2026-10-12 as 2.3.0.
 - [x] Tapping a "someone wants to join" notification opens that household (today it opens whichever household is picked).
 - [x] Wrong-code lock per sender (decided 2026-10-11): mistyped or unknown join codes, invites and setup codes count per client IP (10 in 15 minutes locks only that address), with a server-wide lock kept only as a backstop against guessing spread over many addresses (about 200 failures in 15 minutes). Wrong join codes and admin PINs for a known household keep their per-household lock.
 - [x] The week view shows everything the month view does (decided 2026-10-11): others' Busy events (scheduling-shared ones once Phase 9.8 adds them), with the same member filter, alongside the profile's own events.

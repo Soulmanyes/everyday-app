@@ -9,6 +9,16 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        13, "2.3.0",
+        listOf(
+            "The Events tab now starts on your own events and chores: tap \"Showing\" above the month to add other people.",
+            "The month view is calmer: each day shows one line per person with how many things they have. Tap a day for the full list.",
+            "The week view now shows others' Busy times and the chores too, for the people you've chosen.",
+            "Settings → Show chores on the Events tab: turn it off to keep chores on the Chores tab only.",
+            "Admins: tapping a \"someone wants to join\" notification opens the right household.",
+        ),
+    ),
+    ReleaseNote(
         12, "2.2.0",
         listOf(
             "Events can last several days: add an end date to a one-off event (a holiday, a trip), or pick the day a weekly event ends on (every Fri 18:00 to Sun 20:00).",
