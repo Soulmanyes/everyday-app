@@ -64,8 +64,11 @@ fun monthDays(month: YearMonth): List<LocalDate> {
 fun MonthFilter.matches(view: EventView): Boolean =
     everyone || view.event.ownerMemberId in eventMemberIds || view.takingPart.any { it.memberId in eventMemberIds }
 
-/** A Busy event matches the filter if its owner has their events showing. */
-fun MonthFilter.matches(busy: BusyEventEntity): Boolean = everyone || busy.ownerMemberId in eventMemberIds
+/**
+ * A Busy event matches the filter if its owner has their events showing. One shared with me for scheduling
+ * (it has a title, Phase 9.8) always shows, like the events I take part in.
+ */
+fun MonthFilter.matches(busy: BusyEventEntity): Boolean = everyone || busy.title != null || busy.ownerMemberId in eventMemberIds
 
 /** Any day a Busy event covers, a multi-day one included. */
 fun BusyEventEntity.isOn(date: LocalDate) = occurs().isOn(date)
