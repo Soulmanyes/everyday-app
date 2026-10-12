@@ -170,6 +170,11 @@ Planned 2026-10-11. Not started. App only: no server change.
 - [ ] Weekly repeats and one-off events import as they are. Other repeats (daily, every 2 weeks, monthly, yearly) become one-off events for the next 3 months. Multi-day events import as multi-day events (Phase 9.6).
 - [ ] No ongoing sync: later changes in Google Calendar don't follow. Importing the same event again is recognised and skipped (the Google event id is remembered).
 
+## Phase 11: Better colour picking (2.7.0)
+Added 2026-10-12. Not started. Details to decide when it starts.
+- [ ] A fuller colour picker for member colours, perhaps any RGB colour (0-255 per channel) instead of the 12 fixed palette colours.
+- [ ] To decide then: whether colours must still differ enough between members of a household (today they're unique per household), and whether greens stay out (chore cards are green), since any RGB colour can come close to another one or to the chore green. Server change: `member.color` holds a palette key today.
+
 ## Developer and ops (any time, no app release)
 - [x] CI: GitHub Actions building the server and the debug APK and running the unit tests (2026-10-09)
 - [x] CI: Dependabot flags outdated dependencies with weekly PRs into `dev` (2026-10-09)
