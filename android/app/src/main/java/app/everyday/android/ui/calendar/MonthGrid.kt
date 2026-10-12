@@ -97,3 +97,20 @@ private fun Occurs.startOn(date: LocalDate): Int? = partOn(date)?.takeUnless { i
 
 /** An event or Busy event with its start (null = all day), for sorting. */
 private data class Dated(val item: MonthItem, val startMinute: Int?)
+
+/**
+ * How many things each person has in a month cell (Phase 9.7): events and Busy events count for their
+ * owner, chores for each assignee the filter shows. The cell shows one line per person.
+ */
+fun personCounts(items: List<MonthItem>, filter: MonthFilter): Map<String, Int> {
+    val counts = linkedMapOf<String, Int>()
+    fun add(id: String) { counts[id] = (counts[id] ?: 0) + 1 }
+    for (item in items) {
+        when (item) {
+            is MonthItem.Event -> add(item.view.event.ownerMemberId)
+            is MonthItem.Busy -> add(item.busy.ownerMemberId)
+            is MonthItem.Chore -> item.details.assigneeIds.filter { filter.everyone || it in filter.choreMemberIds }.forEach(::add)
+        }
+    }
+    return counts
+}

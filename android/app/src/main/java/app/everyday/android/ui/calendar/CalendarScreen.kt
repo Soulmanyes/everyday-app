@@ -58,6 +58,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.everyday.android.data.BusyEventEntity
+import app.everyday.android.data.occurs
+import app.everyday.android.ui.memberColorOf
+import androidx.compose.ui.graphics.luminance
 import app.everyday.android.data.ChoreWithDetails
 import app.everyday.android.data.EventView
 import app.everyday.android.data.MemberEntity
@@ -87,10 +90,21 @@ private val HOUR_HEIGHT = 56.dp
 private val GUTTER = 34.dp
 private const val TIMED_LENGTH_MINUTES = 30
 
-/** Something on the timetable: an event, or one of the picked profile's chore reminders. */
+/**
+ * Something on the timetable: an event, one of the picked profile's chore reminders, and (Phase 9.7, as in
+ * the month view) others' Busy events and household chores, for the members the filter shows.
+ */
 private sealed interface Entry {
-    /** Selection key, unique across both kinds. */
+    /** Selection key, unique across all kinds. */
     val key: String
+
+    data class Busy(val busy: BusyEventEntity) : Entry {
+        override val key get() = "busy:${busy.id}"
+    }
+
+    data class Chore(val details: ChoreWithDetails) : Entry {
+        override val key get() = "chore:${details.chore.id}"
+    }
 
     data class Event(val view: EventView) : Entry {
         override val key get() = "event:${view.event.id}"
@@ -120,7 +134,6 @@ fun CalendarScreen(
     val events by vm.events.collectAsStateWithLifecycle()
     val choreReminders by vm.choreReminders.collectAsStateWithLifecycle()
     val members by vm.members.collectAsStateWithLifecycle()
-    val entries = remember(events, choreReminders) { events.map { Entry.Event(it) } + choreReminders.map { Entry.ChoreReminder(it) } }
     var weekOffset by rememberSaveable { mutableIntStateOf(0) }
     var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
     // Day view: the focused day as an epoch day, or null for the week view.
@@ -133,6 +146,19 @@ fun CalendarScreen(
     val chores by vm.chores.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val monthFilter by vm.monthFilter.collectAsStateWithLifecycle()
+    val myId by vm.myId.collectAsStateWithLifecycle()
+    val showChores by vm.showChores.collectAsStateWithLifecycle()
+    val filter = effectiveFilter(monthFilter, members, myId)
+    val shownChores = if (showChores) chores else emptyList()
+    // The week shows my events and chore reminders as before, plus (Phase 9.7) others' Busy events and the
+    // chores, for the members the filter shows, as the month does.
+    val entries = remember(events, choreReminders, busy, shownChores, filter, showChores) {
+        events.map { Entry.Event(it) } +
+            (if (showChores) choreReminders.map { Entry.ChoreReminder(it) } else emptyList()) +
+            busy.filter { filter.matches(it) }.map { Entry.Busy(it) } +
+            shownChores.filter { filter.matches(it) }.map { Entry.Chore(it) }
+    }
+    val membersById = members.associateBy { it.id }
 
     // Ticks every minute so "today" and the now-line stay current.
     val now by produceState(LocalTime.now()) {
@@ -169,10 +195,11 @@ fun CalendarScreen(
                     month = month,
                     today = today,
                     events = events,
-                    chores = chores,
+                    chores = shownChores,
                     busy = busy,
                     members = members,
                     filter = monthFilter,
+                    myId = myId,
                     onMonthChange = { shownMonth = it.toString() },
                     onFilterChange = vm::setMonthFilter,
                     onDayClick = { monthDayEpoch = it.toEpochDay() },
@@ -183,9 +210,9 @@ fun CalendarScreen(
                 WeekHeader(weekStart, weekOffset, onChange = { weekOffset = it })
                 DayHeaders(days, today, onDayClick = { focusedEpochDay = it.toEpochDay() })
             }
-            AllDayRow(days, today, entries, onSelect = { selectedKey = it })
+            AllDayRow(days, today, entries, membersById, onSelect = { selectedKey = it })
             HorizontalDivider()
-            TimeGrid(days, today, now, entries, detailed = focusedDay != null, onSelect = { selectedKey = it })
+            TimeGrid(days, today, now, entries, membersById, detailed = focusedDay != null, onSelect = { selectedKey = it })
         }
         if (entries.isEmpty() && !monthMode) {
             Text(
@@ -214,16 +241,27 @@ fun CalendarScreen(
                 onToggleDone = { done -> vm.setDoneToday(r.id, done) },
             )
         }
-        null -> {}
+        is Entry.Chore -> {
+            val choresVm: ChoresViewModel = viewModel(factory = ChoresViewModel.Factory)
+            ChoreDetailsSheet(
+                choresVm,
+                selected.details,
+                today,
+                onDismiss = { selectedKey = null },
+                onEditChore = { selectedKey = null; onEditChore(it) },
+                onAddReminder = { selectedKey = null; onAddChoreReminder(it) },
+            )
+        }
+        is Entry.Busy, null -> {}
     }
 
     MonthSheets(
         vm = vm,
         events = events,
-        chores = chores,
+        chores = shownChores,
         busy = busy,
         members = members,
-        filter = effectiveFilter(monthFilter, members),
+        filter = filter,
         today = today,
         day = monthDayEpoch?.let(LocalDate::ofEpochDay),
         itemKey = monthItemKey,
@@ -392,6 +430,7 @@ private fun AllDayRow(
     days: List<LocalDate>,
     today: LocalDate,
     entries: List<Entry>,
+    membersById: Map<String, MemberEntity>,
     onSelect: (String) -> Unit,
 ) {
     if (days.none { day -> entries.any { it.isAllDayOn(day) } }) return
@@ -405,7 +444,7 @@ private fun AllDayRow(
         for (day in days) {
             Column(Modifier.weight(1f).padding(horizontal = 1.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 entries.filter { it.isAllDayOn(day) }.forEach { entry ->
-                    EntryBlock(entry, entry.title(), day, today, Modifier.fillMaxWidth().height(22.dp)) { onSelect(entry.key) }
+                    EntryBlock(entry, entry.title(), day, today, membersById, Modifier.fillMaxWidth().height(22.dp)) { onSelect(entry.key) }
                 }
             }
         }
@@ -418,6 +457,7 @@ private fun TimeGrid(
     today: LocalDate,
     now: LocalTime,
     entries: List<Entry>,
+    membersById: Map<String, MemberEntity>,
     detailed: Boolean,
     onSelect: (String) -> Unit,
 ) {
@@ -463,6 +503,7 @@ private fun TimeGrid(
                         item.label,
                         day,
                         today,
+                        membersById,
                         Modifier.offset(x = laneWidth * lanes[i], y = top).width(laneWidth).height(height).padding(1.dp),
                         // Blocks too short for two lines would show a clipped second line.
                         singleLine = height < 32.dp,
@@ -485,6 +526,7 @@ private fun EntryBlock(
     label: String,
     day: LocalDate,
     today: LocalDate,
+    membersById: Map<String, MemberEntity>,
     modifier: Modifier,
     singleLine: Boolean = true,
     onClick: () -> Unit,
@@ -493,21 +535,27 @@ private fun EntryBlock(
     val persistent = when (entry) {
         is Entry.Event -> entry.view.persistentReminder
         is Entry.ChoreReminder -> entry.view.takeIf { it.reminder.mode == ReminderMode.PERSISTENT }
+        is Entry.Busy, is Entry.Chore -> null
     }
     val doneToday = day == today && persistent != null && persistent.state?.doneOn == today.toString()
     val (bg, fg) = when {
         doneToday -> colors.surfaceVariant to colors.onSurfaceVariant
-        entry is Entry.ChoreReminder -> colors.choreColors()
+        entry is Entry.ChoreReminder || entry is Entry.Chore -> colors.choreColors()
+        // Busy takes its owner's colour, as in the month view.
+        entry is Entry.Busy -> memberColorOf(membersById[entry.busy.ownerMemberId]?.color, entry.busy.ownerMemberId)
+            .let { it to if (it.luminance() > 0.5f) Color.Black else Color.White }
         else -> colors.tertiaryContainer to colors.onTertiaryContainer
     }
     // Events show a bell when they remind me; paused reminders fade.
     val reminding = when (entry) {
         is Entry.Event -> entry.view.reminders.any { it.reminder.active }
         is Entry.ChoreReminder -> entry.view.reminder.active
+        is Entry.Busy, is Entry.Chore -> false
     }
     val faded = when (entry) {
         is Entry.Event -> entry.view.paused
         is Entry.ChoreReminder -> !entry.view.reminder.active
+        is Entry.Busy, is Entry.Chore -> false
     }
     Row(
         modifier
@@ -518,7 +566,7 @@ private fun EntryBlock(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         val icon = when {
-            entry is Entry.ChoreReminder -> ChoreIcon
+            entry is Entry.ChoreReminder || entry is Entry.Chore -> ChoreIcon
             reminding -> ReminderIcon
             else -> null
         }
@@ -539,11 +587,15 @@ private fun minutesToDp(minutes: Int): Dp = HOUR_HEIGHT * (minutes / 60f)
 private fun Entry.title() = when (this) {
     is Entry.Event -> view.event.title
     is Entry.ChoreReminder -> view.title
+    is Entry.Busy -> "Busy"
+    is Entry.Chore -> details.chore.title
 }
 
 private fun Entry.isOn(day: LocalDate) = when (this) {
     is Entry.Event -> view.isOn(day)
     is Entry.ChoreReminder -> isOnWeekday(view.reminder.weekdays, day)
+    is Entry.Busy -> busy.isOn(day)
+    is Entry.Chore -> isOnWeekday(details.chore.weekdays, day)
 }
 
 /** Shown in the all-day row on [day]: all-day events, the middle days of multi-day ones, and all-day chore reminders. */
@@ -551,6 +603,9 @@ private fun Entry.isAllDayOn(day: LocalDate) = when (this) {
     is Entry.Event -> view.occurs.partOn(day)?.allDay == true
     is Entry.ChoreReminder -> isOn(day) && view.reminder.mode == ReminderMode.PERSISTENT &&
         view.windows.any { Window(it.startMinute, it.endMinute).isAllDay }
+    is Entry.Busy -> busy.occurs().partOn(day)?.allDay == true
+    // Chores have no time of day: the all-day row, on their days.
+    is Entry.Chore -> isOn(day)
 }
 
 /** Calendar blocks for one day. [detailed] (day view) adds times to the labels; the week view has no room. */
@@ -570,6 +625,13 @@ private fun itemsFor(day: LocalDate, entries: List<Entry>, detailed: Boolean): L
                 }
                 listOf(CalendarItem(entry, start, end, label))
             }
+            is Entry.Busy -> {
+                val part = entry.busy.occurs().partOn(day)?.takeUnless { it.allDay } ?: return@flatMap emptyList()
+                val start = part.fromMinute ?: return@flatMap emptyList()
+                val end = part.toMinute ?: minOf(start + TIMED_LENGTH_MINUTES, MINUTES_PER_DAY)
+                listOf(CalendarItem(entry, start, end, if (detailed) "${formatMinute(start)}  Busy" else "Busy"))
+            }
+            is Entry.Chore -> emptyList()
             is Entry.ChoreReminder -> {
                 val r = entry.view
                 when (r.reminder.mode) {

@@ -159,7 +159,7 @@ class MemberInvitesTest {
     }
 
     @Test
-    fun `made-up invites count towards the global lock`() = api { client ->
+    fun `made-up invites count towards the sender's lock`() = api { client ->
         val home = client.createHousehold()
         repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.join(Codes.newMemberInvite()).status) }
         assertEquals(HttpStatusCode.TooManyRequests, client.join(client.newInvite(home.token).code).status)

@@ -142,21 +142,29 @@ Decided 2026-10-12:
 - [x] Reminders on them: before the start (as today), and persistent reminders over the whole span or each day.
 - [x] Server, sync and Room change (the event stores an end day as well as an end time), with migrations that keep existing events as they are.
 
-## Phase 9.7: Household fixes and "Everyone" events (2.3.0)
-Gaps left by 2.0.0, and one new feature, planned 2026-10-11. Not started.
-- [ ] Tapping a "someone wants to join" notification opens that household (today it opens whichever household is picked).
-- [ ] Wrong-code lock per sender (decided 2026-10-11): mistyped or unknown join codes, invites and setup codes count per client IP (10 in 15 minutes locks only that address), with a server-wide lock kept only as a backstop against guessing spread over many addresses (about 200 failures in 15 minutes). Wrong join codes and admin PINs for a known household keep their per-household lock.
+## Phase 9.7: Household fixes and calmer views (2.3.0)
+Gaps left by 2.0.0 and view changes, planned 2026-10-11. Split from the old Phase 9.7 on 2026-10-12 (the sharing changes became 9.8, personal chores 9.9). Built on `dev` 2026-10-12, not yet released.
+- [x] Tapping a "someone wants to join" notification opens that household (today it opens whichever household is picked).
+- [x] Wrong-code lock per sender (decided 2026-10-11): mistyped or unknown join codes, invites and setup codes count per client IP (10 in 15 minutes locks only that address), with a server-wide lock kept only as a backstop against guessing spread over many addresses (about 200 failures in 15 minutes). Wrong join codes and admin PINs for a known household keep their per-household lock.
+- [x] The week view shows everything the month view does (decided 2026-10-11): others' Busy events (scheduling-shared ones once Phase 9.8 adds them), with the same member filter, alongside the profile's own events.
+- [x] Settings: **Show chores on the Events tab** (decided 2026-10-11, per phone, on by default). On: chores show in the week and month views alike (as in the month view today); the week view shows them in the all-day row with the member filter, plus the profile's own chore reminders at their times (decided 2026-10-12). Off: no chores or chore reminders on the Events tab; they stay on the Chores and Reminders tabs.
+- [x] Less cluttered month view (decided 2026-10-11): each day cell shows **one line per person** in their colour with a count ("Sam · 3") instead of every event; tapping the day still opens the day sheet with the full list.
+- [x] The month view's member filter starts on **the profile's own events** instead of everyone; others are switched on with the existing filter.
+
+## Phase 9.8: "Everyone" events and sharing for scheduling (2.4.0)
+Planned 2026-10-11, split out 2026-10-12. Not started.
 - [ ] Events: **Share with: Everyone** (decided 2026-10-11). The event is shared with the whole household, including members who join later: the event stores "everyone" rather than a member list (server and sync change). Members can still leave it.
 - [ ] Events: two clearly different ways to involve someone (decided 2026-10-11), named so the difference is obvious in the editor:
   - **Add to the event**: they take part, as sharing works today. It's on their timetable, they can set reminders, and they're told "Sam added you to …".
   - **Share for scheduling**: they can see it but aren't taking part. They see the title and times (like Busy, but with the title), with no reminders and no notification. Works with "Everyone" too.
-- [ ] The week view shows everything the month view does (decided 2026-10-11): others' Busy and scheduling-shared events, with the same member filter, alongside the profile's own events.
-- [ ] Settings: **Show chores on the Events tab** (decided 2026-10-11, per phone, on by default). On: chores show in the week and month views alike (as in the month view today). Off: no chores or chore reminders on the Events tab; they stay on the Chores and Reminders tabs.
-- [ ] Less cluttered month view (decided 2026-10-11): each day cell shows **one line per person** in their colour with a count ("Sam · 3") instead of every event; tapping the day still opens the day sheet with the full list.
-- [ ] The month view's member filter starts on **the profile's own events** instead of everyone; others are switched on with the existing filter.
-- [ ] **Personal chores** (decided 2026-10-11): a "Personal (only I see it)" switch in the chore editor, offered only when you're the chore's only assignee **and you created it yourself** (not when someone else assigned it to you). Other members don't see a personal chore at all. Needs the server to store who created each chore.
+- [ ] The week view also shows scheduling-shared events.
 
-## Phase 10: Import from Google Calendar (2.4.0)
+## Phase 9.9: Personal chores (2.5.0)
+Planned 2026-10-11, split out 2026-10-12. Not started.
+- [ ] **Personal chores** (decided 2026-10-11): a "Personal (only I see it)" switch in the chore editor, offered only when you're the chore's only assignee **and you created it yourself** (not when someone else assigned it to you). Other members don't see a personal chore at all. Needs the server to store who created each chore.
+- [ ] **The Chores tab shows my chores** (decided 2026-10-12): the chores I'm assigned to and the chores I created for others, not every household chore. Uses the same "who created it" field; how chores from before it count is decided when this starts.
+
+## Phase 10: Import from Google Calendar (2.6.0)
 Planned 2026-10-11. Not started. App only: no server change.
 - [ ] One-time import from the **phone's own calendar** (Google Calendar syncs onto the phone; read with `READ_CALENDAR`, no Google sign-in or API). Pick calendars, then tick the coming events to import; each becomes one of the profile's events.
 - [ ] Weekly repeats and one-off events import as they are. Other repeats (daily, every 2 weeks, monthly, yearly) become one-off events for the next 3 months. Multi-day events import as multi-day events (Phase 9.6).

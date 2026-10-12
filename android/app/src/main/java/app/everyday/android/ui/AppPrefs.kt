@@ -27,8 +27,12 @@ class AppPrefs(private val context: Context) {
 
     private val _monthFilter = MutableStateFlow(readMonthFilter())
 
-    /** Events and chores per member; a filter saved before they were split covers both for its members. */
-    private fun readMonthFilter(): MonthFilter {
+    /**
+     * Events and chores per member; a filter saved before they were split covers both for its members. Null
+     * until the user picks one: the Events tab then shows the profile's own events and chores (Phase 9.7).
+     */
+    private fun readMonthFilter(): MonthFilter? {
+        if (!prefs.contains(KEY_MONTH_EVERYONE)) return null
         val old = prefs.getStringSet(KEY_MONTH_MEMBERS, null).orEmpty().toSet()
         return MonthFilter(
             everyone = prefs.getBoolean(KEY_MONTH_EVERYONE, true),
@@ -47,8 +51,18 @@ class AppPrefs(private val context: Context) {
         _monthMode.value = month
     }
 
-    /** Whose chores and events the month view shows (Phase 7). */
-    val monthFilter: StateFlow<MonthFilter> = _monthFilter.asStateFlow()
+    /** Whose chores and events the week and month views show (Phase 7; the week too since 9.7). Null = mine. */
+    val monthFilter: StateFlow<MonthFilter?> = _monthFilter.asStateFlow()
+
+    private val _showChores = MutableStateFlow(prefs.getBoolean(KEY_SHOW_CHORES, true))
+
+    /** Chores and chore reminders on the Events tab (Phase 9.7); they always show on the Chores and Reminders tabs. */
+    val showChores: StateFlow<Boolean> = _showChores.asStateFlow()
+
+    fun setShowChores(show: Boolean) {
+        prefs.edit { putBoolean(KEY_SHOW_CHORES, show) }
+        _showChores.value = show
+    }
 
     fun setMonthFilter(filter: MonthFilter) {
         prefs.edit {
@@ -93,6 +107,7 @@ class AppPrefs(private val context: Context) {
     private companion object {
         const val KEY_FOLLOW = "follow_phone_theme"
         const val KEY_MONTH_MODE = "month_mode"
+        const val KEY_SHOW_CHORES = "show_chores_on_events"
         const val KEY_MONTH_EVERYONE = "month_everyone"
         /** Before events and chores were split: both, for these members. */
         const val KEY_MONTH_MEMBERS = "month_members"

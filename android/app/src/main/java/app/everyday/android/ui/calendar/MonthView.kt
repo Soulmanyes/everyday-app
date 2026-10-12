@@ -62,7 +62,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
-/** How many items a month cell lists before "+N". */
+/** How many people a month cell lists before "+N". */
 private const val CELL_ITEMS = 3
 
 /**
@@ -77,13 +77,15 @@ fun MonthView(
     chores: List<ChoreWithDetails>,
     busy: List<BusyEventEntity>,
     members: List<MemberEntity>,
-    filter: MonthFilter,
+    filter: MonthFilter?,
+    /** The picked profile: listed first in each cell, and whose own things show until a filter is picked. */
+    myId: String?,
     onMonthChange: (YearMonth) -> Unit,
     onFilterChange: (MonthFilter) -> Unit,
     onDayClick: (LocalDate) -> Unit,
 ) {
     // Members removed since the filter was saved don't count; with nobody left, show everyone.
-    val effective = effectiveFilter(filter, members)
+    val effective = effectiveFilter(filter, members, myId)
     val days = remember(month) { monthDays(month) }
     val membersById = members.associateBy { it.id }
     var pickingMembers by remember { mutableStateOf(false) }
@@ -129,8 +131,9 @@ fun MonthView(
                             day = day,
                             inMonth = YearMonth.from(day) == month,
                             isToday = day == today,
-                            items = monthItemsOn(day, events, chores, effective, busy),
+                            counts = personCounts(monthItemsOn(day, events, chores, effective, busy), effective),
                             membersById = membersById,
+                            myId = myId,
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                             onClick = { onDayClick(day) },
                         )
@@ -149,8 +152,12 @@ fun MonthView(
     }
 }
 
-/** [filter] limited to current members; everyone when none of its members are left. */
-fun effectiveFilter(filter: MonthFilter, members: List<MemberEntity>): MonthFilter {
+/**
+ * [filter] limited to current members; everyone when none of its members are left. No filter picked yet
+ * means [myId]'s own events and chores (Phase 9.7).
+ */
+fun effectiveFilter(saved: MonthFilter?, members: List<MemberEntity>, myId: String?): MonthFilter {
+    val filter = saved ?: myId?.let { MonthFilter.of(setOf(it)) } ?: MonthFilter()
     if (filter.everyone) return filter
     val current = members.map { it.id }.toSet()
     val limited = MonthFilter(everyone = false, filter.eventMemberIds intersect current, filter.choreMemberIds intersect current)
@@ -171,17 +178,23 @@ private fun filterLabel(filter: MonthFilter, members: List<MemberEntity>): Strin
     }
 }
 
+/** A day: its number, then one line per person with how many things they have that day ("Sam · 3"). */
 @Composable
 private fun DayCell(
     day: LocalDate,
     inMonth: Boolean,
     isToday: Boolean,
-    items: List<MonthItem>,
+    counts: Map<String, Int>,
     membersById: Map<String, MemberEntity>,
+    myId: String?,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
+    // Me first, then by name; removed members last.
+    val people = counts.entries.sortedWith(
+        compareBy({ it.key != myId }, { membersById[it.key] == null }, { membersById[it.key]?.displayName?.lowercase() }),
+    )
     Column(
         modifier.clickable(onClickLabel = "Open day", onClick = onClick).padding(1.dp),
         verticalArrangement = Arrangement.spacedBy(1.dp),
@@ -201,20 +214,21 @@ private fun DayCell(
                 },
             )
         }
-        items.take(CELL_ITEMS).forEach { item ->
-            val (bg, fg) = itemColors(item, membersById)
+        people.take(CELL_ITEMS).forEach { (id, count) ->
+            val member = membersById[id]
+            val bg = memberColorOf(member?.color, id)
             Text(
-                item.title,
+                "${member?.displayName ?: if (id == myId) "Me" else "?"} · $count",
                 modifier = Modifier.fillMaxWidth().background(bg, RoundedCornerShape(2.dp)).padding(horizontal = 2.dp),
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 11.sp),
-                color = fg,
+                color = if (bg.luminance() > 0.5f) Color.Black else Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Clip,
             )
         }
-        if (items.size > CELL_ITEMS) {
+        if (people.size > CELL_ITEMS) {
             Text(
-                "+${items.size - CELL_ITEMS}",
+                "+${people.size - CELL_ITEMS}",
                 modifier = Modifier.padding(horizontal = 2.dp),
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 11.sp),
                 color = colors.onSurfaceVariant,

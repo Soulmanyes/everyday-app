@@ -26,7 +26,10 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && savedInstanceState == null) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        if (savedInstanceState == null) openJoinLink(intent)
+        if (savedInstanceState == null) {
+            openJoinLink(intent)
+            openHousehold(intent)
+        }
         setContent {
             val followPhone by app.prefs.followPhoneTheme.collectAsStateWithLifecycle()
             EverydayTheme(followPhone) {
@@ -38,6 +41,12 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         openJoinLink(intent)
+        openHousehold(intent)
+    }
+
+    /** A notification about one household (e.g. a join request) opens that household. */
+    private fun openHousehold(intent: Intent?) {
+        intent?.getStringExtra(EXTRA_HOUSEHOLD)?.let { app.openHousehold.value = it }
     }
 
     /** A join link (Phase 9) opens the join screen with its code filled in. */
@@ -59,5 +68,9 @@ class MainActivity : ComponentActivity() {
             app.sync.requestSync()
             app.updates.check()
         }
+    }
+
+    companion object {
+        const val EXTRA_HOUSEHOLD = "household_id"
     }
 }

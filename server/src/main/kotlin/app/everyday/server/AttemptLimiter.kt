@@ -5,10 +5,10 @@ import java.time.Instant
 import java.util.ArrayDeque
 
 /**
- * Counts failed secret checks and locks them for a while after too many. Every request arrives through
- * Caddy, so counting is per key rather than per IP (per-IP limits are in RateLimits). Wrong join codes and
- * admin PINs count per household (key = household id), so one household's mistakes never lock out another;
- * setup codes, invites and unknown join ids share the [GLOBAL] key.
+ * Counts failed secret checks and locks them for a while after too many. Wrong join codes and admin PINs
+ * count per household (key = household id), so one household's mistakes never lock out another. Codes that
+ * match nothing (setup codes, invites, unknown join ids) count per sender (Phase 9.7, key "ip:<address>"),
+ * with a second limiter on the [GLOBAL] key as a server-wide backstop against guessing from many addresses.
  * After [maxFailures] failures within [window], checks for that key are refused for [lockout].
  */
 class AttemptLimiter(

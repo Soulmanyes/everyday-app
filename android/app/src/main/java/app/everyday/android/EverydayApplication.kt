@@ -46,6 +46,9 @@ class EverydayApplication : Application() {
     /** A join code from a join link, waiting for the join screen to take it (Phase 9). */
     val joinLink = MutableStateFlow<String?>(null)
 
+    /** A household to open, from a tapped join-request notification (Phase 9.7), until the app picks it. */
+    val openHousehold = MutableStateFlow<String?>(null)
+
     override fun onCreate() {
         super.onCreate()
         ChoreRefreshWorker.schedule(this)
@@ -77,7 +80,7 @@ class EverydayApplication : Application() {
 }
 
 /** The member whose reminders this phone shows: the picked profile, or the local one. */
-private fun SessionState.profileId() = memberId?.takeIf { joined } ?: LOCAL_MEMBER_ID
+fun SessionState.profileId() = memberId?.takeIf { joined } ?: LOCAL_MEMBER_ID
 
 /**
  * The members whose reminders fire: this phone's member in each household with notifications on, named

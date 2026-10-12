@@ -265,4 +265,27 @@ class HouseholdsTest {
         assertEquals(OwnerTool.Removal.Removed(listOf(friend.household.id, friendOfFriend.household.id).map(UUID::fromString)), removed)
         assertEquals(listOf(ours.household.id), tool.rows().map { it.id.toString() })
     }
+
+    private suspend fun HttpClient.joinFrom(ip: String, code: String): HttpResponse =
+        post("/join") { header("X-Forwarded-For", ip); json(JoinRequest(code, "Alex")) }
+
+    @Test
+    fun `codes that match nothing lock only the sender, with a server-wide backstop`() = api { client ->
+        val home = client.createHousehold()
+        // Unknown join ids from one phone lock that phone only (after 5 here; 10 on the server).
+        repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.joinFrom("10.0.0.1", "ZZZZ-2222-2222").status) }
+        assertEquals(HttpStatusCode.TooManyRequests, client.joinFrom("10.0.0.1", home.joinCode!!).status)
+        assertEquals(HttpStatusCode.OK, client.joinFrom("10.0.0.2", home.joinCode!!).status)
+        now = now.plus(Duration.ofMinutes(16))
+        assertEquals(HttpStatusCode.OK, client.joinFrom("10.0.0.1", home.joinCode!!).status)
+    }
+
+    @Test
+    fun `the backstop locks codes that match nothing from every address`() = api { client ->
+        val home = client.createHousehold()
+        api.backstop.let { b -> repeat(200) { b.recordFailure() } }
+        assertEquals(HttpStatusCode.TooManyRequests, client.joinFrom("10.0.0.9", home.joinCode!!).status)
+        // A known household's own lock is separate: its admin can still use their PIN.
+        assertEquals(HttpStatusCode.NoContent, client.post("/admin/verify") { admin(home.token) }.status)
+    }
 }
