@@ -126,6 +126,8 @@ data class ChoreRequest(
     val weekdays: Int,
     val completion: ChoreCompletion,
     val assigneeIds: List<String>,
+    /** Only the creator sees it (Phase 9.9). Null from phones before 2.5: the server keeps the stored value. */
+    val personal: Boolean? = null,
 )
 
 @Serializable
@@ -136,6 +138,9 @@ data class ChoreDto(
     val weekdays: Int,
     val completion: ChoreCompletion,
     val assigneeIds: List<String>,
+    /** The member who created it; null for chores from before Phase 9.9. */
+    val createdBy: String? = null,
+    val personal: Boolean = false,
 )
 
 /** A member did a chore on a day (household timezone, ISO date). */
