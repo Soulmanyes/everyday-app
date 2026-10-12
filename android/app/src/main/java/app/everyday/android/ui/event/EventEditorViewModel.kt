@@ -12,6 +12,7 @@ import app.everyday.android.EverydayApplication
 import app.everyday.android.data.EventDraft
 import app.everyday.android.data.MemberEntity
 import app.everyday.android.data.ReminderRepository
+import app.everyday.android.data.Sharing
 import app.everyday.android.reminders.MINUTES_PER_DAY
 import app.everyday.android.reminders.ReminderEngine
 import kotlinx.coroutines.flow.SharingStarted
@@ -56,9 +57,21 @@ class EventEditorViewModel(
         it.copy(weekdays = weekdays, endDays = if (Integer.bitCount(weekdays) == 1) it.endDays else 0)
     }
 
-    fun toggleMember(memberId: String) = update {
-        it.copy(memberIds = if (memberId in it.memberIds) it.memberIds - memberId else it.memberIds + memberId)
+    /** Adds a member to the event or shares it with them for scheduling ([role]); a person is in one list at most. */
+    fun toggleMember(memberId: String, role: String) = update {
+        val taking = role == Sharing.MEMBER
+        val list = if (taking) it.memberIds else it.schedulingIds
+        val picked = memberId !in list
+        val updated = if (picked) list + memberId else list - memberId
+        if (taking) {
+            it.copy(memberIds = updated, schedulingIds = if (picked) it.schedulingIds - memberId else it.schedulingIds)
+        } else {
+            it.copy(schedulingIds = updated, memberIds = if (picked) it.memberIds - memberId else it.memberIds)
+        }
     }
+
+    /** Everyone in [role], or nobody by default. Members picked in the other list keep their way. */
+    fun toggleEveryone(role: String) = update { it.copy(everyone = if (it.everyone == role) Sharing.NONE else role) }
 
     fun setAllDay(allDay: Boolean) = update {
         if (allDay) it.copy(startMinute = null, endMinute = null) else it.copy(startMinute = nextHour(), endMinute = null)

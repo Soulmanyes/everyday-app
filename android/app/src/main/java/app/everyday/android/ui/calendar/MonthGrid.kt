@@ -46,10 +46,10 @@ sealed interface MonthItem {
         override val title get() = details.chore.title
     }
 
-    /** Another member's personal event shown as Busy: times only. */
+    /** Another member's event shown as Busy (times only), or with its title when shared for scheduling. */
     data class Busy(val busy: BusyEventEntity) : MonthItem {
         override val key get() = "busy:${busy.id}"
-        override val title get() = "Busy"
+        override val title get() = busy.title ?: "Busy"
     }
 }
 
@@ -62,7 +62,7 @@ fun monthDays(month: YearMonth): List<LocalDate> {
 
 /** An event matches the filter if its owner or anyone it's shared with has their events showing. */
 fun MonthFilter.matches(view: EventView): Boolean =
-    everyone || view.event.ownerMemberId in eventMemberIds || view.members.any { !it.hidden && it.memberId in eventMemberIds }
+    everyone || view.event.ownerMemberId in eventMemberIds || view.takingPart.any { it.memberId in eventMemberIds }
 
 /** A Busy event matches the filter if its owner has their events showing. */
 fun MonthFilter.matches(busy: BusyEventEntity): Boolean = everyone || busy.ownerMemberId in eventMemberIds

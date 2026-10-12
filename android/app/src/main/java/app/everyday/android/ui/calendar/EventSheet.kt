@@ -35,8 +35,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.everyday.android.data.BusyEventEntity
+import app.everyday.android.data.EventEntity
 import app.everyday.android.data.EventView
+import app.everyday.android.data.MemberEntity
 import app.everyday.android.data.Persistent
+import app.everyday.android.data.Sharing
 import app.everyday.android.ui.EventIcon
 import app.everyday.android.ui.editor.TimeDialog
 import app.everyday.android.ui.formatBefore
@@ -86,12 +90,11 @@ fun EventSheet(
             }
             Text(formatEventWhen(e), style = MaterialTheme.typography.bodyLarge)
             e.notes?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            val shared = item.members.map { it.memberId }
             Text(
                 when {
                     !item.isOwn -> "Shared by ${name(e.ownerMemberId)}"
-                    shared.isEmpty() -> "Only you see this"
-                    else -> "Shared with " + shared.joinToString(", ") { name(it) }
+                    !item.isShared -> "Only you see this"
+                    else -> sharedWith(item, ::name)
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -226,12 +229,74 @@ fun EventSheet(
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete event?") },
-            text = { Text(if (item.members.isEmpty()) "This can't be undone." else "It's removed for everyone it's shared with. This can't be undone.") },
+            text = { Text(if (!item.isShared) "This can't be undone." else "It's removed for everyone it's shared with. This can't be undone.") },
             confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
 }
+
+/** Who the owner shared it with (Phase 9.8): "Shared with Alex · Kim sees it for scheduling", or "with everyone". */
+private fun sharedWith(item: EventView, name: (String) -> String): String {
+    val e = item.event
+    val taking = item.takingPart.map { name(it.memberId) }
+    val scheduling = item.forScheduling.map { name(it.memberId) }
+    val parts = buildList {
+        when {
+            e.everyone == Sharing.MEMBER -> add("Shared with everyone")
+            taking.isNotEmpty() -> add("Shared with " + taking.joinToString(", "))
+        }
+        when {
+            e.everyone == Sharing.SCHEDULING -> add((if (taking.isEmpty()) "everyone" else "everyone else") + " sees it for scheduling")
+            scheduling.isNotEmpty() -> add(scheduling.joinToString(", ") + (if (scheduling.size == 1) " sees" else " see") + " it for scheduling")
+        }
+    }
+    return parts.joinToString(" · ").replaceFirstChar { it.uppercase() }
+}
+
+/**
+ * Another member's event shared with me for scheduling (Phase 9.8): its title and times, who shared it, and
+ * Hide. There are no notes, reminders or members to show.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScheduledSheet(busy: BusyEventEntity, members: List<MemberEntity>, onDismiss: () -> Unit, onHide: () -> Unit) {
+    var confirmHide by remember { mutableStateOf(false) }
+    val owner = members.firstOrNull { it.id == busy.ownerMemberId }?.displayName ?: "a removed member"
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(EventIcon, contentDescription = null)
+                Text(busy.title.orEmpty(), style = MaterialTheme.typography.titleLarge)
+            }
+            Text(formatEventWhen(busy.asEvent()), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "$owner shared this with you for scheduling. You see its title and times, but you don't take part, so it has no reminders.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = { confirmHide = true }, modifier = Modifier.padding(top = 8.dp)) { Text("Hide") }
+        }
+    }
+    if (confirmHide) {
+        AlertDialog(
+            onDismissRequest = { confirmHide = false },
+            title = { Text("Hide event?") },
+            text = { Text("It's removed from your calendar. $owner can share it with you again.") },
+            confirmButton = { TextButton(onClick = { confirmHide = false; onHide() }) { Text("Hide") } },
+            dismissButton = { TextButton(onClick = { confirmHide = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** For formatting its days and times like an event's. */
+private fun BusyEventEntity.asEvent() = EventEntity(
+    id = id, ownerMemberId = ownerMemberId, title = title.orEmpty(), weekdays = weekdays, onDate = onDate,
+    startMinute = startMinute, endMinute = endMinute, createdAt = 0, updatedAt = 0, endDays = endDays,
+)
 
 @Composable
 private fun BeforeDialog(title: String, label: (Int) -> String, onDismiss: () -> Unit, onPick: (Int) -> Unit) {

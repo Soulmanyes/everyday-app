@@ -348,9 +348,9 @@ fun MonthDaySheet(day: LocalDate, items: List<MonthItem>, members: List<MemberEn
             items.forEach { item ->
                 val (bg, fg) = itemColors(item, membersById)
                 Row(
-                    // Busy events have nothing more to show, so they don't open anything.
+                    // Plain Busy events have nothing more to show, so they don't open anything.
                     Modifier.fillMaxWidth().background(bg, RoundedCornerShape(8.dp))
-                        .clickable(enabled = item !is MonthItem.Busy) { onSelect(item) }
+                        .clickable(enabled = item !is MonthItem.Busy || item.busy.title != null) { onSelect(item) }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -366,7 +366,7 @@ fun MonthDaySheet(day: LocalDate, items: List<MonthItem>, members: List<MemberEn
     }
 }
 
-/** "16:00 – 17:00", "All day · shared by Sam", "Chore · Sam, Alex", or "18:00 – 19:00 · Alex" for Busy. */
+/** "16:00 – 17:00", "All day · shared by Sam", "Chore · Sam, Alex", or "18:00 – 19:00 · Alex" for Busy and scheduling. */
 private fun daySheetDetail(item: MonthItem, names: Map<String, String>): String = when (item) {
     is MonthItem.Busy -> item.busy.occurs().let { if (it.multiDay) formatSpan(it) else timeRange(it.startMinute, it.endMinute) } +
         " · " + (names[item.busy.ownerMemberId] ?: "a removed member")

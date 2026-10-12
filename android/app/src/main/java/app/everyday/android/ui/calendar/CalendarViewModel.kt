@@ -82,6 +82,9 @@ class CalendarViewModel(
 
     fun leaveEvent(eventId: String) = change { repository.leaveEvent(eventId) }
 
+    /** Hides an event shared with me for scheduling (Phase 9.8). */
+    fun hideScheduled(id: String) = change { repository.hideScheduled(id) }
+
     fun deleteEvent(eventId: String) = change { repository.deleteEvent(eventId) }
 
     companion object {

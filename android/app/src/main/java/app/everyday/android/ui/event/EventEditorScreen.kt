@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.everyday.android.data.Sharing
 import app.everyday.android.reminders.MINUTES_PER_DAY
 import app.everyday.android.ui.dayLetter
 import app.everyday.android.ui.editor.DayToggle
@@ -214,24 +215,57 @@ fun EventEditorScreen(eventId: String?, onDone: () -> Unit) {
                 }
             }
 
+            // Two ways to involve someone (Phase 9.8): taking part, or seeing it for scheduling. Everyone covers
+            // the whole household, members who join later too; people picked in the other list keep their way.
             if (members.isNotEmpty()) {
-                Section("Share with") {
+                Section("Add to the event") {
+                    val all = draft.everyone == Sharing.MEMBER
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = all, onClick = { vm.toggleEveryone(Sharing.MEMBER) }, label = { Text("Everyone") })
                         members.forEach { m ->
-                            FilterChip(selected = m.id in draft.memberIds, onClick = { vm.toggleMember(m.id) }, label = { Text(m.displayName) })
+                            FilterChip(
+                                selected = all || m.id in draft.memberIds,
+                                onClick = { vm.toggleMember(m.id, Sharing.MEMBER) },
+                                label = { Text(m.displayName) },
+                                enabled = !all,
+                            )
                         }
                     }
                     Text(
-                        "It shows on their timetable, and they're told once. Each person adds their own reminders. Only you can change the event.",
+                        (if (all) "Everyone, including people who join later, takes part. " else "They take part. ") +
+                            "It's on their timetable, they add their own reminders, and they're told once. Only you can change the event.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (members.isNotEmpty() && draft.everyone != Sharing.MEMBER) {
+                Section("Share for scheduling") {
+                    val all = draft.everyone == Sharing.SCHEDULING
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = all, onClick = { vm.toggleEveryone(Sharing.SCHEDULING) }, label = { Text("Everyone") })
+                        members.forEach { m ->
+                            FilterChip(
+                                selected = m.id in draft.schedulingIds || (all && m.id !in draft.memberIds),
+                                onClick = { vm.toggleMember(m.id, Sharing.SCHEDULING) },
+                                label = { Text(m.displayName) },
+                                enabled = !all,
+                            )
+                        }
+                    }
+                    Text(
+                        (if (all) "Everyone else, including people who join later, " else "They ") +
+                            "can see the title and times, but they don't take part: no reminders, and they aren't told.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
 
-            // Only a personal event can show as Busy: members of a shared one see it in full (Phase 7).
-            if (members.isNotEmpty() && draft.memberIds.isEmpty()) {
-                Section("Others see") {
+            // People it isn't shared with see it as Busy, or not at all (Phase 7; shared events too since 9.8).
+            val shared = draft.memberIds.isNotEmpty() || draft.schedulingIds.isNotEmpty()
+            if (members.isNotEmpty() && draft.everyone == Sharing.NONE) {
+                Section(if (shared) "Everyone else sees" else "Others see") {
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         listOf(true to "Busy", false to "Nothing").forEachIndexed { i, (value, label) ->
                             SegmentedButton(
@@ -243,9 +277,9 @@ fun EventEditorScreen(eventId: String?, onDone: () -> Unit) {
                     }
                     Text(
                         if (draft.showBusy) {
-                            "Others see \"Busy\" at these times on their month view, without the title or notes."
+                            "They see \"Busy\" at these times, without the title or notes."
                         } else {
-                            "Others don't see it at all."
+                            "They don't see it at all."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

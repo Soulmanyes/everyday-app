@@ -8,6 +8,7 @@ import app.everyday.android.data.ReminderEntity
 import app.everyday.android.data.ReminderMode
 import app.everyday.android.data.ReminderStateEntity
 import app.everyday.android.data.ReminderWithDetails
+import app.everyday.android.data.Sharing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -142,6 +143,25 @@ class SyncMergeTest {
         assertTrue(members.getValue(me).hidden)
         assertTrue(members.getValue(me).dirty)
         assertFalse(members.getValue("kim").dirty)
+    }
+
+    @Test
+    fun `an Everyone event I take part in gets a row for me, so leaving works as usual`() {
+        val srv = SyncedEvent(event("all", owner = "alex").copy(everyone = Sharing.MEMBER), listOf(EventMemberEntity("all", "kim", role = Sharing.SCHEDULING)))
+        val saved = plan(emptyList(), snapshot(events = listOf(srv))).saveEvents.single().members.associateBy { it.memberId }
+        assertEquals(Sharing.MEMBER, saved.getValue(me).role)
+        assertFalse(saved.getValue(me).hidden)
+        assertEquals(Sharing.SCHEDULING, saved.getValue("kim").role)
+
+        // Left during the sync: my hidden row stays.
+        val left = EventMemberEntity("all", me, hidden = true, updatedAt = 300, dirty = true)
+        val kept = plan(emptyList(), snapshot(events = listOf(srv)), events = listOf(EventWithMembers(srv.event, listOf(left))))
+            .saveEvents.single().members.single { it.memberId == me }
+        assertTrue(kept.hidden && kept.dirty)
+
+        // My own events get no row for me.
+        val own = SyncedEvent(event("own").copy(everyone = Sharing.MEMBER), emptyList())
+        assertTrue(plan(emptyList(), snapshot(events = listOf(own))).saveEvents.single().members.isEmpty())
     }
 
     @Test
