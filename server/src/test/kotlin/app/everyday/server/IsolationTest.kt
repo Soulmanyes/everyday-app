@@ -193,6 +193,46 @@ class IsolationTest {
     }
 
     @Test
+    fun `Everyone and scheduling events stay in their household`() = api { client, a, b ->
+        val everyone = UUID.randomUUID().toString()
+        val scheduling = UUID.randomUUID().toString()
+        client.post("/v2/sync") {
+            auth(a.token)
+            json(
+                SyncRequest(
+                    a.admin,
+                    events = listOf(
+                        EventSyncDto(everyone, a.admin, "Party A", weekdays = 1, createdAt = 1, updatedAt = 1, schedulingMembers = emptyList(), everyone = Everyone.MEMBER),
+                        EventSyncDto(scheduling, a.admin, "Trip A", weekdays = 1, createdAt = 1, updatedAt = 1, schedulingMembers = emptyList(), everyone = Everyone.SCHEDULING),
+                    ),
+                ),
+            )
+        }
+        sent.clear()
+        val out = client.post("/v2/sync") {
+            auth(b.token)
+            json(
+                SyncRequest(
+                    b.admin,
+                    // A reminder on A's Everyone event, leaving or hiding A's events, and sharing B's event for scheduling with A's member.
+                    reminders = listOf(ReminderSyncDto(UUID.randomUUID().toString(), b.admin, eventId = everyone, mode = "TIMED", times = listOf(TimeDto(480)), createdAt = 1, updatedAt = 1)),
+                    leave = listOf(LeaveSyncDto(everyone, 99), LeaveSyncDto(scheduling, 99)),
+                    events = listOf(
+                        EventSyncDto(UUID.randomUUID().toString(), b.admin, "Share", weekdays = 1, createdAt = 1, updatedAt = 1, schedulingMembers = listOf(EventMemberDto(a.other)), everyone = Everyone.NONE),
+                    ),
+                ),
+            )
+        }.body<SyncResponse>()
+        assertEquals(4, out.rejected.size, out.rejected.toString())
+        assertEquals(listOf(b.event), out.events.map { it.id })
+        assertEquals(emptyList(), out.busy)
+        val left = db.connection.use { conn ->
+            conn.createStatement().executeQuery("SELECT count(*) FROM event_member").use { it.next(); it.getInt(1) }
+        }
+        assertEquals(0, left)
+    }
+
+    @Test
     fun `pushes stay in their household`() = api { client, a, b ->
         val chore = UUID.randomUUID().toString()
         client.put("/chores/$chore") { auth(b.token); json(ChoreRequest("Dishes", weekdays = 1, completion = ChoreCompletion.ANY, assigneeIds = listOf(b.admin))) }

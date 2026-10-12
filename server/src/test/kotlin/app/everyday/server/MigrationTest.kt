@@ -242,4 +242,43 @@ class MigrationTest {
             assertTrue(bad.isFailure)
         }
     }
+
+    @Test
+    fun `V14 keeps today's shared events showing nothing to the rest, and counts old removals as leaving`() {
+        db.connection.use { it.createStatement().execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;") }
+        Flyway.configure().dataSource(db).target("13").load().migrate()
+        db.connection.use { conn ->
+            conn.createStatement().execute(
+                """
+                INSERT INTO household (id, name, code_hash, timezone, admin_pin_hash)
+                    VALUES ('00000000-0000-0000-0000-000000000001', 'Home', 'x', 'Europe/London', 'y');
+                INSERT INTO member (id, household_id, display_name) VALUES
+                    ('00000000-0000-0000-0000-0000000000aa', '00000000-0000-0000-0000-000000000001', 'Sam'),
+                    ('00000000-0000-0000-0000-0000000000bb', '00000000-0000-0000-0000-000000000001', 'Alex');
+                INSERT INTO event (id, owner_member_id, title, weekdays, created_at, updated_at) VALUES
+                    ('00000000-0000-0000-0000-000000000e01', '00000000-0000-0000-0000-0000000000aa', 'Gym', 1, now(), now()),
+                    ('00000000-0000-0000-0000-000000000e02', '00000000-0000-0000-0000-0000000000aa', 'Swim', 1, now(), now()),
+                    ('00000000-0000-0000-0000-000000000e03', '00000000-0000-0000-0000-0000000000aa', 'Left', 1, now(), now());
+                INSERT INTO event_member (event_id, member_id, deleted) VALUES
+                    ('00000000-0000-0000-0000-000000000e02', '00000000-0000-0000-0000-0000000000bb', FALSE),
+                    ('00000000-0000-0000-0000-000000000e03', '00000000-0000-0000-0000-0000000000bb', TRUE);
+                """.trimIndent(),
+            )
+        }
+        migrate(db)
+        db.connection.use { conn ->
+            val busy = conn.createStatement().executeQuery("SELECT title, show_busy FROM event ORDER BY title").use { rs ->
+                buildMap { while (rs.next()) put(rs.getString(1), rs.getBoolean(2)) }
+            }
+            assertEquals(mapOf("Gym" to true, "Left" to true, "Swim" to false), busy)
+            val rows = conn.createStatement().executeQuery("SELECT role, left_event FROM event_member ORDER BY deleted").use { rs ->
+                buildList { while (rs.next()) add(rs.getString(1) to rs.getBoolean(2)) }
+            }
+            assertEquals(listOf("MEMBER" to false, "MEMBER" to true), rows)
+            val role = conn.createStatement().executeQuery(
+                "SELECT event_role('00000000-0000-0000-0000-000000000e02', '00000000-0000-0000-0000-0000000000bb')",
+            ).use { rs -> rs.next(); rs.getString(1) }
+            assertEquals("MEMBER", role)
+        }
+    }
 }

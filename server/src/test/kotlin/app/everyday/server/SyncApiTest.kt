@@ -122,7 +122,7 @@ class SyncApiTest {
         val out = client.syncOk(home, SyncRequest(home.sam, events = listOf(e), reminders = listOf(r)))
         assertEquals(emptyList(), out.rejected)
         // A new event shows as Busy unless the phone says otherwise.
-        assertEquals(listOf(e.copy(showBusy = true)), out.events)
+        assertEquals(listOf(e.copy(showBusy = true, schedulingMembers = emptyList(), everyone = Everyone.NONE)), out.events)
         assertEquals(listOf(TimeDto(480), TimeDto(30, relative = true)), out.reminders.single().times)
         // Personal: nobody else sees it in full (only as Busy).
         val alex = client.syncOk(home, SyncRequest(home.alex))
@@ -336,9 +336,166 @@ class SyncApiTest {
         client.syncOk(home, SyncRequest(home.alex, events = listOf(gym.copy(deleted = true, updatedAt = 4_000))))
         assertEquals(listOf(hidden.id), client.syncOk(home, SyncRequest(home.sam)).busy.map { it.id })
 
-        // Once everyone has left a shared event, it's personal again.
+        // A shared event from a phone before 2.4 never shows as Busy, even once everyone has left it.
         client.syncOk(home, SyncRequest(home.kim, leave = listOf(LeaveSyncDto(shared.id, 5_000))))
-        assertEquals(setOf(hidden.id, shared.id), client.syncOk(home, SyncRequest(home.sam)).busy.map { it.id }.toSet())
+        assertEquals(listOf(hidden.id), client.syncOk(home, SyncRequest(home.sam)).busy.map { it.id })
+    }
+
+    /** An event from a 2.4 phone: [members] take part, [scheduling] see it for scheduling. */
+    private fun shared(
+        owner: String,
+        members: List<String> = emptyList(),
+        scheduling: List<String> = emptyList(),
+        everyone: String = Everyone.NONE,
+        showBusy: Boolean = false,
+        updatedAt: Long = 1_000,
+    ) = event(owner, *members.toTypedArray(), updatedAt = updatedAt).copy(
+        schedulingMembers = scheduling.map { EventMemberDto(it) },
+        everyone = everyone,
+        showBusy = showBusy,
+        notes = "Secret",
+    )
+
+    /** A fourth member with a phone, as if they joined after the event was made. */
+    private suspend fun HttpClient.newMember(home: Home, name: String): Pair<String, String> {
+        val token = UUID.randomUUID().toString()
+        val householdId = get("/me") { header(HttpHeaders.Authorization, "Bearer ${home.token}") }.body<HouseholdResponse>().household.id
+        api.store.addPendingDevice(UUID.fromString(householdId), Secrets.tokenHash(token), "phone", name)
+        val requestId = get("/me") { header(HttpHeaders.Authorization, "Bearer ${home.token}") }.body<HouseholdResponse>().pendingRequestIds.single()
+        val member = post("/join-requests/$requestId/approve") {
+            contentType(ContentType.Application.Json)
+            header(HttpHeaders.Authorization, "Bearer ${home.token}")
+            header(ADMIN_PIN_HEADER, "4821")
+            setBody(ApproveRequest())
+        }.body<MemberDto>()
+        return member.id to token
+    }
+
+    @Test
+    fun `an Everyone event shows to every member, including ones who join later, until they leave it`() = api { client, home ->
+        val e = shared(home.sam, everyone = Everyone.MEMBER)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e)))
+        val alex = client.syncOk(home, SyncRequest(home.alex)).events.single()
+        assertEquals(listOf(e.id, Everyone.MEMBER), listOf(alex.id, alex.everyone))
+        assertTrue(alex.members.isEmpty())
+        val r = reminder(home.alex, e.id)
+        assertTrue(client.syncOk(home, SyncRequest(home.alex, reminders = listOf(r))).rejected.isEmpty())
+        assertEquals(Everyone.MEMBER, client.syncOk(home, SyncRequest(home.sam)).events.single().everyone)
+
+        val (jo, joToken) = client.newMember(home, "Jo")
+        val joHome = Home(home.token, home.sam, home.alex, home.kim, home.tokens + (jo to joToken))
+        assertEquals(listOf(e.id), client.syncOk(joHome, SyncRequest(jo)).events.map { it.id })
+
+        // Leaving removes Alex and their reminders; an edit from the owner doesn't bring it back.
+        val left = client.syncOk(home, SyncRequest(home.alex, leave = listOf(LeaveSyncDto(e.id, 2_000))))
+        assertTrue(left.events.isEmpty())
+        assertTrue(left.reminders.single().deleted)
+        assertTrue(left.busy.isEmpty())
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e.copy(title = "Swim", updatedAt = 3_000))))
+        assertTrue(client.syncOk(home, SyncRequest(home.alex)).events.isEmpty())
+        assertEquals("Swim", client.syncOk(home, SyncRequest(home.kim)).events.single().title)
+        // Leaving twice changes nothing.
+        assertTrue(client.syncOk(home, SyncRequest(home.alex, leave = listOf(LeaveSyncDto(e.id, 4_000)))).rejected.isEmpty())
+        // The owner adding Alex by name brings it back.
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e.copy(updatedAt = 5_000, members = listOf(EventMemberDto(home.alex, 5_000))))))
+        assertEquals(listOf(e.id), client.syncOk(home, SyncRequest(home.alex)).events.map { it.id })
+        // Taking Alex off the list again leaves Everyone in place for them (they didn't leave).
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e.copy(updatedAt = 6_000))))
+        assertEquals(listOf(e.id), client.syncOk(home, SyncRequest(home.alex)).events.map { it.id })
+    }
+
+    @Test
+    fun `events shared for scheduling show their title and times only, and can be hidden`() = api { client, home ->
+        val e = shared(home.sam, members = listOf(home.alex), scheduling = listOf(home.kim))
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e)))
+        val owner = client.syncOk(home, SyncRequest(home.sam)).events.single()
+        assertEquals(listOf(home.alex), owner.members.map { it.memberId })
+        assertEquals(listOf(home.kim), owner.schedulingMembers!!.map { it.memberId })
+
+        val kim = client.syncOk(home, SyncRequest(home.kim))
+        assertTrue(kim.events.isEmpty())
+        assertEquals(listOf(BusyDto(e.id, home.sam, e.weekdays, null, e.startMinute, e.endMinute, title = "Swimming")), kim.busy)
+        // No reminders for scheduling.
+        val r = reminder(home.kim, e.id)
+        assertEquals(listOf(r.id), client.syncOk(home, SyncRequest(home.kim, reminders = listOf(r))).rejected)
+        assertEquals(listOf(e.id), client.syncOk(home, SyncRequest(home.alex)).events.map { it.id })
+
+        // Hiding it: gone for Kim, also as Busy, until the owner shares it again.
+        val hidden = client.syncOk(home, SyncRequest(home.kim, leave = listOf(LeaveSyncDto(e.id, 2_000))))
+        assertTrue(hidden.busy.isEmpty())
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e.copy(showBusy = true, updatedAt = 3_000))))
+        assertTrue(client.syncOk(home, SyncRequest(home.kim)).busy.isEmpty())
+        client.syncOk(
+            home,
+            SyncRequest(home.sam, events = listOf(e.copy(updatedAt = 4_000, schedulingMembers = listOf(EventMemberDto(home.kim, 4_000))))),
+        )
+        assertEquals("Swimming", client.syncOk(home, SyncRequest(home.kim)).busy.single().title)
+    }
+
+    @Test
+    fun `Everyone for scheduling, with someone taking part`() = api { client, home ->
+        val e = shared(home.sam, members = listOf(home.alex), everyone = Everyone.SCHEDULING)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e)))
+        assertEquals(listOf(e.id), client.syncOk(home, SyncRequest(home.alex)).events.map { it.id })
+        assertTrue(client.syncOk(home, SyncRequest(home.alex)).busy.isEmpty())
+        assertEquals(listOf("Swimming"), client.syncOk(home, SyncRequest(home.kim)).busy.map { it.title })
+    }
+
+    @Test
+    fun `moving someone to scheduling deletes their reminders on the event`() = api { client, home ->
+        val e = shared(home.sam, members = listOf(home.alex, home.kim))
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e)))
+        val r = reminder(home.alex, e.id)
+        client.syncOk(home, SyncRequest(home.alex, reminders = listOf(r)))
+        val kimReminder = reminder(home.kim, e.id)
+        client.syncOk(home, SyncRequest(home.kim, reminders = listOf(kimReminder)))
+
+        val moved = e.copy(updatedAt = 2_000, members = listOf(EventMemberDto(home.kim)), schedulingMembers = listOf(EventMemberDto(home.alex, 2_000)))
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(moved)))
+        val alex = client.syncOk(home, SyncRequest(home.alex))
+        assertTrue(alex.events.isEmpty())
+        assertTrue(alex.reminders.single().deleted)
+        assertEquals("Swimming", alex.busy.single().title)
+        assertTrue(!client.syncOk(home, SyncRequest(home.kim)).reminders.single().deleted)
+    }
+
+    @Test
+    fun `members left out of a shared event see Busy when the owner picks it`() = api { client, home ->
+        val busy = shared(home.sam, members = listOf(home.alex), showBusy = true)
+        val nothing = shared(home.sam, members = listOf(home.alex))
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(busy, nothing)))
+        val kim = client.syncOk(home, SyncRequest(home.kim)).busy
+        assertEquals(listOf(busy.id), kim.map { it.id })
+        assertNull(kim.single().title)
+        // Alex takes part in both, so neither is Busy for them.
+        assertTrue(client.syncOk(home, SyncRequest(home.alex)).busy.isEmpty())
+    }
+
+    @Test
+    fun `a phone before 2_4 keeps scheduling members, Everyone and Busy off on shared events`() = api { client, home ->
+        val e = shared(home.sam, members = listOf(home.alex), scheduling = listOf(home.kim), everyone = Everyone.SCHEDULING, showBusy = true)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e)))
+        // The old phone sends only the members taking part, and always Busy.
+        val old = e.copy(title = "Swim", updatedAt = 2_000, schedulingMembers = null, everyone = null, showBusy = true)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(old)))
+        val stored = client.syncOk(home, SyncRequest(home.sam)).events.single()
+        assertEquals(listOf(home.kim), stored.schedulingMembers!!.map { it.memberId })
+        assertEquals(Everyone.SCHEDULING, stored.everyone)
+        assertEquals(false, stored.showBusy)
+        assertEquals("Swim", client.syncOk(home, SyncRequest(home.kim)).busy.single().title)
+    }
+
+    @Test
+    fun `sharing rules`() = api { client, home ->
+        val both = shared(home.sam, members = listOf(home.alex), scheduling = listOf(home.alex))
+        val owner = shared(home.sam, scheduling = listOf(home.sam))
+        val bad = shared(home.sam).copy(everyone = "ALL")
+        val out = client.syncOk(home, SyncRequest(home.sam, events = listOf(both, owner, bad)))
+        assertEquals(setOf("event:${both.id}", "event:${owner.id}", "event:${bad.id}"), out.rejected.toSet())
+        // Only the owner writes it, also its Everyone.
+        val e = shared(home.sam)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(e)))
+        assertEquals(listOf("event:${e.id}"), client.syncOk(home, SyncRequest(home.alex, events = listOf(e.copy(everyone = Everyone.MEMBER, updatedAt = 9_000)))).rejected)
     }
 
     /** A weekend away: Fri 18:00 to Sun 20:00, once on a date or every week. */
