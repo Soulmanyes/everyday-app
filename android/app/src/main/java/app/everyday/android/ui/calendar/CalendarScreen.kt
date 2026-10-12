@@ -150,9 +150,10 @@ fun CalendarScreen(
     val showChores by vm.showChores.collectAsStateWithLifecycle()
     val filter = effectiveFilter(monthFilter, members, myId)
     val shownChores = if (showChores) chores else emptyList()
-    // The week shows what the month does (Phase 9.7), for the same members, plus my chore reminders' times.
+    // The week shows my events and chore reminders as before, plus (Phase 9.7) others' Busy events and the
+    // chores, for the members the filter shows, as the month does.
     val entries = remember(events, choreReminders, busy, shownChores, filter, showChores) {
-        events.filter { filter.matches(it) }.map { Entry.Event(it) } +
+        events.map { Entry.Event(it) } +
             (if (showChores) choreReminders.map { Entry.ChoreReminder(it) } else emptyList()) +
             busy.filter { filter.matches(it) }.map { Entry.Busy(it) } +
             shownChores.filter { filter.matches(it) }.map { Entry.Chore(it) }

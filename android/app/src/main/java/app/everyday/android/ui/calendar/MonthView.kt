@@ -218,7 +218,7 @@ private fun DayCell(
             val member = membersById[id]
             val bg = memberColorOf(member?.color, id)
             Text(
-                "${member?.displayName ?: "?"} · $count",
+                "${member?.displayName ?: if (id == myId) "Me" else "?"} · $count",
                 modifier = Modifier.fillMaxWidth().background(bg, RoundedCornerShape(2.dp)).padding(horizontal = 2.dp),
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 11.sp),
                 color = if (bg.luminance() > 0.5f) Color.Black else Color.White,
