@@ -210,6 +210,20 @@ class MigrationTest {
         db.query("SELECT eachDay FROM reminder").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
     }
 
+    @Test
+    fun migrate9To10KeepsEventsPersonalAndMembersTakingPart() {
+        helper.createDatabase(DB, 9).apply {
+            execSQL("INSERT INTO event (id, ownerMemberId, title, notes, weekdays, onDate, startMinute, endMinute, createdAt, updatedAt, deleted, dirty, showBusy, endDays) VALUES ('e1', 'm1', 'Gym', NULL, 1, NULL, 600, 660, 1, 1, 0, 0, 1, 0)")
+            execSQL("INSERT INTO event_member (eventId, memberId, hidden, updatedAt, dirty) VALUES ('e1', 'm2', 0, 1, 0)")
+            execSQL("INSERT INTO busy_event (viewerMemberId, id, ownerMemberId, weekdays, onDate, startMinute, endMinute, endDays) VALUES ('m1', 'b1', 'm2', 1, NULL, 600, 660, 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(DB, 10, true)
+        db.query("SELECT everyone FROM event").use { it.moveToFirst(); assertEquals("NONE", it.getString(0)) }
+        db.query("SELECT role FROM event_member").use { it.moveToFirst(); assertEquals("MEMBER", it.getString(0)) }
+        db.query("SELECT title, hiddenAt FROM busy_event").use { it.moveToFirst(); assertEquals(true, it.isNull(0)); assertEquals(true, it.isNull(1)) }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

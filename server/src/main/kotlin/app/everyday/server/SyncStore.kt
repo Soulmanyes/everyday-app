@@ -83,32 +83,41 @@ class SyncStore(private val db: DataSource) {
         }
         validEnd(endDays, e.startMinute, endMinute, e.weekdays, onDate != null)
         val added = e.members.associate { (parseId(it.memberId) ?: reject("bad member id")) to it.updatedAt }
-        val members = added.keys
+        // Phones before 2.4 send neither: they keep the stored scheduling members and Everyone.
+        val scheduling = e.schedulingMembers?.associate { (parseId(it.memberId) ?: reject("bad member id")) to it.updatedAt }
+        if (e.everyone != null && e.everyone !in Everyone.ALL) reject("bad everyone")
+        val everyone = e.everyone?.takeIf { it != Everyone.NONE }
+        val members = added.keys + scheduling.orEmpty().keys
         val title = e.title.trim()
         val notes = e.notes?.trim()?.takeIf { it.isNotEmpty() }
         if (!e.deleted) {
             if (title.isEmpty() || title.length > 200) reject("bad title")
             if ((notes?.length ?: 0) > 500) reject("notes too long")
             if (me in members) reject("can't share with the owner")
+            if (members.size < added.size + scheduling.orEmpty().size) reject("a member is in both lists")
             if (members.isNotEmpty() && !allActiveMembers(householdId, members)) reject("unknown member")
         }
+        // Members left out see a shared event as Busy only if the owner chose it (Phase 9.8). Phones before 2.4
+        // always send Busy (their editor hides the choice on shared events), so those show nothing.
+        val showBusy = if (e.everyone == null && added.isNotEmpty()) false else e.showBusy
 
         prepareStatement(
             """
             INSERT INTO event (id, owner_member_id, title, notes, weekdays, on_date, start_minute, end_minute, created_at, updated_at, deleted,
-                show_busy, end_days)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, TRUE), ?)
+                show_busy, end_days, everyone)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, TRUE), ?, ?)
             ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, notes = EXCLUDED.notes, weekdays = EXCLUDED.weekdays,
                 on_date = EXCLUDED.on_date, start_minute = EXCLUDED.start_minute, end_minute = EXCLUDED.end_minute,
                 updated_at = EXCLUDED.updated_at, deleted = EXCLUDED.deleted, show_busy = COALESCE(?, event.show_busy),
-                end_days = EXCLUDED.end_days
+                end_days = EXCLUDED.end_days, everyone = CASE WHEN ? THEN event.everyone ELSE EXCLUDED.everyone END
             """.trimIndent(),
         ).run {
             setObject(1, id); setObject(2, me); setString(3, title); setString(4, notes); setInt(5, e.weekdays); setObject(6, onDate)
             setObject(7, e.startMinute); setObject(8, endMinute)
             setObject(9, e.createdAt.toTime()); setObject(10, e.updatedAt.toTime()); setBoolean(11, e.deleted)
             // Phones before 1.4.0 don't send showBusy: keep what's stored.
-            setObject(12, e.showBusy); setInt(13, endDays); setObject(14, e.showBusy)
+            setObject(12, showBusy); setInt(13, endDays); setString(14, everyone); setObject(15, showBusy)
+            setBoolean(16, e.everyone == null)
             executeUpdate()
         }
         if (e.deleted) {
@@ -119,28 +128,40 @@ class SyncStore(private val db: DataSource) {
             return true
         }
 
-        // Members: new ones are added, removed ones are tombstoned together with their reminders on it.
-        // Someone who left is only added back if the owner added them after they left.
-        val removed = createArrayOf("uuid", members.toTypedArray())
+        // Members: new ones are added, removed ones are tombstoned (Everyone may still apply to them). Someone who
+        // left is only added back if the owner added them after they left; a live row can change role. Phones
+        // before 2.4 only send the members taking part, so they leave scheduling rows alone.
+        prepareStatement(
+            """
+            UPDATE event_member SET deleted = TRUE, left_event = FALSE, updated_at = ?
+            WHERE event_id = ? AND NOT deleted AND NOT (member_id = ANY (?)) AND (? OR role = 'MEMBER')
+            """.trimIndent(),
+        ).run {
+            setObject(1, e.updatedAt.toTime()); setObject(2, id); setArray(3, createArrayOf("uuid", members.toTypedArray()))
+            setBoolean(4, scheduling != null); executeUpdate()
+        }
+        prepareStatement(
+            """
+            INSERT INTO event_member (event_id, member_id, updated_at, role) VALUES (?, ?, ?, ?)
+            ON CONFLICT (event_id, member_id) DO UPDATE SET deleted = FALSE, left_event = FALSE, role = EXCLUDED.role,
+                updated_at = GREATEST(event_member.updated_at, EXCLUDED.updated_at)
+            WHERE (event_member.deleted AND event_member.updated_at < EXCLUDED.updated_at)
+                OR (NOT event_member.deleted AND event_member.role <> EXCLUDED.role)
+            """.trimIndent(),
+        ).run {
+            fun add(rows: Map<UUID, Long>, role: String) = rows.forEach { (member, at) ->
+                setObject(1, id); setObject(2, member); setObject(3, at.toTime()); setString(4, role); addBatch()
+            }
+            add(added, "MEMBER"); add(scheduling.orEmpty(), "SCHEDULING")
+            executeBatch()
+        }
+        // Anyone no longer taking part loses their reminders on it.
         prepareStatement(
             """
             UPDATE reminder SET deleted = TRUE, updated_at = ? WHERE event_id = ? AND NOT deleted AND owner_member_id <> ?
-                AND NOT (owner_member_id = ANY (?))
+                AND event_role(event_id, owner_member_id) IS DISTINCT FROM 'MEMBER'
             """.trimIndent(),
-        ).run { setObject(1, e.updatedAt.toTime()); setObject(2, id); setObject(3, me); setArray(4, removed); executeUpdate() }
-        prepareStatement(
-            "UPDATE event_member SET deleted = TRUE, updated_at = ? WHERE event_id = ? AND NOT deleted AND NOT (member_id = ANY (?))",
-        ).run { setObject(1, e.updatedAt.toTime()); setObject(2, id); setArray(3, removed); executeUpdate() }
-        prepareStatement(
-            """
-            INSERT INTO event_member (event_id, member_id, updated_at) VALUES (?, ?, ?)
-            ON CONFLICT (event_id, member_id) DO UPDATE SET deleted = FALSE, updated_at = EXCLUDED.updated_at
-            WHERE event_member.deleted AND event_member.updated_at < EXCLUDED.updated_at
-            """.trimIndent(),
-        ).run {
-            added.forEach { (member, at) -> setObject(1, id); setObject(2, member); setObject(3, at.toTime()); addBatch() }
-            executeBatch()
-        }
+        ).run { setObject(1, e.updatedAt.toTime()); setObject(2, id); setObject(3, me); executeUpdate() }
         return true
     }
 
@@ -161,18 +182,32 @@ class SyncStore(private val db: DataSource) {
         if ((start == null) != (end == null) || (end != null && end !in 1..1440)) reject("bad end")
     }
 
-    /** A member leaves (or declines) an event shared with them, which deletes their reminders on it. */
+    /**
+     * A member leaves (or declines) an event shared with them, or hides one shared for scheduling, which deletes
+     * their reminders on it. It stays gone for them under Everyone too, until the owner adds them again.
+     */
     private fun Connection.pushLeave(me: UUID, l: LeaveSyncDto): Boolean {
         val eventId = parseId(l.eventId) ?: reject("bad id")
         val row = prepareStatement("SELECT deleted, updated_at FROM event_member WHERE event_id = ? AND member_id = ? FOR UPDATE").run {
             setObject(1, eventId); setObject(2, me)
             executeQuery().use { rs -> if (rs.next()) rs.getBoolean(1) to rs.millis(2) else null }
-        } ?: reject("not shared with you")
-        // Already gone, or added again after this phone left: nothing to do.
-        if (row.first || row.second >= l.updatedAt) return false
-        prepareStatement("UPDATE event_member SET deleted = TRUE, updated_at = ? WHERE event_id = ? AND member_id = ?").run {
-            setObject(1, l.updatedAt.toTime()); setObject(2, eventId); setObject(3, me); executeUpdate()
         }
+        // event_role also checks the event is in my household.
+        val role = prepareStatement("SELECT event_role(?, ?)").run {
+            setObject(1, eventId); setObject(2, me); executeQuery().use { rs -> rs.next(); rs.getString(1) }
+        }
+        if (role == null) {
+            if (row == null) reject("not shared with you")
+            return false // Already gone.
+        }
+        // Added again after this phone left: nothing to do.
+        if (row != null && !row.first && row.second >= l.updatedAt) return false
+        prepareStatement(
+            """
+            INSERT INTO event_member (event_id, member_id, updated_at, deleted, left_event) VALUES (?, ?, ?, TRUE, TRUE)
+            ON CONFLICT (event_id, member_id) DO UPDATE SET deleted = TRUE, left_event = TRUE, updated_at = EXCLUDED.updated_at
+            """.trimIndent(),
+        ).run { setObject(1, eventId); setObject(2, me); setObject(3, l.updatedAt.toTime()); executeUpdate() }
         prepareStatement("UPDATE reminder SET deleted = TRUE, updated_at = ? WHERE event_id = ? AND owner_member_id = ? AND NOT deleted").run {
             setObject(1, l.updatedAt.toTime()); setObject(2, eventId); setObject(3, me); executeUpdate()
         }
@@ -255,13 +290,13 @@ class SyncStore(private val db: DataSource) {
     }
 
     /**
-     * The start minute of an event [me] can put reminders on (theirs, or shared with them), empty for an
+     * The start minute of an event [me] can put reminders on (theirs, or one they take part in), empty for an
      * all-day event, or null if they can't.
      */
     private fun Connection.eventStart(me: UUID, eventId: UUID): Optional<Int>? = prepareStatement(
         """
-        SELECT e.start_minute FROM event e WHERE e.id = ? AND NOT e.deleted AND (e.owner_member_id = ? OR EXISTS (
-            SELECT 1 FROM event_member em WHERE em.event_id = e.id AND em.member_id = ? AND NOT em.deleted))
+        SELECT e.start_minute FROM event e WHERE e.id = ? AND NOT e.deleted
+            AND (e.owner_member_id = ? OR event_role(e.id, ?) = 'MEMBER')
         """.trimIndent(),
     ).run {
         setObject(1, eventId); setObject(2, me); setObject(3, me)
@@ -327,19 +362,19 @@ class SyncStore(private val db: DataSource) {
     ).run { setObject(1, choreId); setObject(2, memberId); setObject(3, householdId); executeQuery().use { it.next() } }
 
     private fun Connection.snapshot(me: UUID, rejected: List<String>): SyncResponse {
-        // Events I own (with tombstones), and events shared with me.
+        // Events I own (with tombstones), and events I take part in (Everyone ones too, so only my household's).
         val eventIds = mutableListOf<UUID>()
         val events = prepareStatement(
             """
             SELECT e.id, e.owner_member_id, e.title, e.notes, e.weekdays, e.on_date, e.start_minute, e.end_minute,
-                   e.created_at, e.updated_at, e.deleted, e.show_busy, e.end_days
-            FROM event e
-            WHERE e.owner_member_id = ? OR EXISTS (
-                SELECT 1 FROM event_member em WHERE em.event_id = e.id AND em.member_id = ? AND NOT em.deleted)
+                   e.created_at, e.updated_at, e.deleted, e.show_busy, e.end_days, e.everyone
+            FROM event e JOIN member o ON o.id = e.owner_member_id
+            WHERE e.owner_member_id = ? OR (o.household_id = (SELECT household_id FROM member WHERE id = ?)
+                AND event_role(e.id, ?) = 'MEMBER')
             ORDER BY e.created_at, e.id
             """.trimIndent(),
         ).run {
-            setObject(1, me); setObject(2, me)
+            setObject(1, me); setObject(2, me); setObject(3, me)
             executeQuery().use { rs ->
                 buildList {
                     while (rs.next()) {
@@ -361,18 +396,23 @@ class SyncStore(private val db: DataSource) {
                                 updatedAt = rs.millis("updated_at"),
                                 deleted = rs.getBoolean("deleted"),
                                 showBusy = rs.getBoolean("show_busy"),
+                                everyone = rs.getString("everyone") ?: Everyone.NONE,
                             ),
                         )
                     }
                 }
             }
         }
+        // (event id, scheduling) to its members in that role.
         val members = prepareStatement(
-            "SELECT event_id, member_id, updated_at FROM event_member WHERE event_id = ANY (?) AND NOT deleted ORDER BY member_id",
+            """
+            SELECT event_id, member_id, updated_at, role = 'SCHEDULING' FROM event_member
+            WHERE event_id = ANY (?) AND NOT deleted ORDER BY member_id
+            """.trimIndent(),
         ).run {
             setArray(1, createArrayOf("uuid", eventIds.toTypedArray()))
             executeQuery().use { rs ->
-                buildList { while (rs.next()) add(rs.getString(1) to EventMemberDto(rs.getString(2), rs.millis(3))) }
+                buildList { while (rs.next()) add((rs.getString(1) to rs.getBoolean(4)) to EventMemberDto(rs.getString(2), rs.millis(3))) }
             }
         }.groupBy({ it.first }, { it.second })
 
@@ -451,19 +491,24 @@ class SyncStore(private val db: DataSource) {
             setObject(1, me)
             executeQuery().use { rs -> if (rs.next()) SettingsSyncDto(rs.getInt(1), rs.getString(2), rs.getString(3), rs.millis(4)) else null }
         }
-        // Other members' personal events that show as Busy: days and times only. The title and notes never
-        // leave the server. Events whose members have all left count as personal again.
+        // Other members' events: shared with me for scheduling (with the title), or that I'm left out of and
+        // that show as Busy (days and times only). Notes never leave the server, and an event I left or hid
+        // shows nothing.
         val busy = prepareStatement(
             """
-            SELECT e.id, e.owner_member_id, e.weekdays, e.on_date, e.start_minute, e.end_minute, e.end_days
-            FROM event e JOIN member m ON m.id = e.owner_member_id
-            WHERE e.owner_member_id <> ? AND NOT e.deleted AND e.show_busy AND NOT m.deleted
-                AND m.household_id = (SELECT household_id FROM member WHERE id = ?)
-                AND NOT EXISTS (SELECT 1 FROM event_member em WHERE em.event_id = e.id AND NOT em.deleted)
+            SELECT * FROM (
+                SELECT e.id, e.owner_member_id, e.weekdays, e.on_date, e.start_minute, e.end_minute, e.end_days, e.title,
+                       e.show_busy, e.created_at, event_role(e.id, ?) AS role,
+                       EXISTS (SELECT 1 FROM event_member em WHERE em.event_id = e.id AND em.member_id = ? AND em.left_event) AS left_it
+                FROM event e JOIN member m ON m.id = e.owner_member_id
+                WHERE e.owner_member_id <> ? AND NOT e.deleted AND NOT m.deleted
+                    AND m.household_id = (SELECT household_id FROM member WHERE id = ?)
+            ) e
+            WHERE e.role = 'SCHEDULING' OR (e.role IS NULL AND e.show_busy AND NOT e.left_it)
             ORDER BY e.created_at, e.id
             """.trimIndent(),
         ).run {
-            setObject(1, me); setObject(2, me)
+            setObject(1, me); setObject(2, me); setObject(3, me); setObject(4, me)
             executeQuery().use { rs ->
                 buildList {
                     while (rs.next()) {
@@ -478,6 +523,7 @@ class SyncStore(private val db: DataSource) {
                                 endMinute = end.forOldPhones,
                                 endDays = end.days,
                                 endDayMinute = end.dayMinute,
+                                title = rs.getString("title").takeIf { rs.getString("role") == "SCHEDULING" },
                             ),
                         )
                     }
@@ -486,7 +532,13 @@ class SyncStore(private val db: DataSource) {
         }
         return SyncResponse(
             busy = busy,
-            events = events.map { it.copy(members = members[it.id].orEmpty()) },
+            events = events.map {
+                // Under Everyone I'm on another member's event without a row: name me anyway, as phones before
+                // 2.4 only show (and let me leave) events whose members include me.
+                val taking = members[it.id to false].orEmpty()
+                val named = it.ownerMemberId == me.toString() || taking.any { m -> m.memberId == me.toString() }
+                it.copy(members = if (named) taking else taking + EventMemberDto(me.toString()), schedulingMembers = members[it.id to true].orEmpty())
+            },
             reminders = rows.map { r -> r.copy(times = times[r.id].orEmpty(), windows = windows[r.id].orEmpty()) },
             states = states,
             settings = settings,
@@ -501,8 +553,8 @@ class SyncStore(private val db: DataSource) {
 }
 
 /**
- * A removed member's shared events live on, read-only, for the members still on them. Once everyone
- * has left, they are deleted, and reminders on deleted events go with them.
+ * A removed member's shared events live on, read-only, for the members still taking part (under Everyone,
+ * everyone who hasn't left). Once nobody takes part, they are deleted, and reminders on deleted events go with them.
  */
 fun Connection.deleteOrphanedEvents() {
     prepareStatement(
@@ -510,8 +562,8 @@ fun Connection.deleteOrphanedEvents() {
         UPDATE event e SET deleted = TRUE, updated_at = now()
         FROM member m
         WHERE m.id = e.owner_member_id AND m.deleted AND NOT e.deleted AND NOT EXISTS (
-            SELECT 1 FROM event_member em JOIN member mm ON mm.id = em.member_id
-            WHERE em.event_id = e.id AND NOT em.deleted AND NOT mm.deleted)
+            SELECT 1 FROM member mm WHERE mm.household_id = m.household_id AND NOT mm.deleted
+                AND event_role(e.id, mm.id) = 'MEMBER')
         """.trimIndent(),
     ).executeUpdate()
     prepareStatement(

@@ -152,12 +152,12 @@ Gaps left by 2.0.0 and view changes, planned 2026-10-11. Split from the old Phas
 - [x] The month view's member filter starts on **the profile's own events** instead of everyone; others are switched on with the existing filter.
 
 ## Phase 9.8: "Everyone" events and sharing for scheduling (2.4.0)
-Planned 2026-10-11, split out 2026-10-12. Not started.
-- [ ] Events: **Share with: Everyone** (decided 2026-10-11). The event is shared with the whole household, including members who join later: the event stores "everyone" rather than a member list (server and sync change). Members can still leave it.
-- [ ] Events: two clearly different ways to involve someone (decided 2026-10-11), named so the difference is obvious in the editor:
+Planned 2026-10-11, split out 2026-10-12. Built on `dev` 2026-10-12 (server V14, Room 10), not yet released. Decided 2026-10-12: both ways can be mixed on one event (two chip rows, each with Everyone; a person's own choice beats Everyone); someone shared for scheduling can **Hide** it (gone until the owner shares it again); "Others see: Busy | Nothing" now applies to whoever is left out of a shared event too (events shared before stay at Nothing). Events shared with me for scheduling show whatever the member filter, like the events I take part in.
+- [x] Events: **Share with: Everyone** (decided 2026-10-11). The event is shared with the whole household, including members who join later: the event stores "everyone" rather than a member list (server and sync change). Members can still leave it.
+- [x] Events: two clearly different ways to involve someone (decided 2026-10-11), named so the difference is obvious in the editor:
   - **Add to the event**: they take part, as sharing works today. It's on their timetable, they can set reminders, and they're told "Sam added you to …".
   - **Share for scheduling**: they can see it but aren't taking part. They see the title and times (like Busy, but with the title), with no reminders and no notification. Works with "Everyone" too.
-- [ ] The week view also shows scheduling-shared events.
+- [x] The week view also shows scheduling-shared events.
 
 ## Phase 9.9: Personal chores (2.5.0)
 Planned 2026-10-11, split out 2026-10-12. Not started.
@@ -169,6 +169,11 @@ Planned 2026-10-11. Not started. App only: no server change.
 - [ ] One-time import from the **phone's own calendar** (Google Calendar syncs onto the phone; read with `READ_CALENDAR`, no Google sign-in or API). Pick calendars, then tick the coming events to import; each becomes one of the profile's events.
 - [ ] Weekly repeats and one-off events import as they are. Other repeats (daily, every 2 weeks, monthly, yearly) become one-off events for the next 3 months. Multi-day events import as multi-day events (Phase 9.6).
 - [ ] No ongoing sync: later changes in Google Calendar don't follow. Importing the same event again is recognised and skipped (the Google event id is remembered).
+
+## Phase 11: Better colour picking (2.7.0)
+Added 2026-10-12. Not started. Details to decide when it starts.
+- [ ] A fuller colour picker for member colours, perhaps any RGB colour (0-255 per channel) instead of the 12 fixed palette colours.
+- [ ] To decide then: whether colours must still differ enough between members of a household (today they're unique per household), and whether greens stay out (chore cards are green), since any RGB colour can come close to another one or to the chore green. Server change: `member.color` holds a palette key today.
 
 ## Developer and ops (any time, no app release)
 - [x] CI: GitHub Actions building the server and the debug APK and running the unit tests (2026-10-09)

@@ -10,6 +10,7 @@ import app.everyday.android.data.EventMemberEntity
 import app.everyday.android.data.EventView
 import app.everyday.android.data.MemberEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.DayOfWeek
@@ -132,6 +133,13 @@ class MonthGridTest {
         assertEquals(MonthFilter.of(setOf(me)), effectiveFilter(null, members, me))
         // A picked filter, Everyone included, stays as picked.
         assertEquals(MonthFilter(), effectiveFilter(MonthFilter(), members, me))
+    }
+
+    @Test
+    fun `events shared with me for scheduling show whatever the filter, plain Busy follows it`() {
+        val mine = MonthFilter.of(setOf(me))
+        assertTrue(mine.matches(BusyEventEntity(me, "s1", "alex", weekdays = everyDay, title = "Party")))
+        assertFalse(mine.matches(BusyEventEntity(me, "b1", "alex", weekdays = everyDay)))
     }
 
     @Test

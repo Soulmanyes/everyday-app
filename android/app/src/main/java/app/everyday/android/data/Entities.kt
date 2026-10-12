@@ -44,9 +44,21 @@ data class MemberSettingsEntity(
 enum class ReminderMode { TIMED, PERSISTENT }
 
 /**
+ * How someone is on a shared event (Phase 9.8), as [EventMemberEntity.role] and, for the whole household,
+ * [EventEntity.everyone] (or [NONE]).
+ */
+object Sharing {
+    const val NONE = "NONE"
+    /** Takes part: on their timetable, with their own reminders ("Add to the event"). */
+    const val MEMBER = "MEMBER"
+    /** Sees the title and times only ("Share for scheduling"), as a [BusyEventEntity] with a title. */
+    const val SCHEDULING = "SCHEDULING"
+}
+
+/**
  * Something on the timetable (Phase 6): weekly on [weekdays], or once on [onDate] (ISO date), exactly
  * one of the two. No [startMinute] means all day; [endMinute] is optional. Personal unless it has
- * [EventMemberEntity] rows; only the owner edits it. A multi-day event (Phase 9.6) ends [endDays] after the
+ * [EventMemberEntity] rows or [everyone] is set; only the owner edits it. A multi-day event (Phase 9.6) ends [endDays] after the
  * day it starts, at [endMinute] on that last day (see [app.everyday.android.reminders.Occurs]).
  */
 @Entity(tableName = "event", indices = [Index("ownerMemberId")])
@@ -65,15 +77,18 @@ data class EventEntity(
     val deleted: Boolean = false,
     /** Changed on this phone since the last sync. */
     val dirty: Boolean = false,
-    /** While personal, other members see it as "Busy" (times only); false hides it from them (Phase 7). */
+    /** Members it isn't shared with see it as "Busy" (times only); false hides it from them (Phase 7, 9.8). */
     @ColumnInfo(defaultValue = "1") val showBusy: Boolean = true,
     @ColumnInfo(defaultValue = "0") val endDays: Int = 0,
+    /** Shared with the whole household, members who join later included ([Sharing]). */
+    @ColumnInfo(defaultValue = "NONE") val everyone: String = Sharing.NONE,
 )
 
 /**
- * Another member's personal event that [viewerMemberId] sees as "Busy" (Phase 7): days and times only,
- * as the server sends them; the server never sends its title or notes. Replaced on every sync, and kept
- * apart from [EventEntity] so alarms and the week view never treat it as an event.
+ * Another member's event that [viewerMemberId] sees as "Busy" (Phase 7): days and times only, as the server
+ * sends them; the server never sends its notes. It has a [title] when it's shared with the viewer for
+ * scheduling (Phase 9.8). Replaced on every sync, and kept apart from [EventEntity] so alarms never treat
+ * it as an event.
  */
 @Entity(tableName = "busy_event", primaryKeys = ["viewerMemberId", "id"])
 data class BusyEventEntity(
@@ -86,11 +101,15 @@ data class BusyEventEntity(
     val startMinute: Int? = null,
     val endMinute: Int? = null,
     @ColumnInfo(defaultValue = "0") val endDays: Int = 0,
+    val title: String? = null,
+    /** When the viewer hid it on this phone (shared for scheduling), until the server has it. */
+    val hiddenAt: Long? = null,
 )
 
 /**
- * A member a shared event is shared with. [hidden] means this phone's member left (or declined) and it
- * hasn't synced yet; once it has, the server drops them and the event goes from this phone.
+ * A member a shared event is shared with, taking part or for scheduling ([role]). [hidden] means this phone's
+ * member left (or declined) and it hasn't synced yet; once it has, the server drops them and the event goes
+ * from this phone. Under Everyone this phone keeps a row for its own member too, so leaving works the same.
  */
 @Entity(
     tableName = "event_member",
@@ -105,6 +124,7 @@ data class EventMemberEntity(
     val updatedAt: Long = 0,
     /** This member left the event on this phone since the last sync. */
     val dirty: Boolean = false,
+    @ColumnInfo(defaultValue = "MEMBER") val role: String = Sharing.MEMBER,
 )
 
 /**

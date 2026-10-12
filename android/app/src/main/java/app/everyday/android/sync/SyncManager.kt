@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.core.content.edit
 import androidx.room.withTransaction
 import app.everyday.android.data.AppDatabase
+import app.everyday.android.data.EventMemberEntity
 import app.everyday.android.household.ApiClient
 import app.everyday.android.household.ApiError
 import app.everyday.android.household.Membership
@@ -57,7 +58,9 @@ class SyncManager(
         val members = db.memberDao()
 
         val events = reminders.getDirtyOwnedEvents(me).map { it.toSynced() }
-        val leaves = reminders.getDirtyLeaves(me)
+        // Events shared for scheduling that were hidden go up as leaves too (Phase 9.8).
+        val hiddenBusy = reminders.getHiddenBusy(me)
+        val leaves = reminders.getDirtyLeaves(me) + hiddenBusy.map { EventMemberEntity(it.id, me, hidden = true, updatedAt = it.hiddenAt!!, dirty = true) }
         val dirty = reminders.getDirtyOwned(me).map { it.toSynced() }
         val states = reminders.getDirtyStates(me)
         val settings = members.getSettings(me)?.takeIf { it.dirty }
@@ -93,7 +96,9 @@ class SyncManager(
             reminders.upsertStates(plan.saveStates)
             plan.clearDirtyStates.forEach { reminders.clearStateDirty(it, me) }
             plan.saveSettings?.let { members.upsertSettings(it) }
-            reminders.replaceBusy(me, snapshot.busy)
+            // One hidden while this sync ran stays hidden until the next one sends it.
+            val hiddenSince = reminders.getHiddenBusy(me).filter { it.hiddenAt != pushed.leaves[it.id] }.associate { it.id to it.hiddenAt!! }
+            reminders.replaceBusy(me, snapshot.busy, hiddenSince)
             if (plan.clearDirtySettings) members.getSettings(me)?.let { members.upsertSettings(it.copy(dirty = false)) }
         }
         if (m.notificationsOn) announceSharedEvents(me)

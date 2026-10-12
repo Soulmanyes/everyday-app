@@ -171,6 +171,16 @@ data class WindowDto(val startMinute: Int, val endMinute: Int)
 @Serializable
 data class EventMemberDto(val memberId: String, val updatedAt: Long = 0)
 
+/** How an event is shared with the whole household ([EventSyncDto.everyone], Phase 9.8). */
+object Everyone {
+    const val NONE = "NONE"
+    /** Everyone takes part, as if each member were in [EventSyncDto.members]. */
+    const val MEMBER = "MEMBER"
+    /** Everyone sees it for scheduling, as if in [EventSyncDto.schedulingMembers]. */
+    const val SCHEDULING = "SCHEDULING"
+    val ALL = setOf(NONE, MEMBER, SCHEDULING)
+}
+
 /**
  * Something on the timetable: weekly on [weekdays], or once on [onDate] (ISO date), exactly one of the two.
  * No [startMinute] means all day; [endMinute] is optional.
@@ -203,9 +213,19 @@ data class EventSyncDto(
     val endDays: Int? = null,
     /** With [endDays] > 0: the end on the last day. */
     val endDayMinute: Int? = null,
+    /**
+     * Members who see it for scheduling only (Phase 9.8): its title and times, as a [BusyDto] with a title.
+     * [members] are those taking part. Null from phones before 2.4, which keeps the stored list.
+     */
+    val schedulingMembers: List<EventMemberDto>? = null,
+    /** Shared with the whole household ([Everyone]). Null from phones before 2.4, which keeps the stored value. */
+    val everyone: String? = null,
 )
 
-/** Another member's personal event shown as "Busy": its days and times only, never its title or notes. */
+/**
+ * Another member's event shown as "Busy": its days and times only, never its notes. It has a [title] only
+ * when it's shared with the viewer for scheduling (Phase 9.8); phones before 2.4 show those as plain Busy.
+ */
 @Serializable
 data class BusyDto(
     val id: String,
@@ -217,6 +237,7 @@ data class BusyDto(
     /** As in [EventSyncDto]. */
     val endDays: Int = 0,
     val endDayMinute: Int? = null,
+    val title: String? = null,
 )
 
 /** A reminder time: a minute of the day, or with [relative] the minutes before the event starts. */
@@ -259,7 +280,7 @@ data class StateSyncDto(val reminderId: String, val doneOn: String? = null, val 
 @Serializable
 data class SettingsSyncDto(val snoozeMinutes: Int, val timedSound: String, val persistentSound: String, val updatedAt: Long)
 
-/** A member leaving (or declining) an event shared with them. */
+/** A member leaving (or declining) an event shared with them, or hiding one shared for scheduling. */
 @Serializable
 data class LeaveSyncDto(val eventId: String, val updatedAt: Long)
 
@@ -284,6 +305,9 @@ data class SyncResponse(
     val states: List<StateSyncDto>,
     val settings: SettingsSyncDto?,
     val rejected: List<String>,
-    /** Other members' personal events shown as Busy (Phase 7). Phones before 1.4.0 ignore it. */
+    /**
+     * Other members' events shown as Busy (Phase 7), and those shared with me for scheduling, with their title
+     * (Phase 9.8). Phones before 1.4.0 ignore it.
+     */
     val busy: List<BusyDto> = emptyList(),
 )

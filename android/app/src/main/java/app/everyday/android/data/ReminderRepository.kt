@@ -41,9 +41,13 @@ data class EventDraft(
     val endMinute: Int? = null,
     /** Multi-day (Phase 9.6): days after the start day it ends; a one-off event's end date is [date] plus this. */
     val endDays: Int = 0,
-    /** Members it's shared with (not the owner). */
+    /** Members taking part ("Add to the event"), not the owner. */
     val memberIds: List<String> = emptyList(),
-    /** While personal, others see it as "Busy" (times only); false hides it from them. */
+    /** Members who see it for scheduling only (Phase 9.8). Nobody is in both lists. */
+    val schedulingIds: List<String> = emptyList(),
+    /** The whole household's way of being on it ([Sharing]); members in the lists keep theirs. */
+    val everyone: String = Sharing.NONE,
+    /** Members it isn't shared with see it as "Busy" (times only); false hides it from them. */
     val showBusy: Boolean = true,
 )
 
@@ -78,6 +82,10 @@ data class ReminderView(val details: ReminderWithDetails, val memberId: String, 
 /** An event the picked profile sees, with who it's shared with and that profile's own reminders on it. */
 data class EventView(val event: EventEntity, val members: List<EventMemberEntity>, val memberId: String, val reminders: List<ReminderView>) {
     val isOwn get() = event.ownerMemberId == memberId
+    /** Who takes part (named ones; under Everyone, everyone else too). */
+    val takingPart get() = members.filter { it.role == Sharing.MEMBER && !it.hidden }
+    val forScheduling get() = members.filter { it.role == Sharing.SCHEDULING }
+    val isShared get() = members.isNotEmpty() || event.everyone != Sharing.NONE
     val timed get() = reminders.firstOrNull { it.reminder.mode == ReminderMode.TIMED }
     val persistentReminder get() = reminders.firstOrNull { it.reminder.mode == ReminderMode.PERSISTENT }
     val fixedTimes get() = timed?.times.orEmpty().filter { !it.relative }.map { it.minuteOfDay }.sorted()
@@ -131,8 +139,9 @@ class ReminderRepository(
 
     suspend fun getReminder(id: String) = reminders.getReminder(id)
 
-    /** Who's on the event (not the owner). */
-    suspend fun eventMemberIds(eventId: String): List<String> = reminders.getEvent(eventId)?.members.orEmpty().map { it.memberId }
+    /** Who takes part in the event (not the owner). */
+    suspend fun eventMemberIds(eventId: String): List<String> =
+        reminders.getEvent(eventId)?.members.orEmpty().filter { it.role == Sharing.MEMBER }.map { it.memberId }
 
     suspend fun getReminders(memberId: String = currentMemberId()) =
         views(memberId, reminders.getVisible(memberId), reminders.getVisibleEvents(memberId))
@@ -142,8 +151,11 @@ class ReminderRepository(
         return list.sortedBy { it.reminder.createdAt }.map { ReminderView(it, memberId, it.reminder.eventId?.let(byId::get)) }
     }
 
-    /** Other members' personal events the current profile sees as Busy (Phase 7). */
+    /** Other members' events the current profile sees as Busy (Phase 7), or for scheduling, with a title (Phase 9.8). */
     fun observeBusy(): Flow<List<BusyEventEntity>> = memberIdChanges.flatMapLatest { reminders.observeBusy(it) }
+
+    /** Hides an event shared with the current profile for scheduling; the next sync tells the server. */
+    suspend fun hideScheduled(id: String) = reminders.hideBusy(currentMemberId(), id, clock())
 
     /** Events the current profile sees, with its own reminders on each. */
     fun observeEvents(): Flow<List<EventView>> = memberIdChanges.flatMapLatest { id ->
@@ -164,7 +176,9 @@ class ReminderRepository(
             startMinute = e.event.startMinute,
             endMinute = e.event.endMinute,
             endDays = e.event.endDays,
-            memberIds = e.members.map { it.memberId },
+            memberIds = e.members.filter { it.role == Sharing.MEMBER }.map { it.memberId },
+            schedulingIds = e.members.filter { it.role == Sharing.SCHEDULING }.map { it.memberId },
+            everyone = e.event.everyone,
             showBusy = e.event.showBusy,
         )
     }
@@ -189,10 +203,17 @@ class ReminderRepository(
             updatedAt = now,
             dirty = true,
             showBusy = draft.showBusy,
+            everyone = draft.everyone,
         )
-        // Members keep their own "hidden"; new ones start shown.
+        // Members keep their own "hidden"; new ones start shown, and one whose role changed counts as added again.
+        // Everyone covers the members of its own list, so those aren't named.
         val previous = existing?.members.orEmpty().associateBy { it.memberId }
-        val members = (draft.memberIds.distinct() - owner).map { previous[it] ?: EventMemberEntity(id, it, updatedAt = now) }
+        fun rows(ids: List<String>, role: String) = (ids.distinct() - owner).map { m ->
+            previous[m]?.takeIf { it.role == role } ?: EventMemberEntity(id, m, updatedAt = now, role = role)
+        }
+        val taking = if (draft.everyone == Sharing.MEMBER) emptyList() else rows(draft.memberIds, Sharing.MEMBER)
+        val scheduling = if (draft.everyone == Sharing.NONE) rows(draft.schedulingIds - draft.memberIds.toSet(), Sharing.SCHEDULING) else emptyList()
+        val members = taking + scheduling
         reminders.saveEvent(event, members)
         // Relative reminders need a start time; drop them if the event became all day.
         if (event.startMinute == null) {

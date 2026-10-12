@@ -12,6 +12,7 @@ import app.everyday.android.data.MemberSettingsEntity
 import app.everyday.android.data.ReminderEntity
 import app.everyday.android.data.ReminderMode
 import app.everyday.android.data.ReminderStateEntity
+import app.everyday.android.data.Sharing
 import app.everyday.android.data.SoundMode
 import app.everyday.android.reminders.Window
 import app.everyday.android.sync.SyncSnapshot
@@ -327,11 +328,16 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
         .put("endMinute", (if (event.endDays == 0) event.endMinute else null) ?: JSONObject.NULL)
         .put("endDays", event.endDays)
         .put("endDayMinute", (if (event.endDays > 0) event.endMinute else null) ?: JSONObject.NULL)
-        .put("members", JSONArray(members.map { JSONObject().put("memberId", it.memberId).put("updatedAt", it.updatedAt) }))
+        // Taking part in members (all that phones before 2.4 know), the rest in schedulingMembers (Phase 9.8).
+        .put("members", JSONArray(members.filter { it.role == Sharing.MEMBER }.map { it.toJson() }))
+        .put("schedulingMembers", JSONArray(members.filter { it.role == Sharing.SCHEDULING }.map { it.toJson() }))
+        .put("everyone", event.everyone)
         .put("createdAt", event.createdAt)
         .put("updatedAt", event.updatedAt)
         .put("deleted", event.deleted)
         .put("showBusy", event.showBusy)
+
+    private fun EventMemberEntity.toJson() = JSONObject().put("memberId", memberId).put("updatedAt", updatedAt)
 
     private fun SyncedReminder.toJson() = JSONObject()
         .put("id", reminder.id)
@@ -389,9 +395,12 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
                     deleted = e.optBoolean("deleted", false),
                     showBusy = e.optBoolean("showBusy", true),
                     endDays = e.optInt("endDays", 0),
+                    everyone = e.optString("everyone", Sharing.NONE).takeIf { it in SHARING } ?: Sharing.NONE,
                 ),
                 members = e.optArray("members").objects().map {
                     EventMemberEntity(id, it.getString("memberId"), updatedAt = it.optLong("updatedAt", 0))
+                } + e.optArray("schedulingMembers").objects().map {
+                    EventMemberEntity(id, it.getString("memberId"), updatedAt = it.optLong("updatedAt", 0), role = Sharing.SCHEDULING)
                 },
             )
         }
@@ -439,8 +448,12 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
                 startMinute = b.optIntOrNull("startMinute"),
                 endMinute = b.end(),
                 endDays = b.optInt("endDays", 0),
+                title = b.optStringOrNull("title"),
             )
         }
         return SyncSnapshot(events, reminders, states, settings, rejected, busy)
     }
 }
+
+/** Sharing values this app knows; anything newer reads as not shared with everyone. */
+private val SHARING = setOf(Sharing.NONE, Sharing.MEMBER, Sharing.SCHEDULING)

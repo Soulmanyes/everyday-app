@@ -10,10 +10,10 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
-/** Events [memberId] sees: their own, and shared ones they haven't left. */
+/** Events [memberId] sees: their own, and shared ones they take part in and haven't left. */
 private const val VISIBLE_EVENTS = """
     SELECT * FROM event WHERE deleted = 0 AND (ownerMemberId = :memberId
-    OR id IN (SELECT eventId FROM event_member WHERE memberId = :memberId AND hidden = 0))
+    OR id IN (SELECT eventId FROM event_member WHERE memberId = :memberId AND hidden = 0 AND role = 'MEMBER'))
 """
 
 /** [memberId]'s own reminders on chores, and on events they see. */
@@ -205,8 +205,15 @@ interface ReminderDao {
 
     // Busy events (Phase 7)
 
-    @Query("SELECT * FROM busy_event WHERE viewerMemberId = :viewerId")
+    @Query("SELECT * FROM busy_event WHERE viewerMemberId = :viewerId AND hiddenAt IS NULL")
     fun observeBusy(viewerId: String): Flow<List<BusyEventEntity>>
+
+    /** Events shared for scheduling that [viewerId] hid on this phone, for the next sync to send. */
+    @Query("SELECT * FROM busy_event WHERE viewerMemberId = :viewerId AND hiddenAt IS NOT NULL")
+    suspend fun getHiddenBusy(viewerId: String): List<BusyEventEntity>
+
+    @Query("UPDATE busy_event SET hiddenAt = :now WHERE viewerMemberId = :viewerId AND id = :id")
+    suspend fun hideBusy(viewerId: String, id: String, now: Long)
 
     @Query("DELETE FROM busy_event WHERE viewerMemberId = :viewerId")
     suspend fun deleteBusy(viewerId: String)
@@ -214,11 +221,14 @@ interface ReminderDao {
     @Upsert
     suspend fun upsertBusy(busy: List<BusyEventEntity>)
 
-    /** Busy events come whole in every snapshot: replace [viewerId]'s with the server's. */
+    /**
+     * Busy events come whole in every snapshot: replace [viewerId]'s with the server's. One hidden during the
+     * sync ([keepHidden]: id to when) stays hidden while the server still sends it.
+     */
     @Transaction
-    suspend fun replaceBusy(viewerId: String, busy: List<BusyEventEntity>) {
+    suspend fun replaceBusy(viewerId: String, busy: List<BusyEventEntity>, keepHidden: Map<String, Long> = emptyMap()) {
         deleteBusy(viewerId)
-        upsertBusy(busy)
+        upsertBusy(busy.map { b -> keepHidden[b.id]?.let { b.copy(hiddenAt = it) } ?: b })
     }
 }
 

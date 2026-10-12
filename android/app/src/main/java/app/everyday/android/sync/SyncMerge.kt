@@ -1,5 +1,6 @@
 package app.everyday.android.sync
 
+import app.everyday.android.data.EventMemberEntity
 import app.everyday.android.data.EventWithMembers
 import app.everyday.android.data.MemberSettingsEntity
 import app.everyday.android.data.ReminderStateEntity
@@ -105,9 +106,15 @@ object SyncMerge {
     /** Dirty and not the version that was pushed (or not pushed at all): edited during the sync. */
     private fun changedSincePush(dirty: Boolean, updatedAt: Long, pushedAt: Long?) = dirty && pushedAt != updatedAt
 
-    /** Keeps this member's leaving of a shared event if it happened during the sync (not pushed yet). */
+    /**
+     * Keeps this member's leaving of a shared event if it happened during the sync (not pushed yet). Another
+     * member's event in the snapshot is one this member takes part in: under Everyone (Phase 9.8) it isn't
+     * named in the list, so it gets a row of its own here, which leaving then hides as usual.
+     */
     private fun SyncedEvent.keepMyLeave(local: EventWithMembers?, memberId: String, pushed: Pushed): SyncedEvent {
-        val clean = copy(event = event.copy(dirty = false), members = members.map { it.copy(dirty = false) })
+        val named = members.map { it.copy(dirty = false) }
+        val implied = event.ownerMemberId != memberId && named.none { it.memberId == memberId }
+        val clean = copy(event = event.copy(dirty = false), members = if (implied) named + EventMemberEntity(event.id, memberId) else named)
         val mine = local?.members?.firstOrNull { it.memberId == memberId } ?: return clean
         if (!changedSincePush(mine.dirty, mine.updatedAt, pushed.leaves[event.id])) return clean
         return clean.copy(members = clean.members.filter { it.memberId != memberId } + mine)

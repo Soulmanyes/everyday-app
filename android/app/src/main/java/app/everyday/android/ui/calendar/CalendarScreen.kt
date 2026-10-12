@@ -252,7 +252,10 @@ fun CalendarScreen(
                 onAddReminder = { selectedKey = null; onAddChoreReminder(it) },
             )
         }
-        is Entry.Busy, null -> {}
+        is Entry.Busy -> if (selected.busy.title != null) {
+            ScheduledSheet(selected.busy, members, onDismiss = { selectedKey = null }, onHide = { selectedKey = null; vm.hideScheduled(selected.busy.id) })
+        }
+        null -> {}
     }
 
     MonthSheets(
@@ -324,7 +327,9 @@ private fun MonthSheets(
             val choresVm: ChoresViewModel = viewModel(factory = ChoresViewModel.Factory)
             ChoreDetailsSheet(choresVm, selected.details, today, onDismiss = onItemDismiss, onEditChore = onEditChore, onAddReminder = onAddChoreReminder)
         }
-        is MonthItem.Busy -> {}
+        is MonthItem.Busy -> if (selected.busy.title != null) {
+            ScheduledSheet(selected.busy, members, onDismiss = onItemDismiss, onHide = { onItemDismiss(); vm.hideScheduled(selected.busy.id) })
+        }
     }
 }
 
@@ -587,7 +592,7 @@ private fun minutesToDp(minutes: Int): Dp = HOUR_HEIGHT * (minutes / 60f)
 private fun Entry.title() = when (this) {
     is Entry.Event -> view.event.title
     is Entry.ChoreReminder -> view.title
-    is Entry.Busy -> "Busy"
+    is Entry.Busy -> busy.title ?: "Busy"
     is Entry.Chore -> details.chore.title
 }
 
@@ -629,7 +634,8 @@ private fun itemsFor(day: LocalDate, entries: List<Entry>, detailed: Boolean): L
                 val part = entry.busy.occurs().partOn(day)?.takeUnless { it.allDay } ?: return@flatMap emptyList()
                 val start = part.fromMinute ?: return@flatMap emptyList()
                 val end = part.toMinute ?: minOf(start + TIMED_LENGTH_MINUTES, MINUTES_PER_DAY)
-                listOf(CalendarItem(entry, start, end, if (detailed) "${formatMinute(start)}  Busy" else "Busy"))
+                val title = entry.title()
+                listOf(CalendarItem(entry, start, end, if (detailed) "${formatMinute(start)}  $title" else title))
             }
             is Entry.Chore -> emptyList()
             is Entry.ChoreReminder -> {
