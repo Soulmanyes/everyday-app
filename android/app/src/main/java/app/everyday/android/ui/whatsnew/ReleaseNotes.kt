@@ -9,6 +9,15 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        14, "2.4.0",
+        listOf(
+            "Two ways to share an event: \"Add to the event\" (they take part, with their own reminders) or \"Share for scheduling\" (they only see the title and times).",
+            "Both have Everyone: the whole household, including people who join later.",
+            "Events shared with you for scheduling show with their title. Tap one to see it, or Hide it.",
+            "On a shared event you can now choose whether everyone else sees \"Busy\" or nothing.",
+        ),
+    ),
+    ReleaseNote(
         13, "2.3.0",
         listOf(
             "The Events tab now starts on your own events and chores: tap \"Showing\" above the month to add other people.",
