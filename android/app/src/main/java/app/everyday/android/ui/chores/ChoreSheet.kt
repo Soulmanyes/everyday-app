@@ -72,7 +72,8 @@ fun ChoreSheet(
             }
             Text(
                 formatWeekdays(c.weekdays) + " · " +
-                    if (c.completion == ChoreCompletion.ANY) "One person does it" else "Each person does it",
+                    (if (c.completion == ChoreCompletion.ANY) "One person does it" else "Each person does it") +
+                    if (c.personal) " · Personal, only you see it" else "",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

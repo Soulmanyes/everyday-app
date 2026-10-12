@@ -160,9 +160,11 @@ Planned 2026-10-11, split out 2026-10-12. Released 2026-10-12 as 2.4.0 (server V
 - [x] The week view also shows scheduling-shared events.
 
 ## Phase 9.9: Personal chores (2.5.0)
-Planned 2026-10-11, split out 2026-10-12. Not started.
-- [ ] **Personal chores** (decided 2026-10-11): a "Personal (only I see it)" switch in the chore editor, offered only when you're the chore's only assignee **and you created it yourself** (not when someone else assigned it to you). Other members don't see a personal chore at all. Needs the server to store who created each chore.
-- [ ] **The Chores tab shows my chores** (decided 2026-10-12): the chores I'm assigned to and the chores I created for others, not every household chore. Uses the same "who created it" field; how chores from before it count is decided when this starts.
+Planned 2026-10-11, split out 2026-10-12. Built on `dev` 2026-10-13 (server V15, Room 11); not released yet.
+- [x] **Personal chores** (decided 2026-10-11): a "Personal (only I see it)" switch in the chore editor, offered only when you're the chore's only assignee **and you created it yourself** (not when someone else assigned it to you). Other members don't see a personal chore at all. The server stores who created each chore (`chore.created_by`).
+- [x] Adding another assignee makes a personal chore shared again, also from a 2.4 phone (decided 2026-10-12). Removing a member deletes their personal chores (decided 2026-10-12).
+- [x] **The Chores tab shows my chores** (decided 2026-10-12): the chores I'm assigned to and the chores I created for others, not every household chore. Chores from before 2.5 have no creator and count only for their assignees (decided 2026-10-12).
+- [x] A **Mine | All** switch on the Chores tab (decided 2026-10-12, per phone, starts on Mine). All shows every chore except other members' personal ones.
 
 ## Phase 10: Import from Google Calendar (2.6.0)
 Planned 2026-10-11. Not started. App only: no server change.

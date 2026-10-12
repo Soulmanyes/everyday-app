@@ -31,8 +31,15 @@ class ChoreManager(
         for (m in session.current.memberships) runCatching { write(m) { chores() } }
     }
 
-    suspend fun save(id: String, title: String, notes: String?, weekdays: Int, completion: ChoreCompletion, assigneeIds: List<String>) =
-        write { saveChore(id, title, notes, weekdays, completion, assigneeIds) }
+    suspend fun save(
+        id: String,
+        title: String,
+        notes: String?,
+        weekdays: Int,
+        completion: ChoreCompletion,
+        assigneeIds: List<String>,
+        personal: Boolean,
+    ) = write { saveChore(id, title, notes, weekdays, completion, assigneeIds, personal) }
 
     suspend fun delete(id: String) = write { deleteChore(id) }
 

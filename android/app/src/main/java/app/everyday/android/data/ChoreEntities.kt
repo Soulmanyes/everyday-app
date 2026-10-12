@@ -1,5 +1,6 @@
 package app.everyday.android.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.PrimaryKey
@@ -23,6 +24,10 @@ data class ChoreEntity(
     val completion: ChoreCompletion,
     /** The household the chore is in (Phase 9). Null before the first refresh after updating to 2.0. */
     val householdId: String? = null,
+    /** The member who created it (Phase 9.9); null for chores from before. */
+    val createdBy: String? = null,
+    /** Only its creator sees it (Phase 9.9). Other members' personal chores never reach this phone. */
+    @ColumnInfo(defaultValue = "0") val personal: Boolean = false,
 )
 
 @Entity(tableName = "chore_assignment", primaryKeys = ["choreId", "memberId"])
@@ -60,4 +65,7 @@ data class ChoreWithDetails(
     val slots: List<ChoreSlotEntity> = emptyList(),
 ) {
     val assigneeIds get() = assignments.sortedBy { it.position }.map { it.memberId }
+
+    /** The Chores tab's Mine (Phase 9.9): chores [memberId] is assigned to or created. */
+    fun isMine(memberId: String?) = memberId != null && (memberId == chore.createdBy || assignments.any { it.memberId == memberId })
 }

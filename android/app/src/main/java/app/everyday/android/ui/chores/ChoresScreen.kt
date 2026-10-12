@@ -23,6 +23,9 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -87,7 +90,8 @@ fun ChoreWithDetails.isCompleteOn(date: LocalDate) =
 @Composable
 fun ChoresScreen(onEditChore: (String?) -> Unit, onAddReminder: (String) -> Unit) {
     val vm: ChoresViewModel = viewModel(factory = ChoresViewModel.Factory)
-    val chores by vm.chores.collectAsStateWithLifecycle()
+    val allChores by vm.chores.collectAsStateWithLifecycle()
+    val showAll by vm.allChores.collectAsStateWithLifecycle()
     val members by vm.members.collectAsStateWithLifecycle()
     val session by vm.session.collectAsStateWithLifecycle()
     // Checks every minute so "today" rolls over at midnight while the screen is open.
@@ -116,8 +120,9 @@ fun ChoresScreen(onEditChore: (String?) -> Unit, onAddReminder: (String) -> Unit
     val slots: (ChoreWithDetails, String) -> List<ChoreSlotEntity> = { c, m ->
         if (m == myId) mySlots[c.chore.id].orEmpty() else c.slots.filter { it.memberId == m }
     }
+    val chores = if (showAll) allChores else allChores.filter { it.isMine(myId) }
     CompositionLocalProvider(LocalMemberColors provides colors, LocalChoreSlots provides slots) {
-        ChoresContent(vm, chores, members, membersById, myId, today, onEditChore, onAddReminder)
+        ChoresContent(vm, chores, showAll, members, membersById, myId, today, onEditChore, onAddReminder)
     }
 }
 
@@ -125,6 +130,7 @@ fun ChoresScreen(onEditChore: (String?) -> Unit, onAddReminder: (String) -> Unit
 private fun ChoresContent(
     vm: ChoresViewModel,
     chores: List<ChoreWithDetails>,
+    showAll: Boolean,
     members: List<MemberEntity>,
     membersById: Map<String, MemberEntity>,
     myId: String?,
@@ -148,6 +154,7 @@ private fun ChoresContent(
                 )
             }
             val day = focusedDay
+            if (day == null) MineAllSwitch(showAll, onChange = vm::setAllChores)
             if (day != null) {
                 DayView(day, today, chores, membersById, onBack = { focusedDay = null }, onSelect = { selectedId = it })
             } else {
@@ -156,7 +163,7 @@ private fun ChoresContent(
         }
         if (chores.isEmpty()) {
             Text(
-                "No chores yet.\nTap + to add one.",
+                if (showAll) "No chores yet.\nTap + to add one." else "No chores for you yet.\nTap + to add one, or switch to All.",
                 modifier = Modifier.align(Alignment.Center),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -170,6 +177,20 @@ private fun ChoresContent(
 
     chores.firstOrNull { it.chore.id == selectedId }?.let { selected ->
         ChoreDetailsSheet(vm, selected, today, onDismiss = { selectedId = null }, onEditChore = onEditChore, onAddReminder = onAddReminder)
+    }
+}
+
+/** Mine: chores I'm assigned to or created. All: every chore I can see. */
+@Composable
+private fun MineAllSwitch(all: Boolean, onChange: (Boolean) -> Unit) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        listOf(false to "Mine", true to "All").forEachIndexed { i, (value, label) ->
+            SegmentedButton(
+                selected = all == value,
+                onClick = { onChange(value) },
+                shape = SegmentedButtonDefaults.itemShape(i, 2),
+            ) { Text(label) }
+        }
     }
 }
 
