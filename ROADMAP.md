@@ -152,12 +152,12 @@ Gaps left by 2.0.0 and view changes, planned 2026-10-11. Split from the old Phas
 - [x] The month view's member filter starts on **the profile's own events** instead of everyone; others are switched on with the existing filter.
 
 ## Phase 9.8: "Everyone" events and sharing for scheduling (2.4.0)
-Planned 2026-10-11, split out 2026-10-12. Not started.
-- [ ] Events: **Share with: Everyone** (decided 2026-10-11). The event is shared with the whole household, including members who join later: the event stores "everyone" rather than a member list (server and sync change). Members can still leave it.
-- [ ] Events: two clearly different ways to involve someone (decided 2026-10-11), named so the difference is obvious in the editor:
+Planned 2026-10-11, split out 2026-10-12. Built on `dev` 2026-10-12 (server V14, Room 10), not yet released. Decided 2026-10-12: both ways can be mixed on one event (two chip rows, each with Everyone; a person's own choice beats Everyone); someone shared for scheduling can **Hide** it (gone until the owner shares it again); "Others see: Busy | Nothing" now applies to whoever is left out of a shared event too (events shared before stay at Nothing).
+- [x] Events: **Share with: Everyone** (decided 2026-10-11). The event is shared with the whole household, including members who join later: the event stores "everyone" rather than a member list (server and sync change). Members can still leave it.
+- [x] Events: two clearly different ways to involve someone (decided 2026-10-11), named so the difference is obvious in the editor:
   - **Add to the event**: they take part, as sharing works today. It's on their timetable, they can set reminders, and they're told "Sam added you to …".
   - **Share for scheduling**: they can see it but aren't taking part. They see the title and times (like Busy, but with the title), with no reminders and no notification. Works with "Everyone" too.
-- [ ] The week view also shows scheduling-shared events.
+- [x] The week view also shows scheduling-shared events.
 
 ## Phase 9.9: Personal chores (2.5.0)
 Planned 2026-10-11, split out 2026-10-12. Not started.
