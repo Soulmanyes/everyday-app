@@ -533,7 +533,11 @@ class SyncStore(private val db: DataSource) {
         return SyncResponse(
             busy = busy,
             events = events.map {
-                it.copy(members = members[it.id to false].orEmpty(), schedulingMembers = members[it.id to true].orEmpty())
+                // Under Everyone I'm on another member's event without a row: name me anyway, as phones before
+                // 2.4 only show (and let me leave) events whose members include me.
+                val taking = members[it.id to false].orEmpty()
+                val named = it.ownerMemberId == me.toString() || taking.any { m -> m.memberId == me.toString() }
+                it.copy(members = if (named) taking else taking + EventMemberDto(me.toString()), schedulingMembers = members[it.id to true].orEmpty())
             },
             reminders = rows.map { r -> r.copy(times = times[r.id].orEmpty(), windows = windows[r.id].orEmpty()) },
             states = states,

@@ -377,7 +377,8 @@ class SyncApiTest {
         client.syncOk(home, SyncRequest(home.sam, events = listOf(e)))
         val alex = client.syncOk(home, SyncRequest(home.alex)).events.single()
         assertEquals(listOf(e.id, Everyone.MEMBER), listOf(alex.id, alex.everyone))
-        assertTrue(alex.members.isEmpty())
+        // Named, so phones before 2.4 show it too.
+        assertEquals(listOf(home.alex), alex.members.map { it.memberId })
         val r = reminder(home.alex, e.id)
         assertTrue(client.syncOk(home, SyncRequest(home.alex, reminders = listOf(r))).rejected.isEmpty())
         assertEquals(Everyone.MEMBER, client.syncOk(home, SyncRequest(home.sam)).events.single().everyone)
