@@ -51,6 +51,21 @@ data class EventDraft(
     val showBusy: Boolean = true,
 )
 
+/** A one-off event lasts up to this many days after its start day (Phase 9.6); a weekly one up to 6. */
+const val MAX_EVENT_END_DAYS = 31
+
+/** Why the server would refuse this event, as the editor says it, or null if it's fine. */
+fun EventDraft.problem(): String? = when {
+    title.isBlank() -> "Enter a title."
+    weekly && weekdays == 0 -> "Choose at least one day."
+    !weekly && date == null -> "Choose a date."
+    endDays > 0 && weekly && Integer.bitCount(weekdays) != 1 -> "An event over several days starts on one day of the week."
+    endDays > (if (weekly) 6 else MAX_EVENT_END_DAYS) -> "An event can last up to ${if (weekly) "a week" else "$MAX_EVENT_END_DAYS days"}."
+    endDays > 0 && startMinute != null && endMinute == null -> "Choose when it ends."
+    endDays == 0 && startMinute != null && endMinute != null && endMinute <= startMinute -> "The end time must be after the start time."
+    else -> null
+}
+
 /**
  * How a person's persistent reminder on an event shows: not at all, all day, or from X minutes before the
  * start. On a multi-day event the last two last until its end ("whole event"), while [EachDay] shows all
@@ -228,6 +243,21 @@ class ReminderRepository(
             }
         }
         id
+    }
+
+    /** Calendar events the current profile imported before (Phase 10) whose Everyday event still exists. */
+    suspend fun importedKeys(): Set<String> = db.importDao().importedKeys(currentMemberId()).toSet()
+
+    /**
+     * Saves events imported from the phone's calendar as the current profile's own, and remembers each one's
+     * source key (Phase 10). Returns their ids, in order.
+     */
+    suspend fun importEvents(items: List<Pair<String, EventDraft>>): List<String> = db.withTransaction {
+        val now = clock()
+        val me = currentMemberId()
+        val ids = items.map { (_, draft) -> saveEvent(draft) }
+        db.importDao().insert(items.zip(ids).map { (item, id) -> ImportedEventEntity(me, item.first, id, now) })
+        ids
     }
 
     /** Deletes an event the current profile owns, and its reminders. */

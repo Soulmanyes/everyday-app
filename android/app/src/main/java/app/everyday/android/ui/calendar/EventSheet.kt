@@ -50,7 +50,7 @@ import app.everyday.android.ui.formatMinute
 import java.time.LocalDate
 
 /** Choices for "X before the start", in minutes. */
-private val BEFORE_CHOICES = listOf(0, 5, 10, 15, 30, 60, 120, 180)
+private val BEFORE_CHOICES = listOf(0, 5, 10, 15, 30, 60, 120, 180, 1440, 2880)
 
 /** Details of an event tapped on the timetable, with the picked profile's own reminders on it. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

@@ -24,21 +24,25 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         EventEntity::class,
         EventMemberEntity::class,
         BusyEventEntity::class,
+        ImportedEventEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
     // 1 -> 2 and 3 -> 4 add chore cache tables, 4 -> 5 the member colour, 6 -> 7 Busy events (Phase 7),
-    // 7 -> 8 the household of members and chores (Phase 9), 9 -> 10 Everyone and sharing for scheduling (Phase 9.8).
+    // 7 -> 8 the household of members and chores (Phase 9), 9 -> 10 Everyone and sharing for scheduling (Phase 9.8),
+    // 10 -> 11 personal chores (Phase 9.9), 11 -> 12 events imported from the phone's calendar (Phase 10).
     // MigrationTest checks reminders survive every step.
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 6, to = 7),
         AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11),
+        AutoMigration(from = 11, to = 12),
     ],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun reminderDao(): ReminderDao
     abstract fun memberDao(): MemberDao
     abstract fun choreDao(): ChoreDao
+    abstract fun importDao(): ImportDao
 
     companion object {
         fun create(context: Context): AppDatabase =

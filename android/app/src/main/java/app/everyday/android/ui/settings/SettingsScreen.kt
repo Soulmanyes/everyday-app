@@ -62,7 +62,13 @@ private val SNOOZE_OPTIONS = listOf(5, 10, 15, 30, 60)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(household: HouseholdViewModel, onBack: () -> Unit, onManageMembers: () -> Unit, onWhatsNew: () -> Unit) {
+fun SettingsScreen(
+    household: HouseholdViewModel,
+    onBack: () -> Unit,
+    onManageMembers: () -> Unit,
+    onWhatsNew: () -> Unit,
+    onImport: () -> Unit,
+) {
     // [household] is the app's shared one: switching or adding a household here changes the app's top screen.
     val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -137,6 +143,18 @@ fun SettingsScreen(household: HouseholdViewModel, onBack: () -> Unit, onManageMe
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+            // Phase 10: a one-time copy, no ongoing sync.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text("Import from calendar")
+                    Text(
+                        "Copy events from your phone's calendar, such as Google Calendar, into Everyday as your own events.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                OutlinedButton(onClick = onImport) { Text("Import") }
             }
             HorizontalDivider()
 

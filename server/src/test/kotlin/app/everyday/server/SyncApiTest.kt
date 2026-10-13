@@ -147,6 +147,20 @@ class SyncApiTest {
     }
 
     @Test
+    fun `before the start goes up to 7 days, clock times stay within a day`() = api { client, home ->
+        val timed = event(home.sam)
+        client.syncOk(home, SyncRequest(home.sam, events = listOf(timed)))
+        val twoDays = reminder(home.sam, timed.id).copy(times = listOf(TimeDto(2880, relative = true)))
+        val week = reminder(home.sam, timed.id).copy(times = listOf(TimeDto(10080, relative = true)))
+        val tooEarly = reminder(home.sam, timed.id).copy(times = listOf(TimeDto(10081, relative = true)))
+        val badClock = reminder(home.sam, timed.id).copy(times = listOf(TimeDto(1440)))
+        val out = client.syncOk(home, SyncRequest(home.sam, reminders = listOf(twoDays, week, tooEarly, badClock)))
+        assertEquals(listOf(tooEarly.id, badClock.id), out.rejected)
+        assertEquals(listOf(TimeDto(2880, relative = true)), out.reminders.single { it.id == twoDays.id }.times)
+        assertEquals(listOf(TimeDto(10080, relative = true)), out.reminders.single { it.id == week.id }.times)
+    }
+
+    @Test
     fun `reminder rules`() = api { client, home ->
         val timed = event(home.sam)
         val allDay = event(home.sam).copy(startMinute = null, endMinute = null)
