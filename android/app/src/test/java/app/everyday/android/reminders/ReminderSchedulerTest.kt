@@ -191,6 +191,14 @@ class ReminderSchedulerTest {
         ReminderSpec("e", ReminderMode.TIMED, weekdays, active = true, onDate = onDate, eventStart = start, minutesBefore = before.toList())
 
     @Test
+    fun `a reminder 7 days before an event 12 days away is scheduled`() {
+        // One-off on Mon 2026-10-19 at 09:00, 7 days before = Mon 2026-10-12 09:00; now is Wed 2026-10-07.
+        val r = eventTimed(hm(9), 7 * 1440, onDate = LocalDate.of(2026, 10, 19))
+        assertEquals(at("2026-10-12T09:00"), compute(listOf(r), "2026-10-07T20:00", null).nextWakeAt)
+        assertEquals(setOf("e"), compute(listOf(r), "2026-10-12T09:00", "2026-10-12T08:55").dueTimed)
+    }
+
+    @Test
     fun `minutes before the start fire on the day before when the event is just after midnight`() {
         // Thursday 00:15, 30 minutes before = Wednesday 23:45.
         val r = eventTimed(hm(0, 15), 30, weekdays = 0b0001000)

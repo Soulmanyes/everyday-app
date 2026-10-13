@@ -10,9 +10,11 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.everyday.android.EverydayApplication
 import app.everyday.android.data.EventDraft
+import app.everyday.android.data.MAX_EVENT_END_DAYS
 import app.everyday.android.data.MemberEntity
 import app.everyday.android.data.ReminderRepository
 import app.everyday.android.data.Sharing
+import app.everyday.android.data.problem
 import app.everyday.android.reminders.MINUTES_PER_DAY
 import app.everyday.android.reminders.ReminderEngine
 import kotlinx.coroutines.flow.SharingStarted
@@ -82,16 +84,7 @@ class EventEditorViewModel(
 
     fun save(onSaved: () -> Unit) {
         val d = draft
-        error = when {
-            d.title.isBlank() -> "Enter a title."
-            d.weekly && d.weekdays == 0 -> "Choose at least one day."
-            !d.weekly && d.date == null -> "Choose a date."
-            d.endDays > 0 && d.weekly && Integer.bitCount(d.weekdays) != 1 -> "An event over several days starts on one day of the week."
-            d.endDays > (if (d.weekly) 6 else MAX_END_DAYS) -> "An event can last up to ${if (d.weekly) "a week" else "$MAX_END_DAYS days"}."
-            d.endDays > 0 && d.startMinute != null && d.endMinute == null -> "Choose when it ends."
-            d.endDays == 0 && d.startMinute != null && d.endMinute != null && d.endMinute <= d.startMinute -> "The end time must be after the start time."
-            else -> null
-        }
+        error = d.problem()
         if (error != null) return
         viewModelScope.launch {
             repository.saveEvent(d)
@@ -111,7 +104,7 @@ class EventEditorViewModel(
 
     companion object {
         /** A one-off event lasts up to this many days after its start day (Phase 9.6). */
-        const val MAX_END_DAYS = 31
+        const val MAX_END_DAYS = MAX_EVENT_END_DAYS
 
         fun factory(eventId: String?) = viewModelFactory {
             initializer {

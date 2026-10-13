@@ -218,6 +218,8 @@ private val PRIVACY_NOTE = listOf(
         "the household. Join codes, invites, admin PINs and phone keys are stored only in scrambled (hashed) form.",
     "Other households on the server can't see anything of yours, and you can't see theirs.",
     "Instant updates go through Google's Firebase, but carry no household data: only a \"sync now\" signal.",
+    "Import from calendar reads your phone's calendar only while you import. Only the events you tick are saved, " +
+        "as your own events; nothing else from the calendar leaves the phone.",
     "The server owner can see, without names, how many households and members there are and when they were last " +
         "used. Like anyone running a server, they could technically read the database.",
     "Your household's admin can delete it and everything in it, for everyone, from Settings → Manage members. " +

@@ -237,7 +237,7 @@ class SyncStore(private val db: DataSource) {
                 if (r.mode == "TIMED") {
                     if (r.leadMinutes != null) reject("lead is for persistent reminders")
                     if (r.eachDay == true) reject("each day is for persistent reminders")
-                    if (r.times.any { it.minute !in 0..1439 }) reject("bad time")
+                    if (r.times.any { it.minute !in (if (it.relative) 0..MAX_BEFORE_MINUTES else 0..1439) }) reject("bad time")
                     if (r.times.any { it.relative } && start.isEmpty) reject("all-day events have no start")
                 } else {
                     if (r.times.isNotEmpty()) reject("persistent reminders have no times")
@@ -549,6 +549,8 @@ class SyncStore(private val db: DataSource) {
     private companion object {
         val MODES = setOf("TIMED", "PERSISTENT")
         val SOUNDS = setOf("SOUND", "VIBRATE", "SOUND_VIBRATE", "SILENT")
+        /** "Before the start" reminder times go up to 7 days (Phase 10); clock times stay within a day. */
+        const val MAX_BEFORE_MINUTES = 7 * 1440
     }
 }
 

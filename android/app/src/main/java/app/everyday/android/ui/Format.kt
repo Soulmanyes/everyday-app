@@ -34,12 +34,21 @@ fun formatWeekdays(mask: Int): String = when (mask) {
     else -> DayOfWeek.entries.filter { mask and (1 shl (it.value - 1)) != 0 }.joinToString(", ") { dayShort(it) }
 }
 
-/** "30 min before", "1 h before", "1 h 30 min before" or "At start" for a reminder relative to an event's start. */
-fun formatBefore(minutes: Int): String = when {
-    minutes == 0 -> "At start"
-    minutes % 60 == 0 -> "${minutes / 60} h before"
-    minutes > 60 -> "${minutes / 60} h ${minutes % 60} min before"
-    else -> "$minutes min before"
+/**
+ * "30 min before", "1 h before", "1 h 30 min before", "2 days before", "1 day 3 h before" or "At start" for a
+ * reminder relative to an event's start (up to 7 days, Phase 10).
+ */
+fun formatBefore(minutes: Int): String {
+    if (minutes == 0) return "At start"
+    val days = minutes / MINUTES_PER_DAY
+    val hours = minutes % MINUTES_PER_DAY / 60
+    val mins = minutes % 60
+    val parts = listOfNotNull(
+        days.takeIf { it > 0 }?.let { if (it == 1) "1 day" else "$it days" },
+        hours.takeIf { it > 0 }?.let { "$it h" },
+        mins.takeIf { it > 0 }?.let { "$it min" },
+    )
+    return parts.joinToString(" ") + " before"
 }
 
 /** When an event happens: "Tue, Thu · 17:00 – 18:00", "Mon 20 Oct · All day", "Every day · 08:00". */

@@ -234,6 +234,17 @@ class MigrationTest {
         db.query("SELECT createdBy, personal FROM chore").use { it.moveToFirst(); assertEquals(true, it.isNull(0)); assertEquals(0, it.getInt(1)) }
     }
 
+    @Test
+    fun migrate11To12KeepsEventsAndAddsAnEmptyImportTable() {
+        helper.createDatabase(DB, 11).apply {
+            execSQL("INSERT INTO event (id, ownerMemberId, title, notes, weekdays, onDate, startMinute, endMinute, createdAt, updatedAt, deleted, dirty, showBusy, endDays, everyone) VALUES ('e1', 'm1', 'Gym', NULL, 1, NULL, 600, 660, 1, 1, 0, 0, 1, 0, 'NONE')")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(DB, 12, true)
+        db.query("SELECT title FROM event").use { it.moveToFirst(); assertEquals("Gym", it.getString(0)) }
+        db.query("SELECT COUNT(*) FROM imported_event").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

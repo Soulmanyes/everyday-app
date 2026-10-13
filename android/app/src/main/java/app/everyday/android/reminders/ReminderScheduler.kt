@@ -101,7 +101,9 @@ object ReminderScheduler {
 
             when (r.mode) {
                 ReminderMode.TIMED -> {
-                    for (date in dates(today.minusDays(1), today.plusDays(LOOKAHEAD_DAYS))) {
+                    // "Before" times can be up to 7 days ahead of an occurrence, so look that much further for those.
+                    val extra = if (r.minutesBefore.isEmpty()) 0L else (r.minutesBefore.max() + MINUTES_PER_DAY - 1L) / MINUTES_PER_DAY
+                    for (date in dates(today.minusDays(1), today.plusDays(LOOKAHEAD_DAYS + extra))) {
                         if (date in r.choreDoneOn) continue
                         // Fixed times on every day the event covers; "before" times only before an occurrence starts.
                         val fixed = if (r.isOn(date)) r.times.map { instantAt(date, it, zone) } else emptyList()

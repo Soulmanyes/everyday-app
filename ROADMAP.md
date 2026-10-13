@@ -167,10 +167,12 @@ Planned 2026-10-11, split out 2026-10-12. Released 2026-10-13 as 2.5.0 (server V
 - [x] A **Mine | All** switch on the Chores tab (decided 2026-10-12, per phone, starts on Mine). All shows every chore except other members' personal ones.
 
 ## Phase 10: Import from Google Calendar (2.6.0)
-Planned 2026-10-11. Not started. App only: no server change.
-- [ ] One-time import from the **phone's own calendar** (Google Calendar syncs onto the phone; read with `READ_CALENDAR`, no Google sign-in or API). Pick calendars, then tick the coming events to import; each becomes one of the profile's events.
-- [ ] Weekly repeats and one-off events import as they are. Other repeats (daily, every 2 weeks, monthly, yearly) become one-off events for the next 3 months. Multi-day events import as multi-day events (Phase 9.6).
-- [ ] No ongoing sync: later changes in Google Calendar don't follow. Importing the same event again is recognised and skipped (the Google event id is remembered).
+Planned 2026-10-11. Built on `dev` 2026-10-13, not yet released (server V16, Room 12). Started as app only; the longer "before" reminders (decided 2026-10-13) need a server change.
+- [x] One-time import from the **phone's own calendar** (Google Calendar syncs onto the phone; read with `READ_CALENDAR`, no Google sign-in or API), from **Settings → Import from calendar** (decided 2026-10-13). Pick calendars (primary ones ticked), then tick the events of the next 3 months to import (none ticked, with Select all); each becomes one of the profile's own events, shown to others as Busy like any new event (decided 2026-10-13).
+- [x] Weekly repeats (every week, no end) and one-off events import as they are. Daily repeats with no end import as an "Every day" weekly event (decided 2026-10-13). Other repeats (with an end date or count, every 2+ weeks or days, monthly, yearly), and weekly ones starting more than a week ahead, become one-off events for the next 3 months. Multi-day events import as multi-day events (Phase 9.6). Google descriptions become notes (HTML removed, up to 500 characters).
+- [x] No ongoing sync: later changes in Google Calendar don't follow. Importing the same event again is recognised and skipped: the iCal UID (plus the start, for an occurrence imported as a one-off) is remembered **on this phone only** (Room `imported_event`, per member; decided 2026-10-13). An imported event deleted in Everyday can be imported again.
+- [x] **Reminder review** after importing (decided 2026-10-13): a one-time list of the imported events' calendar pop-up reminders, none ticked; ticked ones become Everyday reminders. On timed events they're "X before the start"; on all-day events (Google counts back from midnight, usually to the day before) they become that clock time on the event's day. Reminders over 7 days before are shown greyed out.
+- [x] "Before the start" reminders now go up to **7 days** (were under 24 hours; server V16, decided 2026-10-13), and the event sheet offers **1 day** and **2 days before**. The scheduler looks that much further ahead. Phones on 2.5 accept them but may miss ones over a day ahead until they update.
 
 ## Phase 11: Better colour picking (2.7.0)
 Added 2026-10-12. Not started. Details to decide when it starts.
