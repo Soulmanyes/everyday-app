@@ -25,6 +25,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -33,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -133,6 +135,19 @@ fun ChoreEditorScreen(choreId: String?, onDone: () -> Unit) {
                         )
                     }
                 }
+                if (vm.canBePersonal) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Personal (only I see it)")
+                            Text(
+                                "Nobody else in the household sees this chore.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = draft.personal, onCheckedChange = { on -> vm.update { it.copy(personal = on) } })
+                    }
+                }
             }
 
             vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -143,7 +158,15 @@ fun ChoreEditorScreen(choreId: String?, onDone: () -> Unit) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete chore?") },
-            text = { Text("It's removed for the whole household, with everyone's reminders for it.") },
+            text = {
+                Text(
+                    if (draft.personal && vm.canBePersonal) {
+                        "It's removed, with your reminders for it."
+                    } else {
+                        "It's removed for the whole household, with everyone's reminders for it."
+                    },
+                )
+            },
             confirmButton = { TextButton(onClick = { confirmDelete = false; vm.delete(onDone) }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )

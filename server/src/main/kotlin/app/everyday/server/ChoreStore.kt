@@ -8,12 +8,21 @@ import javax.sql.DataSource
 /** SQL for chores, assignments and completions. Every method runs in its own transaction. */
 class ChoreStore(private val db: DataSource) {
 
-    /** Every chore that isn't deleted, with its assignees, plus the completions on [today]. */
-    fun snapshot(householdId: UUID, today: LocalDate): ChoresResponse = db.transaction { conn ->
-        conn.snapshot(householdId, today)
+    /**
+     * Every chore that isn't deleted and that [viewer] sees (all but other members' personal chores), with its
+     * assignees, plus the completions on [today].
+     */
+    fun snapshot(householdId: UUID, viewer: UUID, today: LocalDate): ChoresResponse = db.transaction { conn ->
+        conn.snapshot(householdId, viewer, today)
     }
 
-    private data class Existing(val householdId: UUID, val deleted: Boolean, val completion: ChoreCompletion)
+    private data class Existing(
+        val householdId: UUID,
+        val deleted: Boolean,
+        val completion: ChoreCompletion,
+        val createdBy: UUID?,
+        val personal: Boolean,
+    )
 
     sealed interface Result {
         data class Ok(val snapshot: ChoresResponse) : Result
@@ -21,27 +30,55 @@ class ChoreStore(private val db: DataSource) {
         data class Invalid(val message: String) : Result
     }
 
-    /** Creates the chore with this client-generated [id], or updates it. A deleted chore stays deleted. */
-    fun upsert(householdId: UUID, id: UUID, req: ChoreRequest, assignees: Set<UUID>, today: LocalDate): Result =
+    /**
+     * Creates the chore with this client-generated [id], or updates it, as [caller]. A deleted chore stays deleted,
+     * and another member's personal chore counts as missing. A new chore's creator is [caller], and never changes.
+     */
+    fun upsert(householdId: UUID, id: UUID, req: ChoreRequest, assignees: Set<UUID>, caller: UUID, today: LocalDate): Result =
         db.transaction { conn ->
             if (!conn.allActiveMembers(householdId, assignees)) return@transaction Result.Invalid("Unknown member.")
-            val existing = conn.prepareStatement("SELECT household_id, deleted, completion FROM chore WHERE id = ? FOR UPDATE").run {
+            val existing = conn.prepareStatement(
+                "SELECT household_id, deleted, completion, created_by, personal FROM chore WHERE id = ? FOR UPDATE",
+            ).run {
                 setObject(1, id)
                 executeQuery().use { rs ->
-                    if (rs.next()) Existing(rs.getObject(1, UUID::class.java), rs.getBoolean(2), ChoreCompletion.valueOf(rs.getString(3))) else null
+                    if (rs.next()) {
+                        Existing(
+                            rs.getObject(1, UUID::class.java), rs.getBoolean(2), ChoreCompletion.valueOf(rs.getString(3)),
+                            rs.getObject(4, UUID::class.java), rs.getBoolean(5),
+                        )
+                    } else {
+                        null
+                    }
                 }
             }
             if (existing != null && (existing.householdId != householdId || existing.deleted)) return@transaction Result.NotFound
+            if (existing != null && existing.personal && existing.createdBy != caller) return@transaction Result.NotFound
+
+            // Personal only while the creator is its only assignee. Phones before 2.5 send no `personal`: the
+            // stored value stays, unless the edit gave the chore other assignees.
+            val creator = if (existing == null) caller else existing.createdBy
+            val canBePersonal = creator == caller && assignees == setOf(caller)
+            val personal = when (req.personal) {
+                true -> canBePersonal.also {
+                    if (!it) return@transaction Result.Invalid("Only a chore you made just for yourself can be personal.")
+                }
+                false -> false
+                null -> existing?.personal == true && canBePersonal
+            }
 
             conn.prepareStatement(
                 """
-                INSERT INTO chore (id, household_id, title, notes, weekdays, completion) VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO chore (id, household_id, title, notes, weekdays, completion, created_by, personal)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, notes = EXCLUDED.notes,
-                    weekdays = EXCLUDED.weekdays, completion = EXCLUDED.completion, updated_at = now()
+                    weekdays = EXCLUDED.weekdays, completion = EXCLUDED.completion, personal = EXCLUDED.personal,
+                    updated_at = now()
                 """.trimIndent(),
             ).run {
                 setObject(1, id); setObject(2, householdId); setString(3, req.title); setString(4, req.notes)
-                setInt(5, req.weekdays); setString(6, req.completion.name); executeUpdate()
+                setInt(5, req.weekdays); setString(6, req.completion.name); setObject(7, caller); setBoolean(8, personal)
+                executeUpdate()
             }
             conn.prepareStatement(
                 "UPDATE chore_assignment SET deleted = TRUE, updated_at = now() WHERE chore_id = ? AND NOT deleted AND NOT (member_id = ANY (?))",
@@ -64,14 +101,15 @@ class ChoreStore(private val db: DataSource) {
                     setObject(1, id); setObject(2, today); executeUpdate()
                 }
             }
-            Result.Ok(conn.snapshot(householdId, today))
+            Result.Ok(conn.snapshot(householdId, caller, today))
         }
 
-    fun delete(householdId: UUID, id: UUID, today: LocalDate): Result = db.transaction { conn ->
+    /** Deletes the chore as [caller]; another member's personal chore counts as missing. */
+    fun delete(householdId: UUID, id: UUID, caller: UUID, today: LocalDate): Result = db.transaction { conn ->
         val updated = conn.prepareStatement(
-            "UPDATE chore SET deleted = TRUE, updated_at = now() WHERE id = ? AND household_id = ? AND NOT deleted",
-        ).run { setObject(1, id); setObject(2, householdId); executeUpdate() }
-        if (updated == 0) Result.NotFound else Result.Ok(conn.snapshot(householdId, today))
+            "UPDATE chore SET deleted = TRUE, updated_at = now() WHERE id = ? AND household_id = ? AND NOT deleted AND ${visible()}",
+        ).run { setObject(1, id); setObject(2, householdId); setObject(3, caller); executeUpdate() }
+        if (updated == 0) Result.NotFound else Result.Ok(conn.snapshot(householdId, caller, today))
     }
 
     /**
@@ -80,14 +118,14 @@ class ChoreStore(private val db: DataSource) {
      */
     fun markDone(householdId: UUID, choreId: UUID, memberId: UUID, today: LocalDate): Result = db.transaction { conn ->
         // Locking the chore row serialises marks, so an ANY chore can't get two completions for a day.
-        val completion = conn.lockChore(householdId, choreId) ?: return@transaction Result.NotFound
+        val completion = conn.lockChore(householdId, choreId, memberId) ?: return@transaction Result.NotFound
         if (!conn.allActiveMembers(householdId, setOf(memberId))) return@transaction Result.Invalid("Unknown member.")
         when (completion) {
             ChoreCompletion.ANY -> {
                 val alreadyDone = conn.prepareStatement("SELECT 1 FROM chore_completion WHERE chore_id = ? AND done_on = ?").run {
                     setObject(1, choreId); setObject(2, today); executeQuery().use { it.next() }
                 }
-                if (alreadyDone) return@transaction Result.Ok(conn.snapshot(householdId, today))
+                if (alreadyDone) return@transaction Result.Ok(conn.snapshot(householdId, memberId, today))
             }
             ChoreCompletion.EACH -> if (!conn.isAssigned(choreId, memberId)) {
                 return@transaction Result.Invalid("Only people assigned to this chore can tick their part.")
@@ -96,12 +134,12 @@ class ChoreStore(private val db: DataSource) {
         conn.prepareStatement(
             "INSERT INTO chore_completion (chore_id, member_id, done_on) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
         ).run { setObject(1, choreId); setObject(2, memberId); setObject(3, today); executeUpdate() }
-        Result.Ok(conn.snapshot(householdId, today))
+        Result.Ok(conn.snapshot(householdId, memberId, today))
     }
 
     /** ANY: clears today's completion, whoever marked it. EACH: clears only [memberId]'s part. */
     fun undoDone(householdId: UUID, choreId: UUID, memberId: UUID, today: LocalDate): Result = db.transaction { conn ->
-        val completion = conn.lockChore(householdId, choreId) ?: return@transaction Result.NotFound
+        val completion = conn.lockChore(householdId, choreId, memberId) ?: return@transaction Result.NotFound
         val sql = when (completion) {
             ChoreCompletion.ANY -> "DELETE FROM chore_completion WHERE chore_id = ? AND done_on = ?"
             ChoreCompletion.EACH -> "DELETE FROM chore_completion WHERE chore_id = ? AND done_on = ? AND member_id = ?"
@@ -111,12 +149,13 @@ class ChoreStore(private val db: DataSource) {
             if (completion == ChoreCompletion.EACH) setObject(3, memberId)
             executeUpdate()
         }
-        Result.Ok(conn.snapshot(householdId, today))
+        Result.Ok(conn.snapshot(householdId, memberId, today))
     }
 
-    private fun Connection.lockChore(householdId: UUID, choreId: UUID): ChoreCompletion? =
-        prepareStatement("SELECT completion FROM chore WHERE id = ? AND household_id = ? AND NOT deleted FOR UPDATE").run {
-            setObject(1, choreId); setObject(2, householdId)
+    /** Another member's personal chore counts as missing. */
+    private fun Connection.lockChore(householdId: UUID, choreId: UUID, viewer: UUID): ChoreCompletion? =
+        prepareStatement("SELECT completion FROM chore WHERE id = ? AND household_id = ? AND NOT deleted AND ${visible()} FOR UPDATE").run {
+            setObject(1, choreId); setObject(2, householdId); setObject(3, viewer)
             executeQuery().use { rs -> if (rs.next()) ChoreCompletion.valueOf(rs.getString(1)) else null }
         }
 
@@ -131,25 +170,29 @@ class ChoreStore(private val db: DataSource) {
             executeQuery().use { it.next(); it.getInt(1) == ids.size }
         }
 
-    private fun Connection.snapshot(householdId: UUID, today: LocalDate): ChoresResponse {
+    private fun Connection.snapshot(householdId: UUID, viewer: UUID, today: LocalDate): ChoresResponse {
+        val visible = visible("c.")
         val assignees = prepareStatement(
             """
             SELECT a.chore_id, a.member_id FROM chore_assignment a
             JOIN chore c ON c.id = a.chore_id JOIN member m ON m.id = a.member_id
-            WHERE c.household_id = ? AND NOT c.deleted AND NOT a.deleted AND NOT m.deleted
+            WHERE c.household_id = ? AND NOT c.deleted AND $visible AND NOT a.deleted AND NOT m.deleted
             ORDER BY m.created_at
             """.trimIndent(),
         ).run {
-            setObject(1, householdId)
+            setObject(1, householdId); setObject(2, viewer)
             executeQuery().use { rs ->
                 buildList { while (rs.next()) add(rs.getString(1) to rs.getString(2)) }
             }
         }.groupBy({ it.first }, { it.second })
 
         val chores = prepareStatement(
-            "SELECT id, title, notes, weekdays, completion FROM chore WHERE household_id = ? AND NOT deleted ORDER BY lower(title), id",
+            """
+            SELECT id, title, notes, weekdays, completion, created_by, personal FROM chore
+            WHERE household_id = ? AND NOT deleted AND ${visible()} ORDER BY lower(title), id
+            """.trimIndent(),
         ).run {
-            setObject(1, householdId)
+            setObject(1, householdId); setObject(2, viewer)
             executeQuery().use { rs ->
                 buildList {
                     while (rs.next()) {
@@ -162,6 +205,8 @@ class ChoreStore(private val db: DataSource) {
                                 weekdays = rs.getInt("weekdays"),
                                 completion = ChoreCompletion.valueOf(rs.getString("completion")),
                                 assigneeIds = assignees[id].orEmpty(),
+                                createdBy = rs.getString("created_by"),
+                                personal = rs.getBoolean("personal"),
                             ),
                         )
                     }
@@ -173,11 +218,11 @@ class ChoreStore(private val db: DataSource) {
             """
             SELECT cc.chore_id, cc.member_id, cc.done_on FROM chore_completion cc
             JOIN chore c ON c.id = cc.chore_id
-            WHERE c.household_id = ? AND NOT c.deleted AND cc.done_on = ?
+            WHERE c.household_id = ? AND NOT c.deleted AND $visible AND cc.done_on = ?
             ORDER BY cc.created_at
             """.trimIndent(),
         ).run {
-            setObject(1, householdId); setObject(2, today)
+            setObject(1, householdId); setObject(2, viewer); setObject(3, today)
             executeQuery().use { rs ->
                 buildList {
                     while (rs.next()) add(ChoreCompletionDto(rs.getString(1), rs.getString(2), rs.getObject(3, LocalDate::class.java).toString()))
@@ -192,17 +237,17 @@ class ChoreStore(private val db: DataSource) {
             FROM reminder r JOIN reminder_time t ON t.reminder_id = r.id
             JOIN chore c ON c.id = r.chore_id
             JOIN chore_assignment a ON a.chore_id = r.chore_id AND a.member_id = r.owner_member_id AND NOT a.deleted
-            WHERE c.household_id = ? AND NOT c.deleted AND NOT r.deleted AND r.active AND r.mode = 'TIMED'
+            WHERE c.household_id = ? AND NOT c.deleted AND $visible AND NOT r.deleted AND r.active AND r.mode = 'TIMED'
             UNION
             SELECT r.chore_id, r.owner_member_id, w.start_minute, w.end_minute
             FROM reminder r JOIN reminder_window w ON w.reminder_id = r.id
             JOIN chore c ON c.id = r.chore_id
             JOIN chore_assignment a ON a.chore_id = r.chore_id AND a.member_id = r.owner_member_id AND NOT a.deleted
-            WHERE c.household_id = ? AND NOT c.deleted AND NOT r.deleted AND r.active AND r.mode = 'PERSISTENT'
+            WHERE c.household_id = ? AND NOT c.deleted AND $visible AND NOT r.deleted AND r.active AND r.mode = 'PERSISTENT'
             ORDER BY 1, 2, 3
             """.trimIndent(),
         ).run {
-            setObject(1, householdId); setObject(2, householdId)
+            setObject(1, householdId); setObject(2, viewer); setObject(3, householdId); setObject(4, viewer)
             executeQuery().use { rs ->
                 buildList {
                     while (rs.next()) {
@@ -214,3 +259,6 @@ class ChoreStore(private val db: DataSource) {
         return ChoresResponse(today.toString(), chores, completions, slots)
     }
 }
+
+/** SQL condition: the chore isn't personal, or the member bound to its one parameter created it. */
+private fun visible(alias: String = "") = "(NOT ${alias}personal OR ${alias}created_by = ?)"

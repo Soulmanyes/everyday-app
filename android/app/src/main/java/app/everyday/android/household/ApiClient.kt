@@ -180,7 +180,15 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
 
     suspend fun chores(): ChoreSnapshot = call("GET", "/chores").toChoreSnapshot()
 
-    suspend fun saveChore(id: String, title: String, notes: String?, weekdays: Int, completion: ChoreCompletion, assigneeIds: List<String>) =
+    suspend fun saveChore(
+        id: String,
+        title: String,
+        notes: String?,
+        weekdays: Int,
+        completion: ChoreCompletion,
+        assigneeIds: List<String>,
+        personal: Boolean,
+    ) =
         call(
             "PUT",
             "/chores/$id",
@@ -189,7 +197,8 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
                 .put("notes", notes ?: JSONObject.NULL)
                 .put("weekdays", weekdays)
                 .put("completion", completion.name)
-                .put("assigneeIds", JSONArray(assigneeIds)),
+                .put("assigneeIds", JSONArray(assigneeIds))
+                .put("personal", personal),
         ).toChoreSnapshot()
 
     suspend fun deleteChore(id: String) = call("DELETE", "/chores/$id").toChoreSnapshot()
@@ -299,6 +308,8 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
                     notes = it.optString("notes").takeIf { n -> n.isNotEmpty() && !it.isNull("notes") },
                     weekdays = it.getInt("weekdays"),
                     completion = ChoreCompletion.valueOf(it.getString("completion")),
+                    createdBy = it.optStringOrNull("createdBy"),
+                    personal = it.optBoolean("personal", false),
                 )
             },
             assignees = chores.associate { c ->

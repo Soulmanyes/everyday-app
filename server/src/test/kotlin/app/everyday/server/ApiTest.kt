@@ -488,6 +488,108 @@ class ApiTest {
         assertEquals(listOf(sam), client.chores(token).chores.single().assigneeIds)
     }
 
+    @Test
+    fun `a personal chore is seen and changed only by its creator`() = api { client ->
+        val session = client.createHousehold()
+        val token = session.token
+        val sam = session.household.adminMemberId!!
+        val (alexToken, alex) = client.joinApproved(token, "Alex")
+        val id = UUID.randomUUID().toString()
+
+        val created = client.putChore(alexToken, id, chore(alex).copy(personal = true)).body<ChoresResponse>().chores.single()
+        assertEquals(alex, created.createdBy)
+        assertTrue(created.personal)
+        client.postJson("/chores/$id/done", ChoreDoneRequest(alex), alexToken)
+        assertEquals(1, client.chores(alexToken).completions.size)
+
+        // Sam sees nothing of it, and can't change it.
+        val forSam = client.chores(token)
+        assertTrue(forSam.chores.isEmpty())
+        assertTrue(forSam.completions.isEmpty())
+        assertEquals(HttpStatusCode.NotFound, client.putChore(token, id, chore(sam)).status)
+        assertEquals(HttpStatusCode.NotFound, client.delete("/chores/$id") { header(HttpHeaders.Authorization, "Bearer $token") }.status)
+        assertEquals(HttpStatusCode.NotFound, client.postJson("/chores/$id/done", ChoreDoneRequest(sam), token).status)
+        assertEquals(HttpStatusCode.NotFound, client.postJson("/chores/$id/undo", ChoreDoneRequest(sam), token).status)
+        assertTrue(client.chores(alexToken).chores.single().personal)
+
+        // Turning it off shares it, and the creator stays Alex whoever edits it.
+        client.putChore(alexToken, id, chore(alex).copy(personal = false))
+        val shared = client.putChore(token, id, chore(sam, alex)).body<ChoresResponse>().chores.single()
+        assertEquals(alex, shared.createdBy)
+        assertFalse(shared.personal)
+    }
+
+    @Test
+    fun `only a chore its creator alone is assigned to can be personal`() = api { client ->
+        val session = client.createHousehold()
+        val token = session.token
+        val sam = session.household.adminMemberId!!
+        val (alexToken, alex) = client.joinApproved(token, "Alex")
+        val id = UUID.randomUUID().toString()
+
+        assertEquals(HttpStatusCode.BadRequest, client.putChore(token, id, chore(sam, alex).copy(personal = true)).status)
+        assertEquals(HttpStatusCode.BadRequest, client.putChore(token, id, chore(alex).copy(personal = true)).status)
+        // Sam made it for Alex: Alex can't make it personal either.
+        client.putChore(token, id, chore(alex))
+        assertEquals(HttpStatusCode.BadRequest, client.putChore(alexToken, id, chore(alex).copy(personal = true)).status)
+        assertFalse(client.chores(alexToken).chores.single().personal)
+    }
+
+    @Test
+    fun `phones before 2_5 keep a chore personal until they add someone`() = api { client ->
+        val session = client.createHousehold()
+        val token = session.token
+        val sam = session.household.adminMemberId!!
+        val alex = client.addMember(token, "Alex")
+        val id = UUID.randomUUID().toString()
+        client.putChore(token, id, chore(sam).copy(personal = true))
+
+        // No `personal` sent: the stored value stays.
+        assertTrue(client.putChore(token, id, chore(sam).copy(title = "Gym")).body<ChoresResponse>().chores.single().personal)
+        // Adding an assignee shares it.
+        assertFalse(client.putChore(token, id, chore(sam, alex)).body<ChoresResponse>().chores.single().personal)
+    }
+
+    @Test
+    fun `chores from before 2_5 have no creator`() = api { client ->
+        val session = client.createHousehold()
+        val token = session.token
+        val sam = session.household.adminMemberId!!
+        val id = UUID.randomUUID().toString()
+        client.putChore(token, id, chore(sam))
+        postgres.postgresDatabase.connection.use { it.createStatement().execute("UPDATE chore SET created_by = NULL") }
+
+        assertNull(client.chores(token).chores.single().createdBy)
+        assertEquals(HttpStatusCode.BadRequest, client.putChore(token, id, chore(sam).copy(personal = true)).status)
+        assertNull(client.putChore(token, id, chore(sam).copy(title = "Gym")).body<ChoresResponse>().chores.single().createdBy)
+    }
+
+    @Test
+    fun `removing a member deletes their personal chores, and households still delete`() = api { client ->
+        val session = client.createHousehold()
+        val token = session.token
+        val sam = session.household.adminMemberId!!
+        val (alexToken, alex) = client.joinApproved(token, "Alex")
+        val personal = UUID.randomUUID().toString()
+        val made = UUID.randomUUID().toString()
+        client.putChore(alexToken, personal, chore(alex).copy(personal = true))
+        client.putChore(alexToken, made, chore(sam))
+
+        client.delete("/members/$alex") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            header(ADMIN_PIN_HEADER, PIN)
+        }
+        val deleted = postgres.postgresDatabase.connection.use { conn ->
+            conn.createStatement().executeQuery("SELECT id, deleted FROM chore").use { rs ->
+                buildMap { while (rs.next()) put(rs.getString(1), rs.getBoolean(2)) }
+            }
+        }
+        assertEquals(mapOf(personal to true, made to false), deleted)
+        assertEquals(alex, client.chores(token).chores.single().createdBy)
+
+        assertTrue(api.store.deleteHousehold(UUID.fromString(session.household.id)))
+    }
+
     companion object {
         const val SETUP = "setup-secret"
         const val PIN = "4821"

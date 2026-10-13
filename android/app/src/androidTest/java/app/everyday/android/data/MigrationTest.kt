@@ -224,6 +224,16 @@ class MigrationTest {
         db.query("SELECT title, hiddenAt FROM busy_event").use { it.moveToFirst(); assertEquals(true, it.isNull(0)); assertEquals(true, it.isNull(1)) }
     }
 
+    @Test
+    fun migrate10To11LeavesChoresSharedWithNoCreator() {
+        helper.createDatabase(DB, 10).apply {
+            execSQL("INSERT INTO chore (id, title, notes, weekdays, completion, householdId) VALUES ('c1', 'Bins', NULL, 1, 'ANY', 'h1')")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(DB, 11, true)
+        db.query("SELECT createdBy, personal FROM chore").use { it.moveToFirst(); assertEquals(true, it.isNull(0)); assertEquals(0, it.getInt(1)) }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

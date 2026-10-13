@@ -17,6 +17,7 @@ import app.everyday.android.data.MemberEntity
 import app.everyday.android.data.ReminderMode
 import app.everyday.android.data.ReminderRepository
 import app.everyday.android.reminders.ReminderEngine
+import app.everyday.android.ui.AppPrefs
 import kotlinx.coroutines.flow.map
 import app.everyday.android.household.ApiError
 import app.everyday.android.household.Session
@@ -34,7 +35,13 @@ class ChoresViewModel(
     private val reminders: ReminderRepository,
     private val engine: ReminderEngine,
     private val requestSync: () -> Unit,
+    private val prefs: AppPrefs,
 ) : ViewModel() {
+    /** Mine | All on the Chores tab, per phone. */
+    val allChores = prefs.allChores
+
+    fun setAllChores(all: Boolean) = prefs.setAllChores(all)
+
     /**
      * The current profile's own slots per chore, from its chore reminders on this phone: shown at once,
      * where other members' slots come from the server.
@@ -106,6 +113,7 @@ class ChoresViewModel(
                     app.repository,
                     app.engine,
                     app.sync::requestSync,
+                    app.prefs,
                 )
             }
         }

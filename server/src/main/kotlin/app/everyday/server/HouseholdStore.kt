@@ -257,7 +257,7 @@ class HouseholdStore(internal val db: DataSource) {
 
     /**
      * Soft-deletes a member (a soft delete doesn't trigger ON DELETE CASCADE) with their chore assignments,
-     * their reminders, their place on others' events, and their events except shared ones that members
+     * their personal chores, their reminders, their place on others' events, and their events except shared ones that members
      * still show (those live on read-only).
      * Returns false if there was no such member.
      */
@@ -267,6 +267,10 @@ class HouseholdStore(internal val db: DataSource) {
         ).run { setObject(1, memberId); setObject(2, householdId); executeUpdate() > 0 }
         if (deleted) {
             conn.prepareStatement("UPDATE chore_assignment SET deleted = TRUE, updated_at = now() WHERE member_id = ? AND NOT deleted").run {
+                setObject(1, memberId); executeUpdate()
+            }
+            // Nobody else sees them, so they would stay hidden forever.
+            conn.prepareStatement("UPDATE chore SET deleted = TRUE, updated_at = now() WHERE created_by = ? AND personal AND NOT deleted").run {
                 setObject(1, memberId); executeUpdate()
             }
             conn.prepareStatement("UPDATE event_member SET deleted = TRUE, updated_at = now() WHERE member_id = ? AND NOT deleted").run {

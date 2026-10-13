@@ -279,6 +279,26 @@ class SyncApiTest {
     }
 
     @Test
+    fun `others see no slots on a personal chore`() = api { client, home ->
+        val choreId = UUID.randomUUID().toString()
+        client.put("/chores/$choreId") {
+            contentType(ContentType.Application.Json)
+            header(HttpHeaders.Authorization, "Bearer ${home.tokenOf(home.alex)}")
+            setBody(ChoreRequest("Gym", weekdays = 127, completion = ChoreCompletion.ANY, assigneeIds = listOf(home.alex), personal = true))
+        }
+        val choreReminder = ReminderSyncDto(
+            id = UUID.randomUUID().toString(), ownerMemberId = home.alex, choreId = choreId, message = "Gym", mode = "TIMED",
+            weekdays = 127, times = listOf(TimeDto(480)), createdAt = 1_000, updatedAt = 1_000,
+        )
+        assertTrue(client.syncOk(home, SyncRequest(home.alex, reminders = listOf(choreReminder))).rejected.isEmpty())
+
+        suspend fun slotsFor(token: String) =
+            client.get("/chores") { header(HttpHeaders.Authorization, "Bearer $token") }.body<ChoresResponse>().slots
+        assertEquals(listOf(480), slotsFor(home.tokenOf(home.alex)).map { it.startMinute })
+        assertTrue(slotsFor(home.token).isEmpty())
+    }
+
+    @Test
     fun `a removed member's shared event lives on until every member leaves it`() = api { client, home ->
         val personal = event(home.alex)
         val shared = event(home.alex, home.sam, home.kim)

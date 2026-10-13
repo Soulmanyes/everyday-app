@@ -59,6 +59,16 @@ class AppPrefs(private val context: Context) {
     /** Chores and chore reminders on the Events tab (Phase 9.7); they always show on the Chores and Reminders tabs. */
     val showChores: StateFlow<Boolean> = _showChores.asStateFlow()
 
+    private val _allChores = MutableStateFlow(prefs.getBoolean(KEY_ALL_CHORES, false))
+
+    /** The Chores tab's Mine | All switch (Phase 9.9): false shows only the chores I'm assigned to or created. */
+    val allChores: StateFlow<Boolean> = _allChores.asStateFlow()
+
+    fun setAllChores(all: Boolean) {
+        prefs.edit { putBoolean(KEY_ALL_CHORES, all) }
+        _allChores.value = all
+    }
+
     fun setShowChores(show: Boolean) {
         prefs.edit { putBoolean(KEY_SHOW_CHORES, show) }
         _showChores.value = show
@@ -108,6 +118,7 @@ class AppPrefs(private val context: Context) {
         const val KEY_FOLLOW = "follow_phone_theme"
         const val KEY_MONTH_MODE = "month_mode"
         const val KEY_SHOW_CHORES = "show_chores_on_events"
+        const val KEY_ALL_CHORES = "chores_tab_all"
         const val KEY_MONTH_EVERYONE = "month_everyone"
         /** Before events and chores were split: both, for these members. */
         const val KEY_MONTH_MEMBERS = "month_members"

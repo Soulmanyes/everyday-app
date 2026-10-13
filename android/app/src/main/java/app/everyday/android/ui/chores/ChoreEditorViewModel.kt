@@ -27,6 +27,8 @@ data class ChoreDraft(
     val weekdays: Int = 0,
     val completion: ChoreCompletion = ChoreCompletion.ANY,
     val assigneeIds: List<String> = emptyList(),
+    /** Only the creator sees it; applies only while [ChoreEditorViewModel.canBePersonal]. */
+    val personal: Boolean = false,
 )
 
 /** Add or edit a chore. Saving needs the server; the id is made here so a retry doesn't create a duplicate. */
@@ -35,9 +37,14 @@ class ChoreEditorViewModel(
     private val manager: ChoreManager,
     repository: ChoreRepository,
     members: Flow<List<MemberEntity>>,
+    /** The picked profile. */
+    private val myId: String?,
 ) : ViewModel() {
     private val id = choreId ?: UUID.randomUUID().toString()
     val isNew get() = choreId == null
+
+    /** Who created the chore being edited; null for chores from before Phase 9.9. */
+    private var createdBy: String? = null
     val members = members.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     var draft by mutableStateOf(ChoreDraft())
@@ -51,7 +58,8 @@ class ChoreEditorViewModel(
     init {
         if (choreId != null) viewModelScope.launch {
             repository.observeChores().first().firstOrNull { it.chore.id == choreId }?.let { c ->
-                draft = ChoreDraft(c.chore.title, c.chore.notes.orEmpty(), c.chore.weekdays, c.chore.completion, c.assigneeIds)
+                draft = ChoreDraft(c.chore.title, c.chore.notes.orEmpty(), c.chore.weekdays, c.chore.completion, c.assigneeIds, c.chore.personal)
+                createdBy = c.chore.createdBy
             }
             loaded = true
         }
@@ -61,6 +69,9 @@ class ChoreEditorViewModel(
         draft = transform(draft)
         error = null
     }
+
+    /** Personal is offered only on a chore I created (or am creating) with me as its only assignee. */
+    val canBePersonal get() = myId != null && (isNew || createdBy == myId) && draft.assigneeIds == listOf(myId)
 
     fun toggleDay(bit: Int) = update { it.copy(weekdays = it.weekdays xor (1 shl bit)) }
 
@@ -80,7 +91,8 @@ class ChoreEditorViewModel(
             else -> null
         }
         if (error != null) return
-        run({ manager.save(id, d.title.trim(), d.notes.trim().ifEmpty { null }, d.weekdays, d.completion, assignees) }, onSaved)
+        val personal = d.personal && canBePersonal
+        run({ manager.save(id, d.title.trim(), d.notes.trim().ifEmpty { null }, d.weekdays, d.completion, assignees, personal) }, onSaved)
     }
 
     fun delete(onDeleted: () -> Unit) {
@@ -108,7 +120,7 @@ class ChoreEditorViewModel(
         fun factory(choreId: String?) = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as EverydayApplication
-                ChoreEditorViewModel(choreId, app.chores, app.choreRepository, app.repository.observeMembers())
+                ChoreEditorViewModel(choreId, app.chores, app.choreRepository, app.repository.observeMembers(), app.session.current.memberId)
             }
         }
     }
