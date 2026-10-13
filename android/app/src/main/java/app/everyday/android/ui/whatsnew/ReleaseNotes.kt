@@ -9,6 +9,13 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        15, "2.5.0",
+        listOf(
+            "Personal chores: when you add a chore just for yourself, turn on \"Personal (only I see it)\" and nobody else in the household sees it.",
+            "The Chores tab now starts on Mine: the chores you do and the ones you made for others. Switch to All to see the whole household's.",
+        ),
+    ),
+    ReleaseNote(
         14, "2.4.0",
         listOf(
             "Two ways to share an event: \"Add to the event\" (they take part, with their own reminders) or \"Share for scheduling\" (they only see the title and times).",
