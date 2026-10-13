@@ -72,8 +72,36 @@ class ImportPlannerTest {
                 timed(1, "2026-10-29T18:00", "2026-10-29T19:00", rule),
             ).single()
             assertFalse(rule, c.weekly)
-            assertEquals(rule, listOf("uid1@${ms("2026-10-15T18:00")}", "uid1@${ms("2026-10-29T18:00")}"), c.items.map { it.sourceKey })
+            assertEquals(rule, listOf("uid1|start=${ms("2026-10-15T18:00")}", "uid1|start=${ms("2026-10-29T18:00")}"), c.items.map { it.sourceKey })
         }
+    }
+
+    @Test
+    fun `a weekly series whose occurrence today is over stays weekly`() {
+        // Wednesday 09:00, imported Wednesday afternoon: the first occurrence listed is next week's.
+        val rule = "FREQ=WEEKLY;BYDAY=WE"
+        val next = timed(1, "2026-10-21T09:00", "2026-10-21T10:00", rule).copy(seriesStart = ms("2026-09-02T09:00"))
+        val c = plan(next, next.copy(begin = ms("2026-10-28T09:00"), end = ms("2026-10-28T10:00"))).single()
+        assertTrue(c.weekly)
+        assertEquals(0b0000100, c.items.single().draft.weekdays)
+    }
+
+    @Test
+    fun `the same event in two calendars is listed once`() {
+        val a = timed(1, "2026-10-20T09:00", "2026-10-20T10:00", uid = "x@google.com")
+        val b = a.copy(eventId = 2, calendarId = 2)
+        assertEquals(1, plan(a, b).size)
+    }
+
+    @Test
+    fun `a series imported one way is known the other way too`() {
+        val rule = "FREQ=WEEKLY"
+        val w = timed(1, "2026-10-15T18:00", "2026-10-15T19:00", rule, uid = "f@google.com")
+        // Imported before as one-off occurrences, now weekly: already imported.
+        assertTrue(plan(w, imported = setOf("f@google.com|start=1")).single().alreadyImported)
+        // Imported before as weekly, now one-offs (every 2 weeks reads as one-offs): already imported.
+        val o = timed(1, "2026-10-15T18:00", "2026-10-15T19:00", "FREQ=WEEKLY;INTERVAL=2", uid = "f@google.com")
+        assertTrue(plan(o, imported = setOf("f@google.com")).single().alreadyImported)
     }
 
     @Test
@@ -130,9 +158,9 @@ class ImportPlannerTest {
         val rule = "FREQ=MONTHLY"
         val a = timed(2, "2026-10-21T09:00", "2026-10-21T10:00", rule)
         val b = timed(2, "2026-11-21T09:00", "2026-11-21T10:00", rule)
-        val out = plan(single, a, b, imported = setOf("uid1", "uid2@${a.begin}"))
+        val out = plan(single, a, b, imported = setOf("uid1", "uid2|start=${a.begin}"))
         assertTrue(out[0].alreadyImported)
-        assertEquals(listOf("uid2@${b.begin}"), out[1].items.map { it.sourceKey })
+        assertEquals(listOf("uid2|start=${b.begin}"), out[1].items.map { it.sourceKey })
         assertEquals(1, out[1].importedBefore)
     }
 

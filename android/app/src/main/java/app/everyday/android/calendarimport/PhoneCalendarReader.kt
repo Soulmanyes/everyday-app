@@ -40,7 +40,7 @@ class PhoneCalendarReader(private val resolver: ContentResolver) {
             uri,
             arrayOf(
                 Instances.EVENT_ID, Instances.CALENDAR_ID, Instances.UID_2445, Instances.TITLE, Instances.DESCRIPTION,
-                Instances.ALL_DAY, Instances.BEGIN, Instances.END, Instances.RRULE, Instances.ORIGINAL_ID,
+                Instances.ALL_DAY, Instances.BEGIN, Instances.END, Instances.RRULE, Instances.ORIGINAL_ID, Instances.DTSTART,
             ),
             "${Instances.CALENDAR_ID} IN (${calendarIds.joinToString(",")}) AND ${Instances.STATUS} IS NOT ${Events.STATUS_CANCELED}" +
                 " AND ${Instances.SELF_ATTENDEE_STATUS} IS NOT ${Attendees.ATTENDEE_STATUS_DECLINED} AND ${Instances.END} > ?",
@@ -58,6 +58,7 @@ class PhoneCalendarReader(private val resolver: ContentResolver) {
                 end = c.getLong(7),
                 rrule = c.getString(8)?.takeIf { it.isNotBlank() },
                 originalId = if (c.isNull(9)) null else c.getLong(9),
+                seriesStart = if (c.isNull(10)) null else c.getLong(10),
             )
         }
     }

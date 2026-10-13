@@ -33,6 +33,8 @@ data class PhoneInstance(
     val end: Long,
     val rrule: String?,
     val originalId: Long? = null,
+    /** When the event (the first occurrence of a repeat) starts, epoch millis. */
+    val seriesStart: Long? = null,
 )
 
 /** One Everyday event to create; [sourceKey] remembers what it came from, so it isn't imported twice. */
@@ -54,6 +56,8 @@ data class ImportChoice(
     val importedBefore: Int,
     /** True when it imports as one weekly event. */
     val weekly: Boolean,
+    /** Source keys of all its occurrences, imported before or not. */
+    val keys: List<String> = emptyList(),
 ) {
     val alreadyImported get() = items.isEmpty() && importedBefore > 0
 }
@@ -88,11 +92,22 @@ object ImportPlanner {
      * Groups [instances] (occurrences ending after now, up to [IMPORT_MONTHS] ahead) by calendar event. [imported]
      * holds source keys imported before; [zone] is the phone's, which reminders use too.
      */
-    fun plan(instances: List<PhoneInstance>, today: LocalDate, zone: ZoneId, imported: Set<String>): List<ImportChoice> =
-        instances.groupBy { it.eventId }.values
+    fun plan(instances: List<PhoneInstance>, today: LocalDate, zone: ZoneId, imported: Set<String>): List<ImportChoice> {
+        // The same event can be in two calendars (same UID): list it once.
+        val seen = mutableSetOf<String>()
+        return instances.groupBy { it.eventId }.values
             .map { list -> list.sortedBy { it.begin } }
             .sortedWith(compareBy({ it.first().begin }, { it.first().eventId }))
             .mapNotNull { list -> choice(list, today, zone, imported) }
+            .filter { c -> c.keys.map { seen.add(it) }.any { it } }
+    }
+
+    /** Whether [key] was imported before: a weekly series covers its occurrences, and the other way round. */
+    private fun importedBefore(key: String, imported: Set<String>): Boolean {
+        if (key in imported) return true
+        if (OCCURRENCE !in key) return imported.any { it.startsWith(key + OCCURRENCE) }
+        return key.substringBefore(OCCURRENCE) in imported
+    }
 
     private fun choice(list: List<PhoneInstance>, today: LocalDate, zone: ZoneId, imported: Set<String>): ImportChoice? {
         val first = list.first()
@@ -109,7 +124,7 @@ object ImportPlanner {
             list.map { inst ->
                 val s = shape(inst, zone)
                 ImportItem(
-                    if (single) base else "$base@${inst.begin}",
+                    if (single) base else "$base$OCCURRENCE${inst.begin}",
                     EventDraft(
                         title = title,
                         notes = notes,
@@ -123,8 +138,8 @@ object ImportPlanner {
             }.filter { it.draft.problem() == null }
         }
         if (all.isEmpty()) return null
-        val fresh = all.filter { it.sourceKey !in imported }
-        return ImportChoice(first.eventId, first.calendarId, title, first.allDay, fresh, all.size - fresh.size, weekly != null)
+        val fresh = all.filter { !importedBefore(it.sourceKey, imported) }
+        return ImportChoice(first.eventId, first.calendarId, title, first.allDay, fresh, all.size - fresh.size, weekly != null, all.map { it.sourceKey })
     }
 
     /** One weekly event for a weekly or daily repeat without an end, if every occurrence has the same times. */
@@ -132,7 +147,9 @@ object ImportPlanner {
         if (!openEndedWeekly(list.first().rrule ?: return null)) return null
         val shapes = list.map { shape(it, zone) }
         val s = shapes.first()
-        if (s.date > today.plusDays(WEEKLY_START_DAYS)) return null
+        // Today's occurrence may be over already (and not listed): a series that has begun counts as started.
+        val started = list.first().seriesStart?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() <= today } ?: false
+        if (!started && s.date > today.plusDays(WEEKLY_START_DAYS)) return null
         if (shapes.any { it.startMinute != s.startMinute || it.endMinute != s.endMinute || it.endDays != s.endDays }) return null
         val weekdays = shapes.fold(0) { mask, it -> mask or (1 shl (it.date.dayOfWeek.value - 1)) }
         return EventDraft(weekly = true, weekdays = weekdays, startMinute = s.startMinute, endMinute = s.endMinute, endDays = s.endDays)
@@ -218,4 +235,7 @@ object ImportPlanner {
     }
 
     private const val DAY_MILLIS = 86_400_000L
+
+    /** Joins a UID and an occurrence's start in a source key; UIDs often contain "@" (Google's end in "@google.com"). */
+    const val OCCURRENCE = "|start="
 }
