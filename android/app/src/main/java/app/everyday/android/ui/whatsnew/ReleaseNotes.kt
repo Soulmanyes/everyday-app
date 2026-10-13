@@ -9,6 +9,14 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        16, "2.6.0",
+        listOf(
+            "Import from calendar: copy events from your phone's calendar, such as Google Calendar, into Everyday. Find it in Settings.",
+            "After importing, Everyday lists the events' calendar reminders once, so you can add the ones you want.",
+            "Reminders can now be up to 7 days before an event starts, with 1 day and 2 days before in the list.",
+        ),
+    ),
+    ReleaseNote(
         15, "2.5.0",
         listOf(
             "Personal chores: when you add a chore just for yourself, turn on \"Personal (only I see it)\" and nobody else in the household sees it.",
