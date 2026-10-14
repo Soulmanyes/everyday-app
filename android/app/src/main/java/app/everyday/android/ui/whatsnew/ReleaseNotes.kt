@@ -9,6 +9,14 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        21, "2.6.5",
+        listOf(
+            "Safety: if someone types the admin PIN wrong many times, the admin's phone now says so, and each lockout lasts longer.",
+            "New households need an admin PIN of 6 to 8 digits. Existing PINs keep working.",
+            "People waiting to join no longer see the household's member names until the admin lets them in.",
+        ),
+    ),
+    ReleaseNote(
         20, "2.6.4",
         listOf(
             "Everyday has a new web address: szekbal.duckdns.org. Download links and update checks now use it. The old address still works.",
