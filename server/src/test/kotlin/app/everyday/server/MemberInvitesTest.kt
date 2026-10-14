@@ -33,7 +33,7 @@ class MemberInvitesTest {
     private lateinit var api: ApiContext
     private val db get() = ApiTest.postgres.postgresDatabase
     private var now = Instant.parse("2026-10-11T12:00:00Z")
-    private val PIN = "4821"
+    private val PIN = "482193"
 
     @BeforeTest
     fun setUp() {

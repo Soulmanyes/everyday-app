@@ -181,6 +181,16 @@ class HouseholdManager(
         }
         if (newlyApproved) engine.recompute()
         announceRequests(household.id, household.name, household.pendingRequestIds)
+        if (memberId != null && memberId == household.adminMemberId) announcePinLock(household.id, household.name, household.pinLockedAt ?: 0)
+    }
+
+    /** On an admin's phone: once per lockout, so the admin knows someone may be guessing their PIN. */
+    private fun announcePinLock(householdId: String, householdName: String, lockedAt: Long) {
+        val prefs = context.getSharedPreferences("household", Context.MODE_PRIVATE)
+        val key = "announced_pin_lock_$householdId"
+        // The first refresh as admin (after updating, or joining) only remembers a lockout from before.
+        if (prefs.contains(key) && lockedAt > prefs.getLong(key, 0)) notifier.showPinLocked(householdName, householdId)
+        prefs.edit { putLong(key, lockedAt) }
     }
 
     /** On an admin's phone: one notification per household with new join requests. */

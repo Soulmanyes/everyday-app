@@ -286,7 +286,7 @@ class ApiTest {
     }
 
     @Test
-    fun `too many wrong codes lock joining, even with the right code`() = api { client ->
+    fun `too many wrong codes lock that sender, even with the right code`() = api { client ->
         client.createHousehold()
         repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest("wrong-code", "Alex")).status) }
         assertEquals(HttpStatusCode.TooManyRequests, client.postJson("/join", JoinRequest(code, "Alex")).status)
@@ -298,7 +298,7 @@ class ApiTest {
     fun `the lockout keeps its own message`() = api { client ->
         client.createHousehold()
         repeat(5) { client.postJson("/join", JoinRequest("wrong-code", "Alex")) }
-        val response = client.postJson("/join", JoinRequest(code, "Alex"))
+        val response = client.postJson("/join", JoinRequest("wrong-code", "Alex"))
         assertEquals(HttpStatusCode.TooManyRequests, response.status)
         assertTrue(response.body<ErrorResponse>().error.startsWith("Too many wrong attempts."))
     }
@@ -592,7 +592,7 @@ class ApiTest {
 
     companion object {
         const val SETUP = "setup-secret"
-        const val PIN = "4821"
+        const val PIN = "482193"
 
         val postgres: EmbeddedPostgres by lazy { EmbeddedPostgres.start() }
     }

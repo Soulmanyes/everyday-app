@@ -10,15 +10,15 @@ class SecretsTest {
 
     @Test
     fun `hash verifies only the original secret`() {
-        val stored = secrets.hash("4821")
-        assertTrue(secrets.verify("4821", stored))
+        val stored = secrets.hash("482193")
+        assertTrue(secrets.verify("482193", stored))
         assertFalse(secrets.verify("4822", stored))
-        assertFalse(secrets.verify("4821", "garbage"))
+        assertFalse(secrets.verify("482193", "garbage"))
     }
 
     @Test
     fun `same secret hashes differently each time`() {
-        assertNotEquals(secrets.hash("4821"), secrets.hash("4821"))
+        assertNotEquals(secrets.hash("482193"), secrets.hash("4821"))
     }
 
     @Test

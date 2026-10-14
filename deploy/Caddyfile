@@ -4,6 +4,12 @@
 (site) {
 	encode gzip
 
+	# Caps request bodies so nobody can make the API read a huge one into memory. A phone's biggest request is
+	# a sync after a long time offline, far below this.
+	request_body {
+		max_size 2MB
+	}
+
 	# The app's download page and the release APK (published with deploy/publish-release.sh).
 	redir /download /download/
 	handle /download/* {

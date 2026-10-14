@@ -147,6 +147,26 @@ class Notifier(private val context: Context) {
     /** One notification per household the phone is admin of (Phase 9). */
     fun cancelJoinRequests(householdKey: String) = manager.cancel("$JOIN_TAG:$householdKey", NOTIFICATION_ID)
 
+    /** On an admin's phone: wrong admin PINs locked something in the household (someone may be guessing it). */
+    fun showPinLocked(householdName: String, householdKey: String) {
+        if (!canPost()) return
+        ensureChannels()
+        val notification = NotificationCompat.Builder(context, INVITE_CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Wrong admin PINs for $householdName")
+            .setContentText("Someone typed your admin PIN wrong many times")
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    "Someone typed your admin PIN wrong many times, so it's locked for a while. If it wasn't you, " +
+                        "make a new join code in Settings → Manage members.",
+                ),
+            )
+            .setAutoCancel(true)
+            .setContentIntent(openApp("$PIN_TAG:$householdKey", householdId = householdKey))
+            .build()
+        NotificationManagerCompat.from(context).notify("$PIN_TAG:$householdKey", NOTIFICATION_ID, notification)
+    }
+
     fun cancelAddedToEvent(eventId: String) = manager.cancel("EVENT:$eventId", NOTIFICATION_ID)
 
     fun isPersistentShowing() = manager.activeNotifications.any { it.tag == PERSISTENT_TAG }
@@ -186,6 +206,7 @@ class Notifier(private val context: Context) {
         const val PERSISTENT_TAG = "PERSISTENT:all"
         private const val INVITE_CHANNEL = "invites"
         private const val JOIN_TAG = "JOIN_REQUESTS"
+        private const val PIN_TAG = "PIN_LOCKED"
         private const val MAX_DONE_ACTIONS = 3
         private const val CHANNEL_VERSION = "v2"
         private const val DONE_LABEL_LENGTH = 18

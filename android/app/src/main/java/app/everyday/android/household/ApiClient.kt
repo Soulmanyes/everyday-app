@@ -43,6 +43,8 @@ data class HouseholdInfo(
     val pendingRequestIds: List<String> = emptyList(),
     /** False until the admin generates a join code (households from before 2.0). */
     val hasJoinCode: Boolean = true,
+    /** When wrong admin PINs last locked anything in the household; only sent to the admin's phone. */
+    val pinLockedAt: Long? = null,
 )
 
 /** An invite for a friend to create their own household (Phase 9). */
@@ -289,6 +291,7 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
             memberId = optStringOrNull("memberId"),
             pendingRequestIds = optArray("pendingRequestIds").let { a -> (0 until a.length()).map { a.getString(it) } },
             hasJoinCode = optBoolean("hasJoinCode", true),
+            pinLockedAt = if (isNull("pinLockedAt")) null else optLong("pinLockedAt"),
         )
     }
 

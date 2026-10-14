@@ -148,12 +148,12 @@ private fun CreateScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
     var pinAgain by rememberSaveable { mutableStateOf("") }
     var server by rememberSaveable { mutableStateOf(vm.session.value.serverUrl) }
     val problem = when {
-        pin.isNotEmpty() && !pin.matches(Regex("\\d{4,8}")) -> "The admin PIN must be 4 to 8 digits."
+        pin.isNotEmpty() && !pin.matches(Regex("\\d{6,8}")) -> "The admin PIN must be 6 to 8 digits."
         pinAgain.isNotEmpty() && pin != pinAgain -> "The PINs don't match."
         else -> null
     }
     val ready = invite.isNotBlank() && householdName.isNotBlank() &&
-        adminName.isNotBlank() && pin.matches(Regex("\\d{4,8}")) && pin == pinAgain
+        adminName.isNotBlank() && pin.matches(Regex("\\d{6,8}")) && pin == pinAgain
     FormScaffold("Set up household", onBack) {
         Text(
             "You need an invite from the admin of another household. You'll be your household's admin: " +
@@ -163,7 +163,7 @@ private fun CreateScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
         CodeField(invite, { invite = it }, "Invite code", "e.g. NEW-7K3P-QX9M-2B4D")
         OutlinedTextField(householdName, { householdName = it }, label = { Text("Household name") }, singleLine = true, keyboardOptions = NEXT, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(adminName, { adminName = it }, label = { Text("Your name") }, singleLine = true, keyboardOptions = NEXT, modifier = Modifier.fillMaxWidth())
-        SecretField(pin, { pin = it }, "Admin PIN (4–8 digits)", numeric = true)
+        SecretField(pin, { pin = it }, "Admin PIN (6–8 digits)", numeric = true)
         SecretField(pinAgain, { pinAgain = it }, "Admin PIN again", numeric = true)
         ServerField(server) { server = it }
         var privacy by rememberSaveable { mutableStateOf(false) }

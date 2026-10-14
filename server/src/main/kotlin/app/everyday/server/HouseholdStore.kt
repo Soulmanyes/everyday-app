@@ -22,6 +22,8 @@ data class HouseholdRow(
     val protected: Boolean = false,
     /** When the admin was warned that the unused household will be deleted. */
     val cleanupWarnedAt: java.time.Instant? = null,
+    /** The last time wrong admin PINs locked anything in the household (V17). */
+    val pinLockedAt: java.time.Instant? = null,
 ) {
     fun toDto() = HouseholdDto(id.toString(), name, timezone, adminMemberId?.toString())
 }
@@ -101,10 +103,21 @@ class HouseholdStore(internal val db: DataSource) {
         conn.insertDevice(householdId, tokenHash, label, adminId, name = null)
     }
 
-    /** A joining phone: pending until the admin approves it as [name] or links it to a member. */
-    fun addPendingDevice(householdId: UUID, tokenHash: String, label: String?, name: String) = db.transaction { conn ->
-        conn.insertDevice(householdId, tokenHash, label, memberId = null, name = name)
-    }
+    /**
+     * A joining phone: pending until the admin approves it as [name] or links it to a member. Throws
+     * [TooManyPending] when [maxPending] phones are already waiting, so the admin's list can't be flooded.
+     */
+    fun addPendingDevice(householdId: UUID, tokenHash: String, label: String?, name: String, maxPending: Int = MAX_PENDING) =
+        db.transaction { conn ->
+            conn.prepareStatement("SELECT 1 FROM household WHERE id = ? FOR UPDATE").run { setObject(1, householdId); executeQuery().close() }
+            val waiting = conn.prepareStatement(
+                "SELECT count(*) FROM device WHERE household_id = ? AND status = 'pending' AND NOT revoked",
+            ).run { setObject(1, householdId); executeQuery().use { it.next(); it.getInt(1) } }
+            if (waiting >= maxPending) throw TooManyPending
+            conn.insertDevice(householdId, tokenHash, label, memberId = null, name = name)
+        }
+
+    object TooManyPending : RuntimeException("Too many pending phones")
 
     /**
      * A phone joining [householdId] with a member invite (Phase 9.5): uses up the invite and adds the device in
@@ -316,7 +329,7 @@ class HouseholdStore(internal val db: DataSource) {
     }
 
     private fun Connection.household(id: UUID? = null, joinId: String? = null): HouseholdRow? {
-        val sql = "SELECT id, name, timezone, code_hash, admin_member_id, admin_pin_hash, join_id, protected, cleanup_warned_at FROM household " +
+        val sql = "SELECT id, name, timezone, code_hash, admin_member_id, admin_pin_hash, join_id, protected, cleanup_warned_at, pin_locked_at FROM household " +
             if (id != null) "WHERE id = ?" else "WHERE join_id = ?"
         return prepareStatement(sql).run {
             if (id != null) setObject(1, id) else setString(1, joinId)
@@ -331,6 +344,7 @@ class HouseholdStore(internal val db: DataSource) {
                     joinId = rs.getString("join_id"),
                     protected = rs.getBoolean("protected"),
                     cleanupWarnedAt = rs.getObject("cleanup_warned_at", java.time.OffsetDateTime::class.java)?.toInstant(),
+                    pinLockedAt = rs.getObject("pin_locked_at", java.time.OffsetDateTime::class.java)?.toInstant(),
                 )
             }
         }
@@ -380,8 +394,10 @@ class HouseholdStore(internal val db: DataSource) {
         color = getString("color"),
     )
 
-    private companion object {
-        const val UNIQUE_VIOLATION = "23505"
+    companion object {
+        private const val UNIQUE_VIOLATION = "23505"
+        /** Phones waiting for approval in one household. */
+        const val MAX_PENDING = 20
     }
 }
 
