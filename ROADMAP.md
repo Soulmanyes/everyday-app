@@ -175,7 +175,7 @@ Planned 2026-10-11. Released 2026-10-13 as 2.6.0 (server V16, Room 12). Started 
 - [x] "Before the start" reminders now go up to **7 days** (were under 24 hours; server V16, decided 2026-10-13), and the event sheet offers **1 day** and **2 days before**. The scheduler looks that much further ahead. Phones on 2.5 accept them but may miss ones over a day ahead until they update.
 
 ## Security fixes before making the repo public (2.6.5)
-Found in a security review on 2026-10-14; built on `dev` the same day (server V17). The owner chose to keep admin rejoin with the PIN alone (no approval from an existing admin phone).
+Found in a security review on 2026-10-14. Released the same day as 2.6.5 (server V17). The owner chose to keep admin rejoin with the PIN alone (no approval from an existing admin phone).
 - [x] Admin PIN lockouts kept in the database (V17 `pin_lock`), longer each time (15 min, 1 h, then 24 h), with separate counters for joining and for each approved phone, so wrong PINs can't lock the admin's own phone out
 - [x] The admin's phones are notified when wrong PINs lock anything ("Wrong admin PINs for …")
 - [x] New households need a 6 to 8 digit admin PIN (existing PINs keep working)
