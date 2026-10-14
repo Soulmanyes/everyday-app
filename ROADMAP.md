@@ -179,9 +179,9 @@ Found in a security review on 2026-10-14; built on `dev` the same day (server V1
 - [x] Admin PIN lockouts kept in the database (V17 `pin_lock`), longer each time (15 min, 1 h, then 24 h), with separate counters for joining and for each approved phone, so wrong PINs can't lock the admin's own phone out
 - [x] The admin's phones are notified when wrong PINs lock anything ("Wrong admin PINs for …")
 - [x] New households need a 6 to 8 digit admin PIN (existing PINs keep working)
-- [x] Codes that work always get in: the per-sender, per-household and server-wide locks only stop wrong codes, so they can't be used to keep people from joining
+- [x] The per-household and server-wide locks only stop wrong codes, so they can't be used to keep people from joining (a locked address still waits)
 - [x] Pending phones see no member names until approved; at most 20 phones wait per household
-- [x] Caddy caps request bodies at 2 MB
+- [x] Caddy caps request bodies at 2 MB (needs a Caddy restart on the VM)
 
 ## Phase 11: Better colour picking (2.7.0)
 Added 2026-10-12. Not started. Details to decide when it starts.

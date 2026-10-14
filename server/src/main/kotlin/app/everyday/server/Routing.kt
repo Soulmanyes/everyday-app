@@ -69,6 +69,8 @@ fun Application.configureRouting(api: ApiContext?) {
                 // An invite from another household's admin, or the server's own setup code.
                 val inviteHash = when {
                     !req.inviteCode.isNullOrBlank() -> {
+                        // A locked sender is refused before any hashing.
+                        api.ensureNotLocked(senderKey(call))
                         val invite = Codes.normalizeInvite(req.inviteCode)
                         api.checkSender(call, invite != null, INVITE_INVALID)
                         Secrets.tokenHash(invite!!)
@@ -113,13 +115,15 @@ fun Application.configureRouting(api: ApiContext?) {
             post("/join") {
                 val req = call.receive<JoinRequest>()
                 if (req.joinCode == null) throw updateApp("Update the app to join a household.")
+                // A locked sender is refused before any hashing (PBKDF2 is slow on purpose).
+                api.ensureNotLocked(senderKey(call))
                 // A member invite (Phase 9.5) comes in the same field, so 2.0 apps can already join with one.
                 Codes.normalizeMemberInvite(req.joinCode)?.let { invite ->
                     api.joinWithInvite(call, req, Secrets.tokenHash(invite))
                     return@post
                 }
-                // The public part finds the household; the secret is checked against its hash. Only codes that don't
-                // work count and lock, so a right code always gets in and nobody can lock a household's phones out.
+                // The public part finds the household; the secret is checked against its hash. Wrong codes count against
+                // the sender, the backstop and (a real join id) the household; those locks never refuse a working code.
                 val code = Codes.parseJoinCode(req.joinCode)
                 val household = code?.let { api.store.householdByJoinId(it.joinId) }
                 if (household?.codeHash == null || !api.secrets.verify(code!!.secret, household.codeHash)) api.wrongJoinCode(call, household)
@@ -432,15 +436,15 @@ private fun ApiContext.ensureNotLocked(key: String, limiter: AttemptLimiter = th
 }
 
 /**
- * A join code that doesn't work: counts against the sender and the backstop, and, when its join id is a real
- * household's (a wrong secret), against that household too.
+ * A join code that doesn't work: counts against the sender and the backstop first (so guessing at a locked
+ * household still locks the guesser), then, when its join id is a real household's (a wrong secret), that household.
  */
 private fun ApiContext.wrongJoinCode(call: ApplicationCall, household: HouseholdRow?): Nothing {
     ensureSenderNotLocked(call)
-    household?.let { ensureNotLocked(it.id.toString()) }
-    household?.let { limiter.recordFailure(it.id.toString()) }
     limiter.recordFailure(senderKey(call))
     backstop.recordFailure()
+    household?.let { ensureNotLocked(it.id.toString()) }
+    household?.let { limiter.recordFailure(it.id.toString()) }
     throw ApiException(HttpStatusCode.Forbidden, WRONG_JOIN_CODE)
 }
 
@@ -454,8 +458,8 @@ private fun ApiContext.ensureSenderNotLocked(call: ApplicationCall) {
 }
 
 /**
- * A code that matched nothing counts against the sender and the backstop. A code that works always gets in, so
- * the locks can't be used to keep anyone out; guessing one is hopeless, as invites are 60 or 80 random bits.
+ * A code that matched nothing counts against the sender and the backstop. The backstop never refuses a code that
+ * works, so it can't be used to stop everyone joining; guessing one is hopeless (invites are 60 or 80 random bits).
  */
 private fun ApiContext.checkSender(call: ApplicationCall, ok: Boolean, message: String) {
     if (ok) return

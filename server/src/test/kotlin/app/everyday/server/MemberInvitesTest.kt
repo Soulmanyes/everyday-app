@@ -162,8 +162,6 @@ class MemberInvitesTest {
     fun `made-up invites count towards the sender's lock`() = api { client ->
         val home = client.createHousehold()
         repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.join(Codes.newMemberInvite()).status) }
-        assertEquals(HttpStatusCode.TooManyRequests, client.join(Codes.newMemberInvite()).status)
-        // A real invite still works.
-        assertEquals(HttpStatusCode.OK, client.join(client.newInvite(home.token).code).status)
+        assertEquals(HttpStatusCode.TooManyRequests, client.join(client.newInvite(home.token).code).status)
     }
 }

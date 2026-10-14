@@ -286,13 +286,12 @@ class ApiTest {
     }
 
     @Test
-    fun `too many wrong codes lock wrong codes, but the right code still gets in`() = api { client ->
+    fun `too many wrong codes lock that sender, even with the right code`() = api { client ->
         client.createHousehold()
         repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest("wrong-code", "Alex")).status) }
-        assertEquals(HttpStatusCode.TooManyRequests, client.postJson("/join", JoinRequest("wrong-code", "Alex")).status)
-        assertEquals(HttpStatusCode.OK, client.postJson("/join", JoinRequest(code, "Alex")).status)
+        assertEquals(HttpStatusCode.TooManyRequests, client.postJson("/join", JoinRequest(code, "Alex")).status)
         now = now.plusSeconds(16 * 60)
-        assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest("wrong-code", "Alex")).status)
+        assertEquals(HttpStatusCode.OK, client.postJson("/join", JoinRequest(code, "Alex")).status)
     }
 
     @Test

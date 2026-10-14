@@ -277,8 +277,9 @@ class HouseholdsTest {
         repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.joinFrom("10.0.0.1", "ZZZZ-2222-2222").status) }
         assertEquals(HttpStatusCode.TooManyRequests, client.joinFrom("10.0.0.1", "ZZZY-2222-2222").status)
         assertEquals(HttpStatusCode.Forbidden, client.joinFrom("10.0.0.2", "ZZZY-2222-2222").status)
-        // A right code from the locked phone still gets in (shared home WiFi).
-        assertEquals(HttpStatusCode.OK, client.joinFrom("10.0.0.1", home.joinCode!!).status)
+        // The locked phone waits even with a right code; others don't.
+        assertEquals(HttpStatusCode.TooManyRequests, client.joinFrom("10.0.0.1", home.joinCode!!).status)
+        assertEquals(HttpStatusCode.OK, client.joinFrom("10.0.0.2", home.joinCode!!).status)
         now = now.plus(Duration.ofMinutes(16))
         assertEquals(HttpStatusCode.Forbidden, client.joinFrom("10.0.0.1", "ZZZY-2222-2222").status)
     }
