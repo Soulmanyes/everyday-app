@@ -33,7 +33,7 @@ class MemberInvitesTest {
     private lateinit var api: ApiContext
     private val db get() = ApiTest.postgres.postgresDatabase
     private var now = Instant.parse("2026-10-11T12:00:00Z")
-    private val PIN = "4821"
+    private val PIN = "482193"
 
     @BeforeTest
     fun setUp() {
@@ -162,6 +162,8 @@ class MemberInvitesTest {
     fun `made-up invites count towards the sender's lock`() = api { client ->
         val home = client.createHousehold()
         repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.join(Codes.newMemberInvite()).status) }
-        assertEquals(HttpStatusCode.TooManyRequests, client.join(client.newInvite(home.token).code).status)
+        assertEquals(HttpStatusCode.TooManyRequests, client.join(Codes.newMemberInvite()).status)
+        // A real invite still works.
+        assertEquals(HttpStatusCode.OK, client.join(client.newInvite(home.token).code).status)
     }
 }

@@ -34,7 +34,7 @@ class HouseholdsTest {
     private val db get() = ApiTest.postgres.postgresDatabase
     private var now = Instant.parse("2026-10-11T12:00:00Z")
     private val sent = mutableListOf<Set<String>>()
-    private val PIN = "4821"
+    private val PIN = "482193"
 
     @BeforeTest
     fun setUp() {
@@ -112,14 +112,15 @@ class HouseholdsTest {
         val b = client.createHousehold("B")
         // The right join id with a wrong secret.
         val wrong = a.joinCode!!.take(5) + "2222-2222"
-        repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.join(wrong).status) }
-        assertEquals(HttpStatusCode.TooManyRequests, client.join(a.joinCode!!).status)
-        assertEquals(HttpStatusCode.OK, client.join(b.joinCode!!).status)
-        // Wrong admin PINs also count per household: A's admin routes are locked, B's aren't.
-        assertEquals(HttpStatusCode.TooManyRequests, client.post("/admin/verify") { admin(a.token) }.status)
-        assertEquals(HttpStatusCode.NoContent, client.post("/admin/verify") { admin(b.token) }.status)
-        now = now.plus(Duration.ofMinutes(16))
+        repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.joinFrom("10.0.0.${it + 1}", wrong).status) }
+        // From a new address, more wrong secrets for A are locked; B's aren't, and A's right code still gets in.
+        assertEquals(HttpStatusCode.TooManyRequests, client.joinFrom("10.0.0.50", wrong).status)
+        assertEquals(HttpStatusCode.Forbidden, client.joinFrom("10.0.0.50", b.joinCode!!.take(5) + "2222-2222").status)
         assertEquals(HttpStatusCode.OK, client.join(a.joinCode!!).status)
+        // Wrong join codes never lock the admin out of their routes.
+        assertEquals(HttpStatusCode.NoContent, client.post("/admin/verify") { admin(a.token) }.status)
+        now = now.plus(Duration.ofMinutes(16))
+        assertEquals(HttpStatusCode.Forbidden, client.joinFrom("10.0.0.50", wrong).status)
     }
 
     @Test
@@ -274,17 +275,21 @@ class HouseholdsTest {
         val home = client.createHousehold()
         // Unknown join ids from one phone lock that phone only (after 5 here; 10 on the server).
         repeat(5) { assertEquals(HttpStatusCode.Forbidden, client.joinFrom("10.0.0.1", "ZZZZ-2222-2222").status) }
-        assertEquals(HttpStatusCode.TooManyRequests, client.joinFrom("10.0.0.1", home.joinCode!!).status)
-        assertEquals(HttpStatusCode.OK, client.joinFrom("10.0.0.2", home.joinCode!!).status)
-        now = now.plus(Duration.ofMinutes(16))
+        assertEquals(HttpStatusCode.TooManyRequests, client.joinFrom("10.0.0.1", "ZZZY-2222-2222").status)
+        assertEquals(HttpStatusCode.Forbidden, client.joinFrom("10.0.0.2", "ZZZY-2222-2222").status)
+        // A right code from the locked phone still gets in (shared home WiFi).
         assertEquals(HttpStatusCode.OK, client.joinFrom("10.0.0.1", home.joinCode!!).status)
+        now = now.plus(Duration.ofMinutes(16))
+        assertEquals(HttpStatusCode.Forbidden, client.joinFrom("10.0.0.1", "ZZZY-2222-2222").status)
     }
 
     @Test
     fun `the backstop locks codes that match nothing from every address`() = api { client ->
         val home = client.createHousehold()
         api.backstop.let { b -> repeat(200) { b.recordFailure() } }
-        assertEquals(HttpStatusCode.TooManyRequests, client.joinFrom("10.0.0.9", home.joinCode!!).status)
+        assertEquals(HttpStatusCode.TooManyRequests, client.joinFrom("10.0.0.9", "ZZZZ-2222-2222").status)
+        // Real codes still get in, so the backstop can't be used to stop everyone joining.
+        assertEquals(HttpStatusCode.OK, client.joinFrom("10.0.0.9", home.joinCode!!).status)
         // A known household's own lock is separate: its admin can still use their PIN.
         assertEquals(HttpStatusCode.NoContent, client.post("/admin/verify") { admin(home.token) }.status)
     }

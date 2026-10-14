@@ -83,6 +83,8 @@ data class HouseholdResponse(
     val pendingRequestIds: List<String> = emptyList(),
     /** False until the admin generates a join code (households from before 2.0): nobody new can join. */
     val hasJoinCode: Boolean = true,
+    /** Epoch millis of the last time wrong admin PINs locked anything; only sent to the admin's phone, so it can warn. */
+    val pinLockedAt: Long? = null,
 )
 
 /** A phone waiting for the admin's approval. */

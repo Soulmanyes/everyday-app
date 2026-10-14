@@ -52,7 +52,7 @@ class PushApiTest {
         val client = createClient { install(ContentNegotiation) { json() } }
         val session = client.post("/household") {
             contentType(ContentType.Application.Json)
-            setBody(CreateHouseholdRequest("Home", "Europe/London", "Sam", "4821", setupToken = "setup"))
+            setBody(CreateHouseholdRequest("Home", "Europe/London", "Sam", "482193", setupToken = "setup"))
         }.body<SessionResponse>()
         joinCode = session.joinCode!!
         client.registerPush(session.token, "fcm-sam")
@@ -80,7 +80,7 @@ class PushApiTest {
     private suspend fun HttpClient.approve(adminToken: String, requestId: String) = post("/join-requests/$requestId/approve") {
         contentType(ContentType.Application.Json)
         header(HttpHeaders.Authorization, "Bearer $adminToken")
-        header(ADMIN_PIN_HEADER, "4821")
+        header(ADMIN_PIN_HEADER, "482193")
         setBody(ApproveRequest())
     }.body<MemberDto>()
 
@@ -147,14 +147,14 @@ class PushApiTest {
         val requestId = client.pendingIds(home.samToken).single()
         client.post("/join-requests/$requestId/reject") {
             header(HttpHeaders.Authorization, "Bearer ${home.samToken}")
-            header(ADMIN_PIN_HEADER, "4821")
+            header(ADMIN_PIN_HEADER, "482193")
         }
         assertEquals(listOf(setOf("fcm-kim")), sent)
 
         sent.clear()
         client.delete("/members/${home.alex}") {
             header(HttpHeaders.Authorization, "Bearer ${home.samToken}")
-            header(ADMIN_PIN_HEADER, "4821")
+            header(ADMIN_PIN_HEADER, "482193")
         }
         assertEquals(setOf("fcm-alex"), sent.first())
         assertEquals(emptyList(), PushStore(db).householdTokens(UUID.fromString(home.id), null) - "fcm-sam")

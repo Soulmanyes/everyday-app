@@ -61,12 +61,12 @@ class IsolationTest {
 
     private suspend fun HttpClient.home(name: String, adminName: String, otherName: String, pushToken: String): Home {
         val session = post("/household") {
-            json(CreateHouseholdRequest(name, "Europe/London", adminName, "4821", setupToken = "setup"))
+            json(CreateHouseholdRequest(name, "Europe/London", adminName, "482193", setupToken = "setup"))
         }.also { assertEquals(HttpStatusCode.Created, it.status) }.body<SessionResponse>()
         val token = session.token
         val admin = session.household.adminMemberId!!
         put("/me/push-token") { auth(token); json(PushTokenRequest(pushToken)) }
-        val other = post("/members") { auth(token); header(ADMIN_PIN_HEADER, "4821"); json(MemberRequest(otherName)) }
+        val other = post("/members") { auth(token); header(ADMIN_PIN_HEADER, "482193"); json(MemberRequest(otherName)) }
             .body<MemberDto>().id
         val chore = UUID.randomUUID().toString()
         put("/chores/$chore") { auth(token); json(ChoreRequest("Bins $name", weekdays = 1, completion = ChoreCompletion.EACH, assigneeIds = listOf(admin))) }
@@ -108,7 +108,7 @@ class IsolationTest {
         assertEquals(b.id, me.household.id)
         assertEquals(setOf(b.admin, b.other), me.members.map { it.id }.toSet())
 
-        val pin = "4821"
+        val pin = "482193"
         assertEquals(HttpStatusCode.NotFound, client.put("/members/${a.other}") { auth(b.token); header(ADMIN_PIN_HEADER, pin); json(MemberRequest("Mine")) }.status)
         assertEquals(HttpStatusCode.NotFound, client.delete("/members/${a.other}") { auth(b.token); header(ADMIN_PIN_HEADER, pin) }.status)
         assertEquals("Alex", api.store.members(UUID.fromString(a.id)).single { it.id == a.other }.displayName)
@@ -120,13 +120,13 @@ class IsolationTest {
         val pendingId = client.get("/me") { auth(a.token) }.body<HouseholdResponse>().pendingRequestIds.single()
 
         assertEquals(emptyList(), client.get("/me") { auth(b.token) }.body<HouseholdResponse>().pendingRequestIds)
-        assertEquals(emptyList(), client.get("/join-requests") { auth(b.token); header(ADMIN_PIN_HEADER, "4821") }.body<List<JoinRequestDto>>())
-        val approve = client.post("/join-requests/$pendingId/approve") { auth(b.token); header(ADMIN_PIN_HEADER, "4821"); json(ApproveRequest()) }
+        assertEquals(emptyList(), client.get("/join-requests") { auth(b.token); header(ADMIN_PIN_HEADER, "482193") }.body<List<JoinRequestDto>>())
+        val approve = client.post("/join-requests/$pendingId/approve") { auth(b.token); header(ADMIN_PIN_HEADER, "482193"); json(ApproveRequest()) }
         assertEquals(HttpStatusCode.NotFound, approve.status)
         // Linking one of A's phones to one of B's members is refused as well.
-        val link = client.post("/join-requests/$pendingId/approve") { auth(a.token); header(ADMIN_PIN_HEADER, "4821"); json(ApproveRequest(b.other)) }
+        val link = client.post("/join-requests/$pendingId/approve") { auth(a.token); header(ADMIN_PIN_HEADER, "482193"); json(ApproveRequest(b.other)) }
         assertEquals(HttpStatusCode.NotFound, link.status)
-        assertEquals(HttpStatusCode.NotFound, client.post("/join-requests/$pendingId/reject") { auth(b.token); header(ADMIN_PIN_HEADER, "4821") }.status)
+        assertEquals(HttpStatusCode.NotFound, client.post("/join-requests/$pendingId/reject") { auth(b.token); header(ADMIN_PIN_HEADER, "482193") }.status)
     }
 
     @Test
@@ -187,7 +187,7 @@ class IsolationTest {
         // Give B's second member a phone, then read their Busy list.
         api.store.addPendingDevice(UUID.fromString(b.id), Secrets.tokenHash("b-other"), "phone", "Alex 2")
         val pendingId = client.get("/me") { auth(b.token) }.body<HouseholdResponse>().pendingRequestIds.single()
-        client.post("/join-requests/$pendingId/approve") { auth(b.token); header(ADMIN_PIN_HEADER, "4821"); json(ApproveRequest(b.other)) }
+        client.post("/join-requests/$pendingId/approve") { auth(b.token); header(ADMIN_PIN_HEADER, "482193"); json(ApproveRequest(b.other)) }
         val busy = client.post("/v2/sync") { auth("b-other"); json(SyncRequest(b.other)) }.body<SyncResponse>().busy
         assertEquals(listOf(b.event), busy.map { it.id })
     }

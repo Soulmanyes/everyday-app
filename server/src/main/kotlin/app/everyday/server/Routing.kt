@@ -44,6 +44,8 @@ class ApiContext(
     val inviteLifetime: java.time.Duration = java.time.Duration.ofDays(7),
     /** One-time invites into a household (Phase 9.5); they last [inviteLifetime] too. */
     val memberInvites: MemberInviteStore = MemberInviteStore(store.db),
+    /** Wrong admin PINs, counted in the database with longer lockouts each time (V17). */
+    val pins: PinGuard = PinGuard(store.db, clock = clock),
 )
 
 const val ADMIN_PIN_HEADER = "X-Admin-Pin"
@@ -62,12 +64,11 @@ fun Application.configureRouting(api: ApiContext?) {
                 if (req.householdCode != null) throw updateApp("Update the app to set up a household.")
                 val name = validName(req.householdName, "Household name", 60)
                 val adminName = validName(req.adminName, "Your name", 40)
-                validPin(req.adminPin)
+                validNewPin(req.adminPin)
                 val zone = runCatching { ZoneId.of(req.timezone) }.getOrNull() ?: badRequest("Unknown timezone.")
                 // An invite from another household's admin, or the server's own setup code.
                 val inviteHash = when {
                     !req.inviteCode.isNullOrBlank() -> {
-                        api.ensureSenderNotLocked(call)
                         val invite = Codes.normalizeInvite(req.inviteCode)
                         api.checkSender(call, invite != null, INVITE_INVALID)
                         Secrets.tokenHash(invite!!)
@@ -112,33 +113,34 @@ fun Application.configureRouting(api: ApiContext?) {
             post("/join") {
                 val req = call.receive<JoinRequest>()
                 if (req.joinCode == null) throw updateApp("Update the app to join a household.")
-                api.ensureSenderNotLocked(call)
                 // A member invite (Phase 9.5) comes in the same field, so 2.0 apps can already join with one.
                 Codes.normalizeMemberInvite(req.joinCode)?.let { invite ->
                     api.joinWithInvite(call, req, Secrets.tokenHash(invite))
                     return@post
                 }
-                // The public part finds the household; wrong secrets count against that household only.
+                // The public part finds the household; the secret is checked against its hash. Only codes that don't
+                // work count and lock, so a right code always gets in and nobody can lock a household's phones out.
                 val code = Codes.parseJoinCode(req.joinCode)
                 val household = code?.let { api.store.householdByJoinId(it.joinId) }
-                api.checkSender(call, household != null, WRONG_JOIN_CODE)
-                household!!
-                val key = household.id.toString()
-                api.ensureNotLocked(key)
-                api.checkSecret(household.codeHash != null && api.secrets.verify(code!!.secret, household.codeHash), WRONG_JOIN_CODE, key)
+                if (household?.codeHash == null || !api.secrets.verify(code!!.secret, household.codeHash)) api.wrongJoinCode(call, household)
                 val token = api.secrets.newToken()
                 // The admin on a new phone (or after reinstalling): nobody else could approve it.
                 if (!req.adminPin.isNullOrEmpty()) {
-                    api.checkSecret(api.secrets.verify(req.adminPin, household.adminPinHash), "Wrong admin PIN.", key)
                     val adminId = household.adminMemberId ?: throw ApiException(HttpStatusCode.Conflict, "The household has no admin.")
+                    api.checkPin(household, PinGuard.joinKey(household.id), req.adminPin)
                     api.store.addAdminDevice(household.id, Secrets.tokenHash(token), req.deviceLabel, adminId)
                     call.respond(SessionResponse(token, household.toDto(), api.store.members(household.id), memberId = adminId.toString()))
                     return@post
                 }
                 val name = validName(req.name, "Your name", 40)
-                api.store.addPendingDevice(household.id, Secrets.tokenHash(token), req.deviceLabel, name)
+                try {
+                    api.store.addPendingDevice(household.id, Secrets.tokenHash(token), req.deviceLabel, name)
+                } catch (_: HouseholdStore.TooManyPending) {
+                    throw tooManyPending()
+                }
                 api.push?.admin(household.id)
-                call.respond(SessionResponse(token, household.toDto(), api.store.members(household.id), deviceStatus = "pending"))
+                // No member names until the admin approves the phone.
+                call.respond(SessionResponse(token, household.toDto(), emptyList(), deviceStatus = "pending"))
             }
         }
 
@@ -150,11 +152,13 @@ fun Application.configureRouting(api: ApiContext?) {
             call.respond(
                 HouseholdResponse(
                     household = household.toDto(),
-                    members = api.store.members(household.id),
+                    // A pending phone sees no names until the admin approves it.
+                    members = if (session.approved) api.store.members(household.id) else emptyList(),
                     deviceStatus = if (session.approved) "approved" else "pending",
                     memberId = session.memberId?.toString(),
                     pendingRequestIds = if (isAdmin) api.store.joinRequests(household.id).map { it.id } else emptyList(),
                     hasJoinCode = household.codeHash != null,
+                    pinLockedAt = household.pinLockedAt?.takeIf { isAdmin }?.toEpochMilli(),
                 ),
             )
         }
@@ -396,49 +400,69 @@ private fun ApiContext.authenticate(call: ApplicationCall): DeviceSession {
     return store.authenticate(Secrets.tokenHash(token)) ?: throw unauthorized()
 }
 
-/** Authenticates the device and checks the admin PIN header. */
+/** Authenticates the device and checks the admin PIN header. Wrong PINs lock only this phone (V17). */
 private fun ApiContext.requireAdmin(call: ApplicationCall): Caller {
     val caller = member(call)
-    val pin = call.request.headers[ADMIN_PIN_HEADER].orEmpty()
-    val key = caller.household.id.toString()
-    ensureNotLocked(key)
-    checkSecret(pin.isNotEmpty() && secrets.verify(pin, caller.household.adminPinHash), "Wrong admin PIN.", key)
+    checkPin(caller.household, PinGuard.deviceKey(caller.deviceId), call.request.headers[ADMIN_PIN_HEADER].orEmpty())
     return caller
 }
 
-private fun ApiContext.ensureNotLocked(key: String, limiter: AttemptLimiter = this.limiter) {
-    limiter.lockedForSeconds(key)?.let { seconds ->
-        val minutes = (seconds + 59) / 60
-        throw ApiException(HttpStatusCode.TooManyRequests, "Too many wrong attempts. Try again in $minutes min.")
+/**
+ * Checks the admin PIN against [key]'s lock in [PinGuard]. A wrong PIN counts; when that locks the key, the
+ * admin's phones are pushed and learn about it from /me.
+ */
+private fun ApiContext.checkPin(household: HouseholdRow, key: String, pin: String) {
+    pins.lockedForSeconds(key)?.let { throw tooManyAttempts(it) }
+    if (pin.isNotEmpty() && secrets.verify(pin, household.adminPinHash)) {
+        pins.clear(key)
+        return
     }
+    if (pins.recordFailure(household.id, key)) push?.admin(household.id)
+    throw ApiException(HttpStatusCode.Forbidden, "Wrong admin PIN.")
 }
 
-/** Refuses while [key] (a household) is locked out; counts a failure for [key] and rejects if [ok] is false. */
-private fun ApiContext.checkSecret(ok: Boolean, message: String, key: String) {
-    ensureNotLocked(key)
-    if (!ok) {
-        limiter.recordFailure(key)
-        throw ApiException(HttpStatusCode.Forbidden, message)
-    }
+private fun tooManyAttempts(seconds: Long): ApiException {
+    val minutes = (seconds + 59) / 60
+    val wait = if (minutes > 90) "${(minutes + 30) / 60} h" else "$minutes min"
+    return ApiException(HttpStatusCode.TooManyRequests, "Too many wrong attempts. Try again in $wait.")
+}
+
+private fun ApiContext.ensureNotLocked(key: String, limiter: AttemptLimiter = this.limiter) {
+    limiter.lockedForSeconds(key)?.let { throw tooManyAttempts(it) }
+}
+
+/**
+ * A join code that doesn't work: counts against the sender and the backstop, and, when its join id is a real
+ * household's (a wrong secret), against that household too.
+ */
+private fun ApiContext.wrongJoinCode(call: ApplicationCall, household: HouseholdRow?): Nothing {
+    ensureSenderNotLocked(call)
+    household?.let { ensureNotLocked(it.id.toString()) }
+    household?.let { limiter.recordFailure(it.id.toString()) }
+    limiter.recordFailure(senderKey(call))
+    backstop.recordFailure()
+    throw ApiException(HttpStatusCode.Forbidden, WRONG_JOIN_CODE)
 }
 
 /** The lock key of the phone sending [call]: codes that match nothing count per sender. */
 private fun senderKey(call: ApplicationCall) = "ip:" + clientIp(call)
 
-/** Refuses while this sender, or the whole server (the backstop), is locked out for codes that matched nothing. */
+/** Refuses while this sender, or the whole server (the backstop), is locked out for codes that don't work. */
 private fun ApiContext.ensureSenderNotLocked(call: ApplicationCall) {
     ensureNotLocked(senderKey(call))
     ensureNotLocked(AttemptLimiter.GLOBAL, backstop)
 }
 
-/** Like [checkSecret] for a code that matched nothing: counts against the sender and the backstop. */
+/**
+ * A code that matched nothing counts against the sender and the backstop. A code that works always gets in, so
+ * the locks can't be used to keep anyone out; guessing one is hopeless, as invites are 60 or 80 random bits.
+ */
 private fun ApiContext.checkSender(call: ApplicationCall, ok: Boolean, message: String) {
+    if (ok) return
     ensureSenderNotLocked(call)
-    if (!ok) {
-        limiter.recordFailure(senderKey(call))
-        backstop.recordFailure()
-        throw ApiException(HttpStatusCode.Forbidden, message)
-    }
+    limiter.recordFailure(senderKey(call))
+    backstop.recordFailure()
+    throw ApiException(HttpStatusCode.Forbidden, message)
 }
 
 /**
@@ -450,10 +474,10 @@ private suspend fun ApiContext.joinWithInvite(call: ApplicationCall, req: JoinRe
     val household = memberInvites.find(inviteHash, clock())?.let { store.getHousehold(it.first) }
     checkSender(call, household != null, MEMBER_INVITE_INVALID)
     household!!
-    val key = household.id.toString()
     val adminId = if (!req.adminPin.isNullOrEmpty()) {
-        checkSecret(secrets.verify(req.adminPin, household.adminPinHash), "Wrong admin PIN.", key)
-        household.adminMemberId ?: throw ApiException(HttpStatusCode.Conflict, "The household has no admin.")
+        val adminId = household.adminMemberId ?: throw ApiException(HttpStatusCode.Conflict, "The household has no admin.")
+        checkPin(household, PinGuard.joinKey(household.id), req.adminPin)
+        adminId
     } else {
         null
     }
@@ -469,13 +493,19 @@ private suspend fun ApiContext.joinWithInvite(call: ApplicationCall, req: JoinRe
         call.respond(SessionResponse(token, household.toDto(), store.members(household.id), memberId = adminId.toString()))
     } else {
         push?.admin(household.id)
-        call.respond(SessionResponse(token, household.toDto(), store.members(household.id), deviceStatus = "pending"))
+        // No member names until the admin approves the phone.
+        call.respond(SessionResponse(token, household.toDto(), emptyList(), deviceStatus = "pending"))
     }
 }
 
 private const val WRONG_JOIN_CODE = "Wrong join code."
 private const val MEMBER_INVITE_INVALID = "That invite link isn't valid. It may have been used, cancelled or expired: ask for a new one."
 private const val INVITE_INVALID = "That invite isn't valid. It may have been used, cancelled or expired."
+
+private fun tooManyPending() = ApiException(
+    HttpStatusCode.Conflict,
+    "Too many people are already waiting to join. Ask the admin to approve or turn them down first.",
+)
 
 /** Apps from before 2.0. Not 401, which would send a joined phone back to the welcome screen. */
 private fun updateApp(message: String) = ApiException(HttpStatusCode.Gone, message)
@@ -550,6 +580,7 @@ private fun validName(value: String, field: String, max: Int): String {
     return trimmed
 }
 
-private fun validPin(pin: String) {
-    if (!pin.matches(Regex("\\d{4,8}"))) badRequest("The admin PIN must be 4 to 8 digits.")
+/** New PINs need 6 to 8 digits; households made before keep their 4- or 5-digit ones. */
+private fun validNewPin(pin: String) {
+    if (!pin.matches(Regex("\\d{6,8}"))) badRequest("The admin PIN must be 6 to 8 digits.")
 }

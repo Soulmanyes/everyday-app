@@ -44,7 +44,7 @@ class SyncApiTest {
         val client = createClient { install(ContentNegotiation) { json() } }
         val session = client.post("/household") {
             contentType(ContentType.Application.Json)
-            setBody(CreateHouseholdRequest("Home", "Europe/London", "Sam", "4821", setupToken = "setup"))
+            setBody(CreateHouseholdRequest("Home", "Europe/London", "Sam", "482193", setupToken = "setup"))
         }.body<SessionResponse>()
         suspend fun phoneFor(name: String): Pair<String, String> {
             val token = client.post("/join") {
@@ -56,7 +56,7 @@ class SyncApiTest {
             val member = client.post("/join-requests/$requestId/approve") {
                 contentType(ContentType.Application.Json)
                 header(HttpHeaders.Authorization, "Bearer ${session.token}")
-                header(ADMIN_PIN_HEADER, "4821")
+                header(ADMIN_PIN_HEADER, "482193")
                 setBody(ApproveRequest())
             }.body<MemberDto>()
             return member.id to token
@@ -324,7 +324,7 @@ class SyncApiTest {
 
         client.delete("/members/${home.alex}") {
             header(HttpHeaders.Authorization, "Bearer ${home.token}")
-            header(ADMIN_PIN_HEADER, "4821")
+            header(ADMIN_PIN_HEADER, "482193")
         }
 
         val sam = client.syncOk(home, SyncRequest(home.sam))
@@ -399,7 +399,7 @@ class SyncApiTest {
         val member = post("/join-requests/$requestId/approve") {
             contentType(ContentType.Application.Json)
             header(HttpHeaders.Authorization, "Bearer ${home.token}")
-            header(ADMIN_PIN_HEADER, "4821")
+            header(ADMIN_PIN_HEADER, "482193")
             setBody(ApproveRequest())
         }.body<MemberDto>()
         return member.id to token
