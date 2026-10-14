@@ -178,7 +178,7 @@ private fun filterLabel(filter: MonthFilter, members: List<MemberEntity>): Strin
     }
 }
 
-/** A day: its number, then one line per person with how many things they have that day ("Sam · 3"). */
+/** A day: its number, then one line per person with how many things they have that day ("Sam 3"). */
 @Composable
 private fun DayCell(
     day: LocalDate,
@@ -229,7 +229,7 @@ private fun DayCell(
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                 )
-                Text(" · $count", style = style, color = fg, maxLines = 1, softWrap = false)
+                Text(" $count", style = style, color = fg, maxLines = 1, softWrap = false)
             }
         }
         if (people.size > CELL_ITEMS) {
