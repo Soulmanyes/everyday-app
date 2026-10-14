@@ -3,6 +3,7 @@ package app.everyday.android.ui.calendar
 import app.everyday.android.data.occurs
 import app.everyday.android.ui.formatSpan
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -127,11 +128,13 @@ fun MonthView(
             days.chunked(7).forEach { week ->
                 Row(Modifier.fillMaxWidth().weight(1f)) {
                     week.forEach { day ->
+                        val items = monthItemsOn(day, events, chores, effective, busy)
                         DayCell(
                             day = day,
                             inMonth = YearMonth.from(day) == month,
                             isToday = day == today,
-                            counts = personCounts(monthItemsOn(day, events, chores, effective, busy), effective),
+                            counts = personCounts(items, effective),
+                            oneOff = hasOneOff(items),
                             membersById = membersById,
                             myId = myId,
                             modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -178,13 +181,18 @@ private fun filterLabel(filter: MonthFilter, members: List<MemberEntity>): Strin
     }
 }
 
-/** A day: its number, then one line per person with how many things they have that day ("Sam 3"). */
+/**
+ * A day: its number, then one line per person with how many things they have that day ("Sam 3"). Days with
+ * a one-off event are outlined.
+ */
 @Composable
 private fun DayCell(
     day: LocalDate,
     inMonth: Boolean,
     isToday: Boolean,
     counts: Map<String, Int>,
+    /** Something on this date only (not weekly) is on: the cell is outlined so it stands out from routine days. */
+    oneOff: Boolean,
     membersById: Map<String, MemberEntity>,
     myId: String?,
     modifier: Modifier,
@@ -196,7 +204,9 @@ private fun DayCell(
         compareBy({ it.key != myId }, { membersById[it.key] == null }, { membersById[it.key]?.displayName?.lowercase() }),
     )
     Column(
-        modifier.clickable(onClickLabel = "Open day", onClick = onClick).padding(1.dp),
+        modifier
+            .then(if (oneOff) Modifier.padding(1.dp).border(1.5.dp, colors.primary, RoundedCornerShape(4.dp)) else Modifier)
+            .clickable(onClickLabel = "Open day", onClick = onClick).padding(1.dp),
         verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
         Box(

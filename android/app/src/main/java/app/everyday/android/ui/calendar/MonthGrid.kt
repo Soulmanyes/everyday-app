@@ -101,6 +101,15 @@ private fun Occurs.startOn(date: LocalDate): Int? = partOn(date)?.takeUnless { i
 /** An event or Busy event with its start (null = all day), for sorting. */
 private data class Dated(val item: MonthItem, val startMinute: Int?)
 
+/** Whether [items] has an event or Busy event on a date rather than weekly, which the month cell outlines. */
+fun hasOneOff(items: List<MonthItem>): Boolean = items.any {
+    when (it) {
+        is MonthItem.Event -> it.view.event.onDate != null
+        is MonthItem.Busy -> it.busy.onDate != null
+        is MonthItem.Chore -> false
+    }
+}
+
 /**
  * How many things each person has in a month cell (Phase 9.7): events and Busy events count for their
  * owner, chores for each assignee the filter shows. The cell shows one line per person.
