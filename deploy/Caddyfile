@@ -1,6 +1,7 @@
-# Caddy obtains and renews a Let's Encrypt certificate for API_DOMAIN automatically.
-# API_DOMAIN must resolve to the VM's public IP (e.g. a DuckDNS subdomain).
-{$API_DOMAIN} {
+# Caddy obtains and renews a Let's Encrypt certificate for each domain automatically.
+# API_DOMAIN and OLD_DOMAIN must resolve to the VM's public IP (DuckDNS subdomains).
+
+(site) {
 	encode gzip
 
 	# The app's download page and the release APK (published with deploy/publish-release.sh).
@@ -25,4 +26,19 @@
 	handle {
 		reverse_proxy api:8080
 	}
+}
+
+{$API_DOMAIN} {
+	redir / /apps/
+	import site
+}
+
+# The old address (everyday-home.duckdns.org). Pages people open in a browser move to API_DOMAIN, so
+# new links use the new address. The API, version.json and the APK keep answering here without a
+# redirect: phones that joined before the move sync with this address, and a redirect can turn their
+# POSTs into GETs.
+{$OLD_DOMAIN} {
+	@pages path / /download /download/ /download/index.html /download/join.html /apps /apps/*
+	redir @pages https://{$API_DOMAIN}{uri} permanent
+	import site
 }

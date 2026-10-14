@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the signed release APK and publishes it on https://everyday-home.duckdns.org/download/.
+# Builds the signed release APK and publishes it on https://szekbal.duckdns.org/download/.
 # Run from main after merging dev, with versionCode/versionName bumped in android/app/build.gradle.kts.
 # Phones running an older versionCode then show "Update available".
 set -euo pipefail
@@ -19,7 +19,7 @@ name=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["elements
 
 out=deploy/download
 cp android/app/build/outputs/apk/release/app-release.apk "$out/everyday.apk"
-printf '{"versionCode": %s, "versionName": "%s", "url": "https://everyday-home.duckdns.org/download/"}\n' "$code" "$name" > "$out/version.json"
+printf '{"versionCode": %s, "versionName": "%s", "url": "https://szekbal.duckdns.org/download/"}\n' "$code" "$name" > "$out/version.json"
 
 # The APK goes up before version.json, so phones are never told about a file that isn't there yet.
 ssh oracle 'mkdir -p ~/everyday-app/deploy/download'
