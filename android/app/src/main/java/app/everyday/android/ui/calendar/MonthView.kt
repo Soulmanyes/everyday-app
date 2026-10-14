@@ -3,7 +3,6 @@ package app.everyday.android.ui.calendar
 import app.everyday.android.data.occurs
 import app.everyday.android.ui.formatSpan
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,11 +40,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.everyday.android.data.BusyEventEntity
@@ -134,7 +140,7 @@ fun MonthView(
                             inMonth = YearMonth.from(day) == month,
                             isToday = day == today,
                             counts = personCounts(items, effective),
-                            oneOff = hasOneOff(items),
+                            oneOffOwners = oneOffOwners(items),
                             membersById = membersById,
                             myId = myId,
                             modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -183,7 +189,7 @@ private fun filterLabel(filter: MonthFilter, members: List<MemberEntity>): Strin
 
 /**
  * A day: its number, then one line per person with how many things they have that day ("Sam 3"). Days with
- * a one-off event are outlined.
+ * a one-off event are outlined in its owner's colour, split between owners when there are several.
  */
 @Composable
 private fun DayCell(
@@ -191,8 +197,8 @@ private fun DayCell(
     inMonth: Boolean,
     isToday: Boolean,
     counts: Map<String, Int>,
-    /** Something on this date only (not weekly) is on: the cell is outlined so it stands out from routine days. */
-    oneOff: Boolean,
+    /** Owners of things on this date only (not weekly): the cell is outlined in their colours. */
+    oneOffOwners: Set<String>,
     membersById: Map<String, MemberEntity>,
     myId: String?,
     modifier: Modifier,
@@ -203,9 +209,11 @@ private fun DayCell(
     val people = counts.entries.sortedWith(
         compareBy({ it.key != myId }, { membersById[it.key] == null }, { membersById[it.key]?.displayName?.lowercase() }),
     )
+    // In the same order as the lines below.
+    val outline = people.map { it.key }.filter { it in oneOffOwners }.map { memberColorOf(membersById[it]?.color, it) }
     Column(
         modifier
-            .then(if (oneOff) Modifier.padding(1.dp).border(1.5.dp, colors.primary, RoundedCornerShape(4.dp)) else Modifier)
+            .then(if (outline.isNotEmpty()) Modifier.padding(1.dp).splitBorder(outline, 1.5.dp, 4.dp) else Modifier)
             .clickable(onClickLabel = "Open day", onClick = onClick).padding(1.dp),
         verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
@@ -250,6 +258,23 @@ private fun DayCell(
                 color = colors.onSurfaceVariant,
             )
         }
+    }
+}
+
+/** A rounded outline split into equal stretches, one per colour, clockwise from the bottom left (the first gets the left side). */
+private fun Modifier.splitBorder(colors: List<Color>, width: Dp, radius: Dp) = drawWithContent {
+    drawContent()
+    val stroke = width.toPx()
+    val inset = stroke / 2
+    val outline = Path().apply {
+        addRoundRect(RoundRect(inset, inset, size.width - inset, size.height - inset, CornerRadius(radius.toPx())), Path.Direction.Clockwise)
+    }
+    val measure = PathMeasure().apply { setPath(outline, forceClosed = true) }
+    val part = measure.length / colors.size
+    colors.forEachIndexed { i, color ->
+        val stretch = Path()
+        measure.getSegment(i * part, (i + 1) * part, stretch, startWithMoveTo = true)
+        drawPath(stretch, color, style = Stroke(stroke))
     }
 }
 
