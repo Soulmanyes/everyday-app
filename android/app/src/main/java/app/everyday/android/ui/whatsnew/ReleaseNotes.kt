@@ -9,6 +9,12 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        18, "2.6.2",
+        listOf(
+            "In the month view, days with a one-off event now have an outline, so they stand out from the weekly routine.",
+        ),
+    ),
+    ReleaseNote(
         17, "2.6.1",
         listOf(
             "The month view now shows how many things each person has, even when their name is long. It reads \"Sam 3\" instead of \"Sam · 3\", leaving more room for the name.",
