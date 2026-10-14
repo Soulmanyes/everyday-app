@@ -9,6 +9,12 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        17, "2.6.1",
+        listOf(
+            "The month view now shows how many things each person has, even when their name is long. It reads \"Sam 3\" instead of \"Sam · 3\", leaving more room for the name.",
+        ),
+    ),
+    ReleaseNote(
         16, "2.6.0",
         listOf(
             "Import from calendar: copy events from your phone's calendar, such as Google Calendar, into Everyday. Find it in Settings.",
