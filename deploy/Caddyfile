@@ -13,6 +13,15 @@
 		file_server
 	}
 
+	# The page listing all the apps to download, and each app's own page (Gesture Cam is published
+	# with publish.sh in its own repo).
+	redir /apps /apps/
+	handle /apps/* {
+		root * /srv
+		header Cache-Control "no-cache"
+		file_server
+	}
+
 	handle {
 		reverse_proxy api:8080
 	}

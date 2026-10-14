@@ -25,6 +25,8 @@ keystore.properties
 
 # Published release files (built by deploy/publish-release.sh)
 deploy/download/version.json
+deploy/apps/*/*.tar.gz
+deploy/apps/*/version.json
 deploy/caddy_data/
 deploy/pgdata/
 
