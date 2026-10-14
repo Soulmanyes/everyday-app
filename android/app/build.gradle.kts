@@ -19,8 +19,8 @@ android {
         minSdk = 28
         targetSdk = 37
         // Bump both for every release: the app compares versionCode with the server's version.json.
-        versionCode = 19
-        versionName = "2.6.3"
+        versionCode = 20
+        versionName = "2.6.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -46,7 +46,7 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             signingConfig = signingConfigs.findByName("release")
             resValue("string", "app_name", "Everyday")
-            buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://everyday-home.duckdns.org\"")
+            buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://szekbal.duckdns.org\"")
             buildConfigField("boolean", "CHECK_FOR_UPDATES", "true")
             // Join links (everyday://join?code=...) open this app.
             manifestPlaceholders["joinScheme"] = "everyday"
