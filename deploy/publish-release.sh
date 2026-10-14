@@ -19,7 +19,7 @@ name=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["elements
 
 out=deploy/download
 cp android/app/build/outputs/apk/release/app-release.apk "$out/everyday.apk"
-printf '{"versionCode": %s, "versionName": "%s", "url": "https://everyday-home.duckdns.org/download/everyday.apk"}\n' "$code" "$name" > "$out/version.json"
+printf '{"versionCode": %s, "versionName": "%s", "url": "https://everyday-home.duckdns.org/download/"}\n' "$code" "$name" > "$out/version.json"
 
 # The APK goes up before version.json, so phones are never told about a file that isn't there yet.
 ssh oracle 'mkdir -p ~/everyday-app/deploy/download'
