@@ -9,6 +9,12 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        19, "2.6.3",
+        listOf(
+            "The outline round a day with a one-off event is now in the colour of whoever's event it is. When several people have one, the outline is split between their colours.",
+        ),
+    ),
+    ReleaseNote(
         18, "2.6.2",
         listOf(
             "In the month view, days with a one-off event now have an outline, so they stand out from the weekly routine.",
