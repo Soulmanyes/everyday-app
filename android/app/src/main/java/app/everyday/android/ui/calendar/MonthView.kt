@@ -178,7 +178,7 @@ private fun filterLabel(filter: MonthFilter, members: List<MemberEntity>): Strin
     }
 }
 
-/** A day: its number, then one line per person with how many things they have that day ("Sam · 3"). */
+/** A day: its number, then one line per person with how many things they have that day ("Sam 3"). */
 @Composable
 private fun DayCell(
     day: LocalDate,
@@ -217,14 +217,20 @@ private fun DayCell(
         people.take(CELL_ITEMS).forEach { (id, count) ->
             val member = membersById[id]
             val bg = memberColorOf(member?.color, id)
-            Text(
-                "${member?.displayName ?: if (id == myId) "Me" else "?"} · $count",
-                modifier = Modifier.fillMaxWidth().background(bg, RoundedCornerShape(2.dp)).padding(horizontal = 2.dp),
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 11.sp),
-                color = if (bg.luminance() > 0.5f) Color.Black else Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-            )
+            val fg = if (bg.luminance() > 0.5f) Color.Black else Color.White
+            val style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 11.sp)
+            // The name gets clipped in a narrow cell, never the count.
+            Row(Modifier.fillMaxWidth().background(bg, RoundedCornerShape(2.dp)).padding(horizontal = 2.dp)) {
+                Text(
+                    member?.displayName ?: if (id == myId) "Me" else "?",
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = style,
+                    color = fg,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                )
+                Text(" $count", style = style, color = fg, maxLines = 1, softWrap = false)
+            }
         }
         if (people.size > CELL_ITEMS) {
             Text(
