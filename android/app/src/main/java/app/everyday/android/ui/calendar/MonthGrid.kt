@@ -101,12 +101,15 @@ private fun Occurs.startOn(date: LocalDate): Int? = partOn(date)?.takeUnless { i
 /** An event or Busy event with its start (null = all day), for sorting. */
 private data class Dated(val item: MonthItem, val startMinute: Int?)
 
-/** Whether [items] has an event or Busy event on a date rather than weekly, which the month cell outlines. */
-fun hasOneOff(items: List<MonthItem>): Boolean = items.any {
+/**
+ * Whose events and Busy events on [items] are on a date rather than weekly: the month cell is outlined in
+ * their colours. Each owner once, in the order first met.
+ */
+fun oneOffOwners(items: List<MonthItem>): Set<String> = items.mapNotNullTo(linkedSetOf()) {
     when (it) {
-        is MonthItem.Event -> it.view.event.onDate != null
-        is MonthItem.Busy -> it.busy.onDate != null
-        is MonthItem.Chore -> false
+        is MonthItem.Event -> it.view.event.ownerMemberId.takeIf { _ -> it.view.event.onDate != null }
+        is MonthItem.Busy -> it.busy.ownerMemberId.takeIf { _ -> it.busy.onDate != null }
+        is MonthItem.Chore -> null
     }
 }
 

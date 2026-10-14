@@ -158,11 +158,17 @@ class MonthGridTest {
     }
 
     @Test
-    fun `a day with an event or Busy event on a date counts as one-off, weekly things and chores don't`() {
+    fun `one-off owners are those with an event or Busy event on the date, not weekly things or chores`() {
         val day = LocalDate.parse("2026-10-14")
         val weekly = monthItemsOn(day, listOf(event("gym")), listOf(chore("bins", everyDay, me)), MonthFilter(), listOf(BusyEventEntity(me, "b1", "alex", weekdays = everyDay)))
-        assertFalse(hasOneOff(weekly))
-        assertTrue(hasOneOff(monthItemsOn(day, listOf(event("dentist", onDate = "2026-10-14")), emptyList(), MonthFilter())))
-        assertTrue(hasOneOff(monthItemsOn(day, emptyList(), emptyList(), MonthFilter(), listOf(BusyEventEntity(me, "b2", "alex", onDate = "2026-10-14")))))
+        assertEquals(emptySet<String>(), oneOffOwners(weekly))
+        val items = monthItemsOn(
+            day,
+            listOf(event("dentist", onDate = "2026-10-14"), event("party", owner = "alex", onDate = "2026-10-14"), event("gym")),
+            emptyList(),
+            MonthFilter(),
+            listOf(BusyEventEntity(me, "b2", "jo", onDate = "2026-10-14"), BusyEventEntity(me, "b3", "alex", onDate = "2026-10-14")),
+        )
+        assertEquals(setOf(me, "alex", "jo"), oneOffOwners(items))
     }
 }
