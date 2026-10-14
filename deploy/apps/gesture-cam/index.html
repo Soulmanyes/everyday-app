@@ -18,22 +18,25 @@
 <p><small><a href="../">← All apps</a></small></p>
 <h1>Gesture Cam</h1>
 <p>Webcam effects for Discord, set off by hand gestures: thumbs up for fireworks, peace sign for confetti, and more.
-The effects play behind you, so they never cover your face. Linux only, made for Arch (pacman).</p>
+The effects play behind you, so they never cover your face. Linux: Arch (and Arch-based distros), Debian 13+, Ubuntu 24.04+ and Fedora 40+.</p>
 <a class="button" href="gesture-cam.tar.gz" download>Download Gesture Cam</a>
 <p><small id="version"></small></p>
 <h2>Installing</h2>
 <ol>
-  <li>Install the window's libraries: <pre>sudo pacman -S --needed python-gobject gtk4 libadwaita</pre></li>
   <li>Unpack the download in your home folder and go into it:
     <pre>tar xzf ~/Downloads/gesture-cam.tar.gz -C ~
 cd ~/gesture-cam</pre></li>
-  <li>Create the virtual camera (once). It asks for your password:
-    <pre>sudo ./setup-loopback.sh</pre></li>
+  <li>Install what it needs and create the virtual camera (once). It asks for your password:
+    <pre>sudo ./setup.sh</pre>
+    On Fedora this also turns on the RPM Fusion repository, where the camera driver comes from.</li>
   <li>Set up Python and add Gesture Cam to your app launcher:
     <pre>python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -r requirements.txt
 sed "s#^Exec=.*#Exec=$PWD/gesture-cam#" gesture-cam.desktop > ~/.local/share/applications/gesture-cam.desktop</pre></li>
 </ol>
+<p><b>Secure Boot on?</b> Then the camera driver is blocked at first, and <code>setup.sh</code> prints a
+<code>sudo mokutil --import …</code> command. Run it and pick a one-time password. Reboot: on the blue screen,
+choose <i>Enroll MOK → Continue → Yes</i>, type the password and reboot again. Then run <code>sudo ./setup.sh</code> once more.</p>
 <h2>Using it</h2>
 <ol>
   <li>Turn your camera off in Discord or Vesktop first. Gesture Cam needs the real webcam for itself.</li>
