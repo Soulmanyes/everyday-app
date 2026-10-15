@@ -183,6 +183,13 @@ docker compose up -d --build
 - **Signing key.** `~/.everyday/everyday-release.jks` with `~/.everyday/keystore.properties` (never in the repo), backed up on the VM in `~/backups/signing/`. **Losing it means nobody can install updates** over the current app (they'd have to uninstall and rejoin). Without the key file, release builds come out unsigned.
 - The admin's own new phone joins with **"I'm the household admin"** and the admin PIN, which approves it as the admin at once.
 
+## Licenses
+
+- The owner's code is **CC0 1.0** (`LICENSE`, public domain). Third-party code keeps its own license.
+- The APK lists every library and its license text in Settings → **Open source licenses** (`ui/licenses/`). The data comes from the **AboutLibraries** Gradle plugin, which writes `res/raw/aboutlibraries.json` and reads overrides from `android/app/aboutlibraries/`. The protobuf override replaces the SPDX BSD template with protobuf's real notice. A small build task, `collectEmbeddedLicenses<Variant>` in `app/build.gradle.kts`, adds the notices that Google Play services and Firebase AARs bundle in `third_party_licenses.*` (`res/raw/embedded_licenses.json`). `res/raw/keep.xml` stops resource shrinking from dropping both files.
+- **Strict mode**: the build fails when a dependency has a license that isn't in `allowedLicenses` (`app/build.gradle.kts`). Before you allow a new one, check what it requires. Don't allow GPL, because the APK can't meet it.
+- Before any publish (APK, web pages under `deploy/`), check that everything shipped keeps its license terms. The server isn't distributed, but check new server dependencies too.
+
 ## Conventions
 
 - Commit messages: Conventional Commits (`feat:`, `fix:`, `docs:`, ...).

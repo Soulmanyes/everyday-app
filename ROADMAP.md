@@ -183,6 +183,12 @@ Found in a security review on 2026-10-14. Released the same day as 2.6.5 (server
 - [x] Pending phones see no member names until approved; at most 20 phones wait per household
 - [x] Caddy caps request bodies at 2 MB (needs a Caddy restart on the VM)
 
+## Open source licenses (next release, app only)
+Added 2026-10-15. Done on `dev`, not released yet.
+- [x] The owner's code is released under CC0 1.0 (`LICENSE`, no rights reserved)
+- [x] Settings → **Open source licenses**: every library in the APK with its license text, plus the notices Google Play services and Firebase bundle inside their libraries
+- [x] The build fails if a dependency brings a license that hasn't been checked (AboutLibraries strict mode)
+
 ## Phase 11: Better colour picking (2.7.0)
 Added 2026-10-12. Not started. Details to decide when it starts.
 - [ ] A fuller colour picker for member colours, perhaps any RGB colour (0-255 per channel) instead of the 12 fixed palette colours.

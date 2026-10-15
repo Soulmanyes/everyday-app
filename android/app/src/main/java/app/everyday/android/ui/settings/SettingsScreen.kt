@@ -67,6 +67,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onManageMembers: () -> Unit,
     onWhatsNew: () -> Unit,
+    onLicenses: () -> Unit,
     onImport: () -> Unit,
 ) {
     // [household] is the app's shared one: switching or adding a household here changes the app's top screen.
@@ -225,6 +226,7 @@ fun SettingsScreen(
                 }
                 OutlinedButton(onClick = onWhatsNew) { Text("What's new") }
             }
+            TextButton(onClick = onLicenses) { Text("Open source licenses") }
         }
     }
 }
