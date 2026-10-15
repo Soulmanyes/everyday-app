@@ -10,4 +10,4 @@ See [CLAUDE.md](CLAUDE.md) for architecture and build instructions, and [ROADMAP
 
 ## License
 
-Everyday's own code is released under [CC0 1.0](LICENSE): public domain, no rights reserved. The libraries it uses keep their own licenses. The app lists them, with their license texts, in Settings → Open source licenses.
+Everyday's own code is released under [CC0 1.0](LICENSE): public domain, no rights reserved. The libraries it uses keep their own licenses. The app lists them, with their license texts, in Settings → Open source licenses. The Gradle wrapper files (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar` in `android/` and `server/`) are Gradle's, under Apache 2.0.

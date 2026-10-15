@@ -95,6 +95,20 @@ aboutLibraries {
     }
 }
 
+// Every license must ship with its text (only Google's SDK terms are a link). The plugin downloads
+// texts at build time, so they're committed in aboutlibraries/licenses/ instead; a newly allowed
+// license needs its text there too, or this fails the build.
+tasks.matching { it.name.startsWith("exportLibraryDefinitions") }.configureEach {
+    doLast {
+        outputs.files.asFileTree.matching { include("**/aboutlibraries.json") }.forEach { file ->
+            @Suppress("UNCHECKED_CAST")
+            val licenses = (JsonSlurper().parse(file) as Map<String, Any>)["licenses"] as Map<String, Map<String, Any?>>
+            val missing = licenses.filter { (key, license) -> key != "ASDKL" && (license["content"] as String?).isNullOrBlank() }.keys
+            check(missing.isEmpty()) { "No license text for $missing: add it to app/aboutlibraries/licenses/" }
+        }
+    }
+}
+
 /**
  * Google Play services and Firebase AARs compile other projects' code in (Guava, Dagger, ...) and ship
  * those notices in `third_party_licenses.json/.txt`, which AboutLibraries doesn't read. This collects
