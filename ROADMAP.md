@@ -183,8 +183,8 @@ Found in a security review on 2026-10-14. Released the same day as 2.6.5 (server
 - [x] Pending phones see no member names until approved; at most 20 phones wait per household
 - [x] Caddy caps request bodies at 2 MB (needs a Caddy restart on the VM)
 
-## Open source licenses (next release, app only)
-Added 2026-10-15. Done on `dev`, not released yet.
+## Open source licenses (2.6.6)
+Added 2026-10-15. Released 2026-10-16 as 2.6.6 (app only; also the Gesture Cam page).
 - [x] The owner's code is released under CC0 1.0 (`LICENSE`, no rights reserved)
 - [x] Settings → **Open source licenses**: every library in the APK with its license text, plus the notices Google Play services and Firebase bundle inside their libraries
 - [x] The build fails if a dependency brings a license that hasn't been checked (AboutLibraries strict mode)
