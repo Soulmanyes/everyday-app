@@ -7,3 +7,7 @@ A private Android app for our household: custom reminders on chosen days and tim
 - `deploy/`: docker-compose stack for the server
 
 See [CLAUDE.md](CLAUDE.md) for architecture and build instructions, and [ROADMAP.md](ROADMAP.md) for the plan.
+
+## License
+
+Everyday's own code is released under [CC0 1.0](LICENSE): public domain, no rights reserved. The libraries it uses keep their own licenses. The app lists them, with their license texts, in Settings → Open source licenses. The Gradle wrapper files (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar` in `android/` and `server/`) are Gradle's, under Apache 2.0.

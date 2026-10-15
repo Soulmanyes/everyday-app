@@ -31,9 +31,10 @@ cd ~/gesture-cam</pre></li>
   <li>Install what it needs and create the virtual camera (once). It asks for your password:
     <pre>sudo ./setup.sh</pre>
     On Fedora this also turns on the RPM Fusion repository, where the camera driver comes from.</li>
-  <li>Set up Python and add Gesture Cam to your app launcher:
+  <li>Set up Python, download MediaPipe's two models from Google, and add Gesture Cam to your app launcher:
     <pre>python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -r requirements.txt
+./get-models.sh
 sed "s#^Exec=.*#Exec=$PWD/gesture-cam#" gesture-cam.desktop > ~/.local/share/applications/gesture-cam.desktop</pre></li>
 </ol>
 <p><b>Secure Boot on?</b> Then the camera driver is blocked at first, and <code>setup.sh</code> prints a
@@ -46,7 +47,8 @@ choose <i>Enroll MOK → Continue → Yes</i>, type the password and reboot agai
   <li>In your app, pick <b>Gesture Cam</b> as the camera. In Discord, that's <i>Settings → Voice &amp; Video → Camera</i>.
     It's only listed while Gesture Cam is on, so open or restart the app after turning Gesture Cam on.</li>
 </ol>
-<p><small>The README in the download explains the settings and the gestures.</small></p>
+<p><small>The README in the download explains the settings and the gestures. Gesture Cam's own code is
+public domain (CC0 1.0). The libraries and models it installs keep their own licenses, listed in the README.</small></p>
 <script>
   fetch("version.json", { cache: "no-store" }).then(r => r.json())
     .then(v => { document.getElementById("version").textContent = "Version " + v.version; })

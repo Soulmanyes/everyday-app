@@ -55,6 +55,7 @@ import app.everyday.android.ui.event.EventEditorScreen
 import app.everyday.android.ui.reminders.RemindersScreen
 import app.everyday.android.ui.whatsnew.WhatsNewDialog
 import app.everyday.android.ui.whatsnew.WhatsNewScreen
+import app.everyday.android.ui.licenses.LicensesScreen
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     Events("Events", EventIcon),
@@ -67,6 +68,7 @@ private object Routes {
     const val SETTINGS = "settings"
     const val MEMBERS = "members"
     const val WHATS_NEW = "whats-new"
+    const val LICENSES = "licenses"
     const val IMPORT = "import"
     const val EDIT = "edit?id={id}&choreId={choreId}"
     fun edit(id: String?) = if (id == null) "edit" else "edit?id=$id"
@@ -150,6 +152,7 @@ private fun MainNav(household: HouseholdViewModel) {
                 onBack = { nav.popBackStack() },
                 onManageMembers = { nav.navigate(Routes.MEMBERS) },
                 onWhatsNew = { nav.navigate(Routes.WHATS_NEW) },
+                onLicenses = { nav.navigate(Routes.LICENSES) },
                 onImport = { nav.navigate(Routes.IMPORT) },
             )
         }
@@ -158,6 +161,9 @@ private fun MainNav(household: HouseholdViewModel) {
         }
         composable(Routes.WHATS_NEW) {
             WhatsNewScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.LICENSES) {
+            LicensesScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.MEMBERS) {
             MembersScreen(household, onBack = { nav.popBackStack() })
