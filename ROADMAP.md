@@ -189,14 +189,14 @@ Added 2026-10-15. Released 2026-10-16 as 2.6.6 (app only; also the Gesture Cam p
 - [x] Settings → **Open source licenses**: every library in the APK with its license text, plus the notices Google Play services and Firebase bundle inside their libraries
 - [x] The build fails if a dependency brings a license that hasn't been checked (AboutLibraries strict mode)
 
-## Phase 11: Better colour picking (2.7.0)
-Added 2026-10-12. Started 2026-10-23. Decided 2026-10-23: a bigger fixed palette, not free RGB.
+## Phase 11: Better colour picking (2.7.0) ✅
+Added 2026-10-12. Released 2026-10-23. Decided 2026-10-23: a bigger fixed palette, not free RGB.
 - [x] 24 colours instead of 12, still a fixed set (`MEMBER_PALETTE` in the app, `MEMBER_COLORS` on the server). `member.color` stays a palette key. New: violet, gold, slate, salmon, lavender, chocolate, magenta, tan, mauve, coral, periwinkle, blush.
 - [x] Colours stay unique per household (taken ones greyed out in the picker, as today).
 - [x] Still no greens. Each new colour was checked against the others (CIEDE2000 at least 11.6 apart), the chore greens and the light and dark backgrounds.
 - [x] Older apps: the new keys come after the old 12, so the server hands them out only once those are taken. Until a phone updates, it shows a member with a new colour in a fallback colour.
 - [x] Tried the picker in the dev app (4 rows of colours) on light and dark (2026-10-23).
-- [ ] Release: deploy the server before publishing 2.7.0 (an old server refuses the new keys with "Unknown colour.").
+- [x] Server deployed before 2.7.0 was published (2026-10-23).
 
 ## Phase 12: Home-screen widgets (2.8.0)
 Added 2026-10-23 (dropped on 2026-10-09, wanted again). Not started. Details to decide when it starts.
