@@ -190,9 +190,15 @@ Added 2026-10-15. Released 2026-10-16 as 2.6.6 (app only; also the Gesture Cam p
 - [x] The build fails if a dependency brings a license that hasn't been checked (AboutLibraries strict mode)
 
 ## Phase 11: Better colour picking (2.7.0)
-Added 2026-10-12. Not started. Details to decide when it starts.
-- [ ] A fuller colour picker for member colours, perhaps any RGB colour (0-255 per channel) instead of the 12 fixed palette colours.
-- [ ] To decide then: whether colours must still differ enough between members of a household (today they're unique per household), and whether greens stay out (chore cards are green), since any RGB colour can come close to another one or to the chore green. Server change: `member.color` holds a palette key today.
+Added 2026-10-12. Not started. Decided 2026-10-23: a bigger fixed palette, not free RGB.
+- [ ] Grow the member palette beyond the 12 colours, still a fixed set (`MEMBER_PALETTE` in the app, `MEMBER_COLORS` on the server). `member.color` stays a palette key.
+- [ ] Colours stay unique per household (taken ones greyed out in the picker, as today).
+- [ ] Still no greens: chore cards are green. Every new colour must show on light and dark backgrounds and be easy to tell apart from the others.
+- [ ] To decide when it starts: how many colours (about 24?), and how to treat older apps, which don't know the new keys and show a hash fallback colour for them (e.g. the server hands out new keys automatically only once the 12 old ones are taken).
+
+## Phase 12: Home-screen widgets (2.8.0)
+Added 2026-10-23 (dropped on 2026-10-09, wanted again). Not started. Details to decide when it starts.
+- [ ] Android home-screen widgets for the Everyday app. To decide then: which widgets (e.g. today's chores, the next events), what tapping them does, and how they refresh.
 
 ## Developer and ops (any time, no app release)
 - [x] CI: GitHub Actions building the server and the debug APK and running the unit tests (2026-10-09)
@@ -203,6 +209,6 @@ Added 2026-10-12. Not started. Details to decide when it starts.
 
 ## Dropped (decided 2026-10-09)
 - Chore rotation, chore points and a weekly summary (the old Phase 7): replaced by the monthly view
-- Shopping list, home-screen widget: not wanted
+- Shopping list: not wanted (the home-screen widget was dropped here too, then brought back on 2026-10-23 as Phase 12)
 - Per-member PIN: each phone already belongs to one approved member
 - Tailscale: every member would need to install it; the public server is hardened instead (Phase 9)
