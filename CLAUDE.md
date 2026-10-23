@@ -72,7 +72,7 @@ The Events tab also has a **month view** (Phase 7, Week | Month switch): a month
 
 The **Reminders** tab (Phase 6.5) is a plain list of the profile's own reminders, in two sections (Events, then Chores), A to Z by title, one row per reminder. Each row shows what it's on, when that happens, its times or windows, and a switch to pause or resume it. Tapping an event reminder opens its event's sheet (where event reminders are edited); tapping a chore reminder opens its editor. Tabs: Events, Chores, Reminders.
 
-Chore reminders **look like chores**: the fixed chore green and the Chores tab's house icon (`ui/Kinds.kt`), so users can tell them from events. Member dots use the member's **household-wide colour** from the server (`member.color`, a palette key; `ui/MemberColors.kt` maps keys to colours). The server gives each new member a free colour, keeps colours unique per household, and members change their own in Settings (no PIN) or the admin in Manage members. 12 colours, no greens (chore cards are green).
+Chore reminders **look like chores**: the fixed chore green and the Chores tab's house icon (`ui/Kinds.kt`), so users can tell them from events. Member dots use the member's **household-wide colour** from the server (`member.color`, a palette key; `ui/MemberColors.kt` maps keys to colours). The server gives each new member a free colour, keeps colours unique per household, and members change their own in Settings (no PIN) or the admin in Manage members. 24 colours (12 since 2.7.0, handed out only after the first 12, which older apps know), no greens (chore cards are green).
 
 The app is **dark by default**; "Follow phone theme" in Settings (per phone, `AppPrefs`) switches to the phone's light/dark setting.
 

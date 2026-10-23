@@ -106,8 +106,14 @@ data class ColorRequest(val color: String)
 @Serializable
 data class PushTokenRequest(val token: String? = null)
 
-/** Palette keys, in the order free colours are handed out. The app maps each key to a colour. */
-val MEMBER_COLORS = listOf("blue", "red", "purple", "orange", "yellow", "pink", "cyan", "brown", "indigo", "grey", "maroon", "sky")
+/**
+ * Palette keys, in the order free colours are handed out. The app maps each key to a colour.
+ * The last 12 came in 2.7.0: older apps don't know them, so they come after the first 12.
+ */
+val MEMBER_COLORS = listOf(
+    "blue", "red", "purple", "orange", "yellow", "pink", "cyan", "brown", "indigo", "grey", "maroon", "sky",
+    "violet", "gold", "slate", "salmon", "lavender", "chocolate", "magenta", "tan", "mauve", "coral", "periwinkle", "blush",
+)
 
 @Serializable
 data class ErrorResponse(val error: String)
