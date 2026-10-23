@@ -9,6 +9,14 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        24, "2.8.0",
+        listOf(
+            "Calls: ring someone's phone with a short message, like \"Come downstairs\". Tap the phone icon at the top. " +
+                "The admin chooses who can call in Settings → Manage members.",
+            "When someone calls you, your phone rings for 30 seconds. Answer \"On my way\" or \"Can't now\", and they see it.",
+        ),
+    ),
+    ReleaseNote(
         23, "2.7.0",
         listOf(
             "24 colours to choose from instead of 12. Pick yours in Settings → Your colour.",
