@@ -9,6 +9,12 @@ data class ReleaseNote(val versionCode: Int, val versionName: String, val change
  */
 val RELEASE_NOTES = listOf(
     ReleaseNote(
+        23, "2.7.0",
+        listOf(
+            "24 colours to choose from instead of 12. Pick yours in Settings → Your colour.",
+        ),
+    ),
+    ReleaseNote(
         22, "2.6.6",
         listOf(
             "Settings → Open source licenses lists the free software Everyday is built with, and their licenses.",
