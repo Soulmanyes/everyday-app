@@ -1,5 +1,6 @@
 package app.everyday.android.ui.settings
 
+import app.everyday.android.ui.fullScreenSettings
 import app.everyday.android.ui.household.ColorPicker
 import app.everyday.android.app
 import app.everyday.android.BuildConfig
@@ -84,6 +85,7 @@ fun SettingsScreen(
     val tick = refresh.intValue
     val notificationsOn = remember(tick) { NotificationManagerCompat.from(context).areNotificationsEnabled() }
     val exactAlarmsOn = remember(tick) { vm.engine.canScheduleExactAlarms() }
+    val fullScreenCalls = remember(tick) { context.app.calls.canRingFullScreen() }
     val batteryUnrestricted = remember(tick) {
         context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
     }
@@ -207,6 +209,15 @@ fun SettingsScreen(
                 @SuppressLint("BatteryLife") // a reminder app is an accepted use case, and this app is sideloaded
                 val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:${context.packageName}".toUri())
                 context.startActivity(intent)
+            }
+            Status(
+                title = "Calls",
+                ok = fullScreenCalls,
+                okText = "Ring full screen",
+                badText = "Show as a notification only",
+                button = "Allow",
+            ) {
+                context.startActivity(fullScreenSettings(context))
             }
             Text(
                 "On Samsung phones, also add Everyday to Settings → Battery → Background usage limits → Never sleeping apps.",

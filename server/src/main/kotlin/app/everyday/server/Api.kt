@@ -55,8 +55,9 @@ data class MemberInvitesResponse(val invites: List<InviteDto>)
 @Serializable
 data class HouseholdDto(val id: String, val name: String, val timezone: String, val adminMemberId: String?)
 
+/** [canCall]: the admin lets this member ring others (Phase 12); the admin can always call. */
 @Serializable
-data class MemberDto(val id: String, val displayName: String, val color: String? = null)
+data class MemberDto(val id: String, val displayName: String, val color: String? = null, val canCall: Boolean = false)
 
 /**
  * Returned when a phone creates or joins the household. The token is shown only once. A joining
@@ -95,9 +96,9 @@ data class JoinRequestDto(val id: String, val name: String, val deviceLabel: Str
 @Serializable
 data class ApproveRequest(val memberId: String? = null)
 
-/** [color] null keeps the member's current colour. */
+/** [color] and [canCall] null keep the member's current values (apps before 2.8 send no [canCall]). */
 @Serializable
-data class MemberRequest(val displayName: String, val color: String? = null)
+data class MemberRequest(val displayName: String, val color: String? = null, val canCall: Boolean? = null)
 
 @Serializable
 data class ColorRequest(val color: String)
@@ -114,6 +115,32 @@ val MEMBER_COLORS = listOf(
     "blue", "red", "purple", "orange", "yellow", "pink", "cyan", "brown", "indigo", "grey", "maroon", "sky",
     "violet", "gold", "slate", "salmon", "lavender", "chocolate", "magenta", "tan", "mauve", "coral", "periwinkle", "blush",
 )
+
+/** Rings [memberIds] with [message] (Phase 12). */
+@Serializable
+data class StartCallRequest(val memberIds: List<String>, val message: String)
+
+/** `COMING` ("on my way") or `CANT` ("can't now"). */
+@Serializable
+data class AnswerCallRequest(val answer: String)
+
+/** A member rung by a call; [answer] is null until they answer. */
+@Serializable
+data class CallTargetDto(val memberId: String, val displayName: String, val answer: String? = null)
+
+@Serializable
+data class CallDto(
+    val id: String,
+    val callerId: String,
+    val callerName: String,
+    val message: String,
+    val createdAt: Long,
+    val targets: List<CallTargetDto>,
+)
+
+/** The members a call can ring: those with an approved phone. Only for members who can call. */
+@Serializable
+data class CallTargetsResponse(val memberIds: List<String>)
 
 @Serializable
 data class ErrorResponse(val error: String)

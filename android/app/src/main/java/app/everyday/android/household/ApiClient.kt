@@ -28,7 +28,22 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.time.LocalDate
 
-data class Member(val id: String, val displayName: String, val color: String? = null)
+/** [canCall]: the admin lets this member ring others (Phase 12). */
+data class Member(val id: String, val displayName: String, val color: String? = null, val canCall: Boolean = false)
+
+/** Someone rung by a call (Phase 12); [answer] is null until they answer. */
+data class CallTarget(val memberId: String, val displayName: String, val answer: CallAnswer?)
+
+enum class CallAnswer { COMING, CANT }
+
+data class CallInfo(
+    val id: String,
+    val callerId: String,
+    val callerName: String,
+    val message: String,
+    val createdAt: Long,
+    val targets: List<CallTarget>,
+)
 
 data class HouseholdInfo(
     val id: String,
@@ -163,9 +178,26 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
     suspend fun addMember(pin: String, name: String): Member =
         call("POST", "/members", JSONObject().put("displayName", name), pin).toMember()
 
-    /** [color] null keeps the member's colour. */
-    suspend fun renameMember(pin: String, id: String, name: String, color: String? = null): Member =
-        call("PUT", "/members/$id", JSONObject().put("displayName", name).put("color", color ?: JSONObject.NULL), pin).toMember()
+    /** [color] and [canCall] null keep the member's values. */
+    suspend fun renameMember(pin: String, id: String, name: String, color: String? = null, canCall: Boolean? = null): Member =
+        call(
+            "PUT", "/members/$id",
+            JSONObject().put("displayName", name).put("color", color ?: JSONObject.NULL).put("canCall", canCall ?: JSONObject.NULL),
+            pin,
+        ).toMember()
+
+    // Calls (Phase 12).
+
+    /** Members a call can ring: those with an approved phone. Only for members who can call. */
+    suspend fun callTargets(): List<String> = call("GET", "/calls/targets").optArray("memberIds").let { a -> (0 until a.length()).map { a.getString(it) } }
+
+    suspend fun startCall(memberIds: List<String>, message: String): CallInfo =
+        call("POST", "/calls", JSONObject().put("memberIds", JSONArray(memberIds)).put("message", message)).toCall()
+
+    suspend fun getCall(id: String): CallInfo = call("GET", "/calls/$id").toCall()
+
+    suspend fun answerCall(id: String, answer: CallAnswer): CallInfo =
+        call("POST", "/calls/$id/answer", JSONObject().put("answer", answer.name)).toCall()
 
     suspend fun setMyColor(color: String): Member = call("PUT", "/me/color", JSONObject().put("color", color)).toMember()
 
@@ -297,7 +329,21 @@ class ApiClient(private val baseUrl: String, private val token: String? = null) 
 
     private fun JSONArray.toMembers() = (0 until length()).map { getJSONObject(it).toMember() }
 
-    private fun JSONObject.toMember() = Member(getString("id"), getString("displayName"), optStringOrNull("color"))
+    private fun JSONObject.toMember() = Member(getString("id"), getString("displayName"), optStringOrNull("color"), optBoolean("canCall", false))
+
+    private fun JSONObject.toCall() = CallInfo(
+        id = getString("id"),
+        callerId = getString("callerId"),
+        callerName = getString("callerName"),
+        message = getString("message"),
+        createdAt = getLong("createdAt"),
+        targets = optArray("targets").objects().map { t ->
+            CallTarget(
+                t.getString("memberId"), t.getString("displayName"),
+                t.optStringOrNull("answer")?.let { a -> runCatching { CallAnswer.valueOf(a) }.getOrNull() },
+            )
+        },
+    )
 
     private fun JSONObject.toChoreSnapshot(): ChoreSnapshot {
         val chores = getJSONArray("chores").objects()

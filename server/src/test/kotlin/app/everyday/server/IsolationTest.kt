@@ -103,6 +103,16 @@ class IsolationTest {
     }
 
     @Test
+    fun `calls stay in their household`() = api { client, a, b ->
+        // A's admin can't ring B's members, and B can't see or answer A's call.
+        assertEquals(HttpStatusCode.BadRequest, client.post("/calls") { auth(a.token); json(StartCallRequest(listOf(b.other), "Hi")) }.status)
+        val call = client.post("/calls") { auth(a.token); json(StartCallRequest(listOf(a.other), "Hi")) }.body<CallDto>()
+        assertEquals(HttpStatusCode.NotFound, client.get("/calls/${call.id}") { auth(b.token) }.status)
+        assertEquals(HttpStatusCode.NotFound, client.post("/calls/${call.id}/answer") { auth(b.token); json(AnswerCallRequest("COMING")) }.status)
+        assertEquals(setOf(b.admin), client.get("/calls/targets") { auth(b.token) }.body<CallTargetsResponse>().memberIds.toSet())
+    }
+
+    @Test
     fun `members and household details stay in their household`() = api { client, a, b ->
         val me = client.get("/me") { auth(b.token) }.body<HouseholdResponse>()
         assertEquals(b.id, me.household.id)

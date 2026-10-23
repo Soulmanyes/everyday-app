@@ -198,7 +198,17 @@ Added 2026-10-12. Released 2026-10-23 as 2.7.0 (no migration, server still V17).
 - [x] Tried the picker in the dev app (4 rows of colours) on light and dark (2026-10-23).
 - [x] Server deployed before 2.7.0 was published (2026-10-23).
 
-## Phase 12: Home-screen widgets (2.8.0)
+## Phase 12: Calls (2.8.0)
+Added 2026-10-23. Built 2026-10-23 on `dev` (server V18), not released. Decided 2026-10-23:
+- [x] The admin ticks **Can call** per member in Manage members (admin PIN); the admin can always call. A caller can ring any other members of the household who have a phone.
+- [x] A phone icon in the top bar (only for members who can call) opens a sheet: tick people (with Everyone), pick a ready message ("Come downstairs", "Dinner's ready", "Call me"; last used first) or type one (up to 100 characters), then Ring.
+- [x] The called phones ring like a phone call: a full-screen alert, also on the lock screen, for up to 30 s. It follows the phone's silent and Do Not Disturb settings. Android 14+ asks once to allow full-screen alerts.
+- [x] The ringing screen has **On my way** and **Can't now**. The tap stops the ring and goes back to the caller as a notification ("Sam: on my way"). With no tap in 30 s it stops, and the caller sees "No answer".
+- [x] One call per 30 s per caller. No quiet hours.
+- [x] Calls are kept 7 days on the server (the daily cleanup deletes them), and the privacy note says so (decided 2026-10-23).
+- [ ] Release: deploy the server (V18) before publishing 2.8.0.
+
+## Phase 13: Home-screen widgets (2.9.0)
 Added 2026-10-23 (dropped on 2026-10-09, wanted again). Not started. Details to decide when it starts.
 - [ ] Android home-screen widgets for the Everyday app. To decide then: which widgets (e.g. today's chores, the next events), what tapping them does, and how they refresh.
 

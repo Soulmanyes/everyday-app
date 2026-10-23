@@ -33,7 +33,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.ui.draw.scale
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -82,7 +84,23 @@ fun MembersScreen(vm: HouseholdViewModel, onBack: () -> Unit) {
                     ) {
                         Box(Modifier.size(24.dp).background(memberColorOf(member.color, member.id), CircleShape))
                     }
-                    Text(member.displayName + if (isAdmin) "  (admin)" else "", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Column(Modifier.weight(1f)) {
+                        Text(member.displayName + if (isAdmin) "  (admin)" else "", style = MaterialTheme.typography.bodyLarge)
+                        // Phase 12: the admin can always call; others only when the admin lets them.
+                        if (vm.adminPin != null && isAdmin) {
+                            Text("Can always call", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else if (vm.adminPin != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Can call", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Switch(
+                                    checked = member.id in vm.callers,
+                                    onCheckedChange = { vm.setCanCall(member.id, member.displayName, it) },
+                                    enabled = !vm.busy,
+                                    modifier = Modifier.padding(start = 8.dp).scale(0.8f),
+                                )
+                            }
+                        }
+                    }
                     IconButton(onClick = { renaming = member }, enabled = vm.adminPin != null) {
                         Icon(Icons.Default.Edit, contentDescription = "Rename ${member.displayName}")
                     }

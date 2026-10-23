@@ -171,6 +171,7 @@ class HouseholdViewModel(
         requests = manager.joinRequests(pin)
         loadInvites(pin)
         memberInvites = manager.memberInvites(pin)
+        callers = manager.callers()
     }) {
         adminPin = pin
         onUnlocked()
@@ -182,6 +183,7 @@ class HouseholdViewModel(
         requests = emptyList()
         invites = emptyList()
         memberInvites = emptyList()
+        callers = emptySet()
         error = null
     }
 
@@ -197,6 +199,14 @@ class HouseholdViewModel(
     fun setMyColor(color: String) = run({ manager.setMyColor(color) })
 
     fun removeMember(id: String) = adminPin?.let { pin -> run({ manager.removeMember(pin, id) }) }
+
+    /** Members the admin lets ring others (Phase 12), loaded with the admin PIN. */
+    var callers by mutableStateOf<Set<String>>(emptySet())
+        private set
+
+    fun setCanCall(id: String, name: String, canCall: Boolean) = adminPin?.let { pin ->
+        run({ manager.setCanCall(pin, id, name, canCall); callers = manager.callers() })
+    }
 
     companion object {
         val Factory = viewModelFactory {

@@ -1,6 +1,7 @@
 package app.everyday.android
 
 import android.app.Application
+import app.everyday.android.calls.CallManager
 import app.everyday.android.chores.ChoreManager
 import app.everyday.android.chores.ChoreRefreshWorker
 import app.everyday.android.data.AppDatabase
@@ -43,6 +44,7 @@ class EverydayApplication : Application() {
     val prefs by lazy { AppPrefs(this) }
     val sync by lazy { SyncManager(this, session, database, engine) }
     val push by lazy { PushRegistration(this, session) }
+    val calls by lazy { CallManager(this, session) }
     /** A join code from a join link, waiting for the join screen to take it (Phase 9). */
     val joinLink = MutableStateFlow<String?>(null)
 

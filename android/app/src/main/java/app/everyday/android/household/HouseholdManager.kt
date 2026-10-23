@@ -136,6 +136,15 @@ class HouseholdManager(
         refresh()
     }
 
+    /** The admin lets a member ring others, or stops them (Phase 12). */
+    suspend fun setCanCall(pin: String, id: String, name: String, canCall: Boolean) {
+        client().renameMember(pin, id, name, canCall = canCall)
+        refresh()
+    }
+
+    /** The picked household's members who can call, fresh from the server (Manage members). */
+    suspend fun callers(): Set<String> = client().me().members.filter { it.canCall }.map { it.id }.toSet()
+
     /** The current member picks their own colour; throws if someone else has it. */
     suspend fun setMyColor(color: String) {
         client().setMyColor(color)
@@ -177,6 +186,7 @@ class HouseholdManager(
                 memberId = memberId,
                 pendingRequests = household.pendingRequestIds.size,
                 hasJoinCode = household.hasJoinCode,
+                canCall = memberId != null && (memberId == household.adminMemberId || household.members.any { m -> m.id == memberId && m.canCall }),
             )
         }
         if (newlyApproved) engine.recompute()

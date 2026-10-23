@@ -13,6 +13,8 @@
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Phase 12: a call rings full screen, like a phone call. Android 14+ asks the person to allow it. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <application
         android:name=".EverydayApplication"
@@ -37,6 +39,20 @@
                 <data android:scheme="${joinScheme}" android:host="join" />
             </intent-filter>
         </activity>
+
+        <!-- Phase 12: the ringing screen of a call, also over the lock screen. -->
+        <activity
+            android:name=".calls.CallActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:turnScreenOn="true" />
+
+        <receiver
+            android:name=".calls.CallReceiver"
+            android:exported="false" />
 
         <receiver
             android:name=".reminders.ReminderReceiver"
