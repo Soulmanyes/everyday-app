@@ -46,6 +46,7 @@ class ApiContext(
     val memberInvites: MemberInviteStore = MemberInviteStore(store.db),
     /** Wrong admin PINs, counted in the database with longer lockouts each time (V17). */
     val pins: PinGuard = PinGuard(store.db, clock = clock),
+    val calls: CallStore = CallStore(store.db),
 )
 
 const val ADMIN_PIN_HEADER = "X-Admin-Pin"
@@ -306,7 +307,7 @@ fun Application.configureRouting(api: ApiContext?) {
                 val id = memberId(call)
                 val req = call.receive<MemberRequest>()
                 val member = withNameCheck {
-                    api.store.updateMember(household.id, id, validName(req.displayName, "Name", 40), req.color?.let(::validColor))
+                    api.store.updateMember(household.id, id, validName(req.displayName, "Name", 40), req.color?.let(::validColor), req.canCall)
                 } ?: throw ApiException(HttpStatusCode.NotFound, "No such member.")
                 api.pushOthers(admin)
                 call.respond(member)
@@ -392,8 +393,58 @@ fun Application.configureRouting(api: ApiContext?) {
             if (member != me) throw notYours()
             call.respondChores(api.chores.undoDone(household.id, id, member, api.today(household)), api, caller)
         }
+
+        /** Who a call can ring (Phase 12): members with an approved phone. */
+        get("/calls/targets") {
+            val caller = api.member(call)
+            if (!api.canCall(caller)) throw cantCall()
+            call.respond(CallTargetsResponse(api.calls.reachable(caller.household.id)))
+        }
+
+        /** Rings other members' phones. The push carries only the call's id; their phones fetch the rest. */
+        post("/calls") {
+            val caller = api.member(call)
+            val req = call.receive<StartCallRequest>()
+            val message = validName(req.message, "Message", 100)
+            val targets = req.memberIds.map { parseUuid(it) ?: badRequest("Bad member id.") }.toSet()
+            if (targets.isEmpty()) badRequest("Pick at least one person.")
+            val isAdmin = caller.memberId == caller.household.adminMemberId
+            when (val result = api.calls.start(caller.household.id, caller.memberId, isAdmin, targets, message, api.clock())) {
+                is CallStore.Start.Ok -> {
+                    api.push?.ring(caller.household.id, result.targets, UUID.fromString(result.call.id))
+                    call.respond(HttpStatusCode.Created, result.call)
+                }
+                is CallStore.Start.TooSoon -> throw ApiException(HttpStatusCode.TooManyRequests, "You can ring again in ${result.seconds} s.")
+                CallStore.Start.NotAllowed -> throw cantCall()
+                CallStore.Start.UnknownMember -> badRequest("Unknown member.")
+            }
+        }
+
+        /** A call the phone's member made or was rung by. */
+        get("/calls/{id}") {
+            val caller = api.member(call)
+            call.respond(api.calls.get(caller.household.id, uuidParam(call, "call"), caller.memberId) ?: throw noSuchCall())
+        }
+
+        post("/calls/{id}/answer") {
+            val caller = api.member(call)
+            val answer = call.receive<AnswerCallRequest>().answer.takeIf { it == "COMING" || it == "CANT" } ?: badRequest("Unknown answer.")
+            val result = api.calls.answer(caller.household.id, uuidParam(call, "call"), caller.memberId, answer, api.clock())
+                ?: throw noSuchCall()
+            // The caller sees the answer; this member's other phones stop ringing.
+            val members = setOf(UUID.fromString(result.callerId), caller.memberId)
+            api.push?.callAnswered(caller.household.id, members, exceptDevice = caller.deviceId, callId = UUID.fromString(result.id))
+            call.respond(result)
+        }
     }
 }
+
+private fun ApiContext.canCall(caller: Caller): Boolean =
+    caller.memberId == caller.household.adminMemberId || store.members(caller.household.id).any { it.id == caller.memberId.toString() && it.canCall }
+
+private fun cantCall() = ApiException(HttpStatusCode.Forbidden, "The admin hasn't let you call. Ask them to turn on Can call for you.")
+
+private fun noSuchCall() = ApiException(HttpStatusCode.NotFound, "No such call, or it's too old to answer.")
 
 private fun unauthorized() = ApiException(HttpStatusCode.Unauthorized, "This phone is not part of the household.")
 

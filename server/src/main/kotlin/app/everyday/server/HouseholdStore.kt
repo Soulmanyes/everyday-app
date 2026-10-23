@@ -250,19 +250,19 @@ class HouseholdStore(internal val db: DataSource) {
     }
 
     /**
-     * Null if there is no such member. [color] null keeps the current colour. Throws [NameTaken] or
+     * Null if there is no such member. [color] and [canCall] null keep the current values. Throws [NameTaken] or
      * [ColorTaken] if another member already has this name or colour.
      */
-    fun updateMember(householdId: UUID, memberId: UUID, name: String, color: String?): MemberDto? = nameMustBeFree {
+    fun updateMember(householdId: UUID, memberId: UUID, name: String, color: String?, canCall: Boolean? = null): MemberDto? = nameMustBeFree {
         db.transaction { conn ->
             conn.prepareStatement(
                 """
-                UPDATE member SET display_name = ?, color = coalesce(?, color), updated_at = now()
+                UPDATE member SET display_name = ?, color = coalesce(?, color), can_call = coalesce(?::boolean, can_call), updated_at = now()
                 WHERE id = ? AND household_id = ? AND NOT deleted
-                RETURNING id, display_name, color
+                RETURNING id, display_name, color, can_call
                 """.trimIndent(),
             ).run {
-                setString(1, name); setString(2, color); setObject(3, memberId); setObject(4, householdId)
+                setString(1, name); setString(2, color); setObject(3, canCall); setObject(4, memberId); setObject(5, householdId)
                 executeQuery().use { rs -> if (rs.next()) rs.toMember() else null }
             }
         }
@@ -305,7 +305,7 @@ class HouseholdStore(internal val db: DataSource) {
     fun setColor(householdId: UUID, memberId: UUID, color: String): MemberDto? = nameMustBeFree {
         db.transaction { conn ->
             conn.prepareStatement(
-                "UPDATE member SET color = ?, updated_at = now() WHERE id = ? AND household_id = ? AND NOT deleted RETURNING id, display_name, color",
+                "UPDATE member SET color = ?, updated_at = now() WHERE id = ? AND household_id = ? AND NOT deleted RETURNING id, display_name, color, can_call",
             ).run {
                 setString(1, color); setObject(2, memberId); setObject(3, householdId)
                 executeQuery().use { rs -> if (rs.next()) rs.toMember() else null }
@@ -352,7 +352,7 @@ class HouseholdStore(internal val db: DataSource) {
 
     private fun Connection.members(householdId: UUID): List<MemberDto> =
         prepareStatement(
-            "SELECT id, display_name, color FROM member WHERE household_id = ? AND NOT deleted ORDER BY created_at",
+            "SELECT id, display_name, color, can_call FROM member WHERE household_id = ? AND NOT deleted ORDER BY created_at",
         ).run {
             setObject(1, householdId)
             executeQuery().use { rs -> buildList { while (rs.next()) add(rs.toMember()) } }
@@ -366,7 +366,7 @@ class HouseholdStore(internal val db: DataSource) {
         }
         val color = requested ?: MEMBER_COLORS.firstOrNull { it !in used }
         val member = prepareStatement(
-            "INSERT INTO member (household_id, display_name, color) VALUES (?, ?, ?) RETURNING id, display_name, color",
+            "INSERT INTO member (household_id, display_name, color) VALUES (?, ?, ?) RETURNING id, display_name, color, can_call",
         ).run {
             setObject(1, householdId); setString(2, name); setString(3, color)
             executeQuery().use { it.next(); it.toMember() }
@@ -392,6 +392,7 @@ class HouseholdStore(internal val db: DataSource) {
         id = getObject("id", UUID::class.java).toString(),
         displayName = getString("display_name"),
         color = getString("color"),
+        canCall = getBoolean("can_call"),
     )
 
     companion object {

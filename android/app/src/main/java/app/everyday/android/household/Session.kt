@@ -28,6 +28,8 @@ data class Membership(
     val notificationsOn: Boolean = true,
     /** False until the admin makes a join code (households from before 2.0): nobody new can join. */
     val hasJoinCode: Boolean = true,
+    /** The admin lets this phone's member ring others (Phase 12); the admin always can. */
+    val canCall: Boolean = false,
 ) {
     val isAdmin get() = memberId != null && memberId == adminMemberId
 }
@@ -54,6 +56,7 @@ data class SessionState(
     val householdId: String? = null,
     val notificationsOn: Boolean = true,
     val hasJoinCode: Boolean = true,
+    val canCall: Boolean = false,
     /** The phone's other households. */
     val others: List<Membership> = emptyList(),
 ) {
@@ -62,7 +65,7 @@ data class SessionState(
     /** The picked household, or null if the phone hasn't joined one. */
     val picked: Membership?
         get() = token?.let {
-            Membership(serverUrl, it, householdId, householdName, adminMemberId, memberId, requestedName, pendingRequests, notificationsOn, hasJoinCode)
+            Membership(serverUrl, it, householdId, householdName, adminMemberId, memberId, requestedName, pendingRequests, notificationsOn, hasJoinCode, canCall)
         }
 
     /** Every household this phone is in, the picked one first. */
@@ -80,6 +83,7 @@ data class SessionState(
         householdId = m?.householdId,
         notificationsOn = m?.notificationsOn ?: true,
         hasJoinCode = m?.hasJoinCode ?: true,
+        canCall = m?.canCall ?: false,
     )
 
     /** Changes the household with device [token], picked or not. */
@@ -127,6 +131,7 @@ class Session(context: Context) {
             putString(KEY_HOUSEHOLD_ID, next.householdId)
             putBoolean(KEY_NOTIFY, next.notificationsOn)
             putBoolean(KEY_HAS_JOIN_CODE, next.hasJoinCode)
+            putBoolean(KEY_CAN_CALL, next.canCall)
             putString(KEY_OTHERS, JSONArray(next.others.map { it.toJson() }).toString())
         }
         _state.value = next
@@ -156,6 +161,7 @@ class Session(context: Context) {
         householdId = prefs.getString(KEY_HOUSEHOLD_ID, null),
         notificationsOn = prefs.getBoolean(KEY_NOTIFY, true),
         hasJoinCode = prefs.getBoolean(KEY_HAS_JOIN_CODE, true),
+        canCall = prefs.getBoolean(KEY_CAN_CALL, false),
         others = prefs.getString(KEY_OTHERS, null)?.let { json ->
             runCatching { JSONArray(json).let { a -> (0 until a.length()).map { membership(a.getJSONObject(it)) } } }.getOrNull()
         }.orEmpty(),
@@ -165,6 +171,7 @@ class Session(context: Context) {
         .put("serverUrl", serverUrl).put("token", token).put("householdId", householdId).put("householdName", householdName)
         .put("adminMemberId", adminMemberId).put("memberId", memberId).put("requestedName", requestedName)
         .put("pendingRequests", pendingRequests).put("notificationsOn", notificationsOn).put("hasJoinCode", hasJoinCode)
+        .put("canCall", canCall)
 
     private fun membership(o: JSONObject) = Membership(
         serverUrl = o.getString("serverUrl"),
@@ -177,6 +184,7 @@ class Session(context: Context) {
         pendingRequests = o.optInt("pendingRequests"),
         notificationsOn = o.optBoolean("notificationsOn", true),
         hasJoinCode = o.optBoolean("hasJoinCode", true),
+        canCall = o.optBoolean("canCall", false),
     )
 
     private fun JSONObject.optStringOrNull(name: String) = if (!has(name) || isNull(name)) null else getString(name)
@@ -193,6 +201,7 @@ class Session(context: Context) {
         const val KEY_HOUSEHOLD_ID = "household_id"
         const val KEY_NOTIFY = "notifications_on"
         const val KEY_HAS_JOIN_CODE = "has_join_code"
+        const val KEY_CAN_CALL = "can_call"
         const val KEY_OTHERS = "other_households"
     }
 }

@@ -217,7 +217,10 @@ private val PRIVACY_NOTE = listOf(
     "Stored: household and member names, chores, events, reminders and their times, and which phones are in " +
         "the household. Join codes, invites, admin PINs and phone keys are stored only in scrambled (hashed) form.",
     "Other households on the server can't see anything of yours, and you can't see theirs.",
-    "Instant updates go through Google's Firebase, but carry no household data: only a \"sync now\" signal.",
+    "Instant updates and calls go through Google's Firebase, but carry no household data: only a \"sync now\" " +
+        "signal, or a call's id. The phone then fetches the change or the call itself.",
+    "Calls: who rang whom, the message and each answer are kept on the server for 7 days, then deleted. Only the " +
+        "caller and the people rung can see a call.",
     "Import from calendar reads your phone's calendar only while you import. Only the events you tick are saved, " +
         "as your own events; nothing else from the calendar leaves the phone.",
     "The server owner can see, without names, how many households and members there are and when they were last " +

@@ -30,11 +30,31 @@ class Push(val store: PushStore, private val sender: PushSender) {
 
     /** Sends to tokens read before their phones were revoked (a rejected request, a removed member). */
     fun tokens(tokens: List<String>) = sender.send(tokens)
+
+    /**
+     * Rings the [members]' phones (Phase 12). Like a sync push it carries only an id: the phone fetches the
+     * call itself, so no names or messages go through Google.
+     */
+    fun ring(householdId: UUID, members: Collection<UUID>, callId: UUID) =
+        sender.sendCall(store.membersTokens(householdId, members, exceptDevice = null), CALL, callId)
+
+    /** Someone answered: the caller's phones show it, and the answerer's other phones stop ringing. */
+    fun callAnswered(householdId: UUID, members: Collection<UUID>, exceptDevice: UUID, callId: UUID) =
+        sender.sendCall(store.membersTokens(householdId, members, exceptDevice), CALL_ANSWERED, callId)
+
+    companion object {
+        const val CALL = "call"
+        const val CALL_ANSWERED = "call-answer"
+    }
 }
 
-/** Sends a "sync now" push to each token. Must not block the caller. */
+/** Sends a push to each token. Must not block the caller. */
 fun interface PushSender {
+    /** A "sync now" push. */
     fun send(tokens: List<String>)
+
+    /** A call push of [type] ([Push.CALL] or [Push.CALL_ANSWERED]). Senders in tests get it like a sync push. */
+    fun sendCall(tokens: List<String>, type: String, callId: UUID) = send(tokens)
 }
 
 class PushStore(private val db: DataSource) {
@@ -91,6 +111,19 @@ class PushStore(private val db: DataSource) {
         householdId, memberId,
     )
 
+    /** The approved phones of [members], except [exceptDevice]. */
+    fun membersTokens(householdId: UUID, members: Collection<UUID>, exceptDevice: UUID?): List<String> = db.transaction { conn ->
+        conn.prepareStatement(
+            """
+            SELECT push_token FROM device WHERE household_id = ? AND member_id = ANY(?) AND status = 'approved' AND NOT revoked
+                AND push_token IS NOT NULL AND id IS DISTINCT FROM ?
+            """.trimIndent(),
+        ).run {
+            setObject(1, householdId); setArray(2, conn.createArrayOf("uuid", members.toTypedArray())); setObject(3, exceptDevice)
+            executeQuery().use { rs -> buildList { while (rs.next()) add(rs.getString(1)) } }
+        }
+    }
+
     private fun tokens(sql: String, vararg params: Any?): List<String> = db.transaction { conn ->
         conn.prepareStatement(sql).run {
             params.forEachIndexed { i, p -> setObject(i + 1, p) }
@@ -112,24 +145,34 @@ class FcmSender(credentialsFile: File, private val onUnregistered: (String) -> U
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
     private val executor = Executors.newSingleThreadExecutor { Thread(it, "fcm").apply { isDaemon = true } }
 
-    override fun send(tokens: List<String>) {
+    // Data only, so the phone shows nothing itself; high priority so it wakes the phone. The collapse
+    // key keeps just one pending "sync" per phone while it's offline.
+    override fun send(tokens: List<String>) =
+        sendAll(tokens, """"data":{"type":"sync"},"android":{"priority":"high","collapse_key":"sync","ttl":"3600s"}""")
+
+    // No collapse key, so a pending sync can't replace a call. A ring that arrives late is no use, so it
+    // expires with the ringing (30 s); an answer can wait for a phone that's offline for a while.
+    override fun sendCall(tokens: List<String>, type: String, callId: UUID) {
+        val ttl = if (type == Push.CALL) "30s" else "3600s"
+        val data = """{"type":${Json.encodeToString(type)},"callId":"$callId"}"""
+        sendAll(tokens, """"data":$data,"android":{"priority":"high","ttl":"$ttl"}""")
+    }
+
+    private fun sendAll(tokens: List<String>, fields: String) {
         if (tokens.isEmpty()) return
         executor.execute {
             try {
                 credentials.refreshIfExpired()
                 val accessToken = credentials.accessToken?.tokenValue ?: error("no access token")
-                tokens.distinct().forEach { sendOne(it, accessToken) }
+                tokens.distinct().forEach { sendOne(it, accessToken, fields) }
             } catch (e: Exception) {
                 log.warn("FCM send failed: {}", e.toString())
             }
         }
     }
 
-    private fun sendOne(token: String, accessToken: String) {
-        // Data only, so the phone shows nothing itself; high priority so it wakes the phone. The collapse
-        // key keeps just one pending "sync" per phone while it's offline.
-        val body = """{"message":{"token":${Json.encodeToString(token)},"data":{"type":"sync"},""" +
-            """"android":{"priority":"high","collapse_key":"sync","ttl":"3600s"}}}"""
+    private fun sendOne(token: String, accessToken: String, fields: String) {
+        val body = """{"message":{"token":${Json.encodeToString(token)},$fields}}"""
         val request = HttpRequest.newBuilder(URI("https://fcm.googleapis.com/v1/projects/$projectId/messages:send"))
             .timeout(Duration.ofSeconds(15))
             .header("Authorization", "Bearer $accessToken")

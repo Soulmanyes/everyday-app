@@ -13,7 +13,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import app.everyday.android.ui.calls.CallSheet
+import kotlinx.coroutines.launch
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -114,6 +123,7 @@ private fun MainNav(household: HouseholdViewModel) {
     NavHost(navController = nav, startDestination = Routes.MAIN) {
         composable(Routes.MAIN) {
             MainScreen(
+                household = household,
                 onOpenSettings = { nav.navigate(Routes.SETTINGS) },
                 onEditEvent = { id -> nav.navigate(Routes.event(id)) },
                 onEditChoreReminder = { id -> nav.navigate(Routes.edit(id)) },
@@ -174,6 +184,7 @@ private fun MainNav(household: HouseholdViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainScreen(
+    household: HouseholdViewModel,
     onOpenSettings: () -> Unit,
     onEditEvent: (String?) -> Unit,
     onEditChoreReminder: (String) -> Unit,
@@ -185,15 +196,31 @@ private fun MainScreen(
     val update by context.app.updates.update.collectAsStateWithLifecycle()
     val whatsNew by context.app.prefs.whatsNew.collectAsStateWithLifecycle()
     if (whatsNew.isNotEmpty()) WhatsNewDialog(whatsNew, onDismiss = context.app.prefs::dismissWhatsNew)
+    val session by household.session.collectAsStateWithLifecycle()
+    val members by household.members.collectAsStateWithLifecycle()
+    var calling by rememberSaveable { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    if (calling) {
+        CallSheet(members, session.memberId, onDismiss = { calling = false }) { status ->
+            calling = false
+            scope.launch { snackbar.showSnackbar(status) }
+        }
+    }
+    FullScreenCallsPrompt()
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(tab.label) },
                 actions = {
+                    if (session.canCall) {
+                        IconButton(onClick = { calling = true }) { Icon(Icons.Default.Call, contentDescription = "Call someone") }
+                    }
                     IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             NavigationBar {
                 Tab.entries.forEach { t ->
@@ -233,3 +260,31 @@ private fun MainScreen(
         }
     }
 }
+
+/**
+ * Android 14+ asks once to let calls ring full screen (Phase 12); without it a call shows as a heads-up
+ * notification. Settings has the same switch for later.
+ */
+@Composable
+private fun FullScreenCallsPrompt() {
+    val context = LocalContext.current
+    var show by remember { mutableStateOf(context.app.calls.shouldAskFullScreen()) }
+    if (!show) return
+    fun close() {
+        context.app.calls.askedFullScreen()
+        show = false
+    }
+    AlertDialog(
+        onDismissRequest = ::close,
+        title = { Text("Let calls ring full screen?") },
+        text = { Text("When someone in your household calls you, Everyday can ring over the lock screen like a phone call. Android asks you to allow this once.") },
+        confirmButton = {
+            TextButton(onClick = { close(); context.startActivity(fullScreenSettings(context)) }) { Text("Allow") }
+        },
+        dismissButton = { TextButton(onClick = ::close) { Text("Not now") } },
+    )
+}
+
+/** The system screen that allows full-screen alerts for this app (Android 14+). */
+fun fullScreenSettings(context: android.content.Context): Intent =
+    Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${context.packageName}"))

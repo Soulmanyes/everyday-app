@@ -9,6 +9,7 @@ A private Android app for households: a shared timetable of events and chores, w
 - **Several households** on one phone. Admins invite others with one-time links or a join code, and approve new phones with an admin PIN.
 - **Import from calendar**: a one-time import of events from the phone's calendar, such as Google Calendar.
 - **Instant updates**: a push tells phones to sync as soon as something changes.
+- **Calls**: members the admin allows can ring others' phones with a short message, like "Come downstairs". The phone rings full screen for 30 seconds, and the answer ("On my way" or "Can't now") goes back to the caller.
 
 The release app is downloaded from https://szekbal.duckdns.org/download/ and prompts when an update is out.
 

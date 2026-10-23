@@ -61,6 +61,10 @@ class Cleanup(
             executeBatch()
         }
         deleted.forEach { conn.deleteHousehold(it) }
+        // Calls (Phase 12) are only needed while they ring and get answered.
+        conn.prepareStatement("DELETE FROM call WHERE created_at < ?").run {
+            setObject(1, now.minus(CallStore.keepFor).toOffset()); executeUpdate()
+        }
         Outcome(marked, cleared, deleted)
     }
 
