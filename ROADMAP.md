@@ -190,11 +190,13 @@ Added 2026-10-15. Released 2026-10-16 as 2.6.6 (app only; also the Gesture Cam p
 - [x] The build fails if a dependency brings a license that hasn't been checked (AboutLibraries strict mode)
 
 ## Phase 11: Better colour picking (2.7.0)
-Added 2026-10-12. Not started. Decided 2026-10-23: a bigger fixed palette, not free RGB.
-- [ ] Grow the member palette beyond the 12 colours, still a fixed set (`MEMBER_PALETTE` in the app, `MEMBER_COLORS` on the server). `member.color` stays a palette key.
-- [ ] Colours stay unique per household (taken ones greyed out in the picker, as today).
-- [ ] Still no greens: chore cards are green. Every new colour must show on light and dark backgrounds and be easy to tell apart from the others.
-- [ ] To decide when it starts: how many colours (about 24?), and how to treat older apps, which don't know the new keys and show a hash fallback colour for them (e.g. the server hands out new keys automatically only once the 12 old ones are taken).
+Added 2026-10-12. Started 2026-10-23. Decided 2026-10-23: a bigger fixed palette, not free RGB.
+- [x] 24 colours instead of 12, still a fixed set (`MEMBER_PALETTE` in the app, `MEMBER_COLORS` on the server). `member.color` stays a palette key. New: violet, gold, slate, salmon, lavender, chocolate, magenta, tan, mauve, coral, periwinkle, blush.
+- [x] Colours stay unique per household (taken ones greyed out in the picker, as today).
+- [x] Still no greens. Each new colour was checked against the others (CIEDE2000 at least 11.6 apart), the chore greens and the light and dark backgrounds.
+- [x] Older apps: the new keys come after the old 12, so the server hands them out only once those are taken. Until a phone updates, it shows a member with a new colour in a fallback colour.
+- [x] Tried the picker in the dev app (4 rows of colours) on light and dark (2026-10-23).
+- [ ] Release: deploy the server before publishing 2.7.0 (an old server refuses the new keys with "Unknown colour.").
 
 ## Phase 12: Home-screen widgets (2.8.0)
 Added 2026-10-23 (dropped on 2026-10-09, wanted again). Not started. Details to decide when it starts.

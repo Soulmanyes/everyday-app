@@ -196,6 +196,22 @@ class ApiTest {
     }
 
     @Test
+    fun `the 2_7 colours are handed out only after the first 12`() = api { client ->
+        val admin = client.createHousehold()
+        // A 2.7 colour can be picked at any time; Alex's red is free again.
+        val (alexToken, _) = client.joinApproved(admin.token, "Alex")
+        val picked = client.put("/me/color") {
+            contentType(ContentType.Application.Json); header(HttpHeaders.Authorization, "Bearer $alexToken"); setBody(ColorRequest("blush"))
+        }
+        assertEquals("blush", picked.body<MemberDto>().color)
+
+        // The admin has blue; new members take the rest of the first 12 before any 2.7 colour.
+        val first = (1..11).map { client.addMemberDto(admin.token, "M$it").color }
+        assertEquals(MEMBER_COLORS.subList(1, 12), first)
+        assertEquals("violet", client.addMemberDto(admin.token, "M12").color)
+    }
+
+    @Test
     fun `the admin rejoins on a new phone with the admin PIN`() = api { client ->
         val admin = client.createHousehold()
         assertEquals(HttpStatusCode.Forbidden, client.postJson("/join", JoinRequest(code, adminPin = "0000")).status)
