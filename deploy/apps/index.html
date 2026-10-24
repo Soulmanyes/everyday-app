@@ -7,16 +7,20 @@
 <style>
   :root { color-scheme: light dark; --accent: #4a5d8f; }
   body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 0 auto; padding: 2rem 1.25rem; line-height: 1.5; }
-  .app { display: block; margin: 1rem 0; padding: 1rem 1.25rem; border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-         border-radius: 1rem; color: inherit; text-decoration: none; }
-  .app:hover, .app:focus-visible { border-color: var(--accent); }
+  .app { display: block; margin: 1rem 0; padding: 1rem 1.25rem; border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+         border-radius: 1rem; background: color-mix(in srgb, currentColor 6%, transparent); color: inherit; text-decoration: none; }
+  a.app:hover, a.app:focus-visible { border-color: var(--accent); }
   .app b { display: block; font-size: 1.15rem; color: var(--accent); }
+  .app img { display: block; width: 100%; height: auto; margin: .75rem 0; border-radius: .5rem; }
+  .app pre { white-space: pre-wrap; word-break: break-all; margin: .75rem 0 .5rem; padding: .6rem .8rem; border-radius: .5rem; font-size: .8rem;
+             background: color-mix(in srgb, currentColor 10%, transparent); }
+  h2 { margin-top: 2rem; font-size: 1.1rem; }
   small { opacity: .7; }
 </style>
 </head>
 <body>
 <h1>Apps</h1>
-<p>Pick the one you want to download.</p>
+<p>Pick the one you want to download. The Linux apps install with the command shown: paste it into a terminal.</p>
 <a class="app" href="../download/">
   <b>Everyday</b>
   Reminders and chores for your household. <small>Android</small>
@@ -25,5 +29,36 @@
   <b>Gesture Cam</b>
   Webcam effects for video calls and camera apps, set off by hand gestures. <small>Linux: Arch, Debian 13+, Ubuntu 24.04+, Fedora 40+</small>
 </a>
+<a class="app" href="dpideck/">
+  <b>DPIdeck</b>
+  Settings for ATK / VXE mice: DPI, polling rate, buttons and lights, without the ATK HUB website. <small>Windows and Linux</small>
+</a>
+
+<h2>For Counter-Strike: Source and Momentum Mod</h2>
+<div class="app">
+  <b>Source Yaw</b>
+  Cycle <code>cl_yawspeed</code> with one key, and see which one is active from a sound and your crosshair colour.
+  Made for surf, with an optional strafe trainer. <small>Linux, Steam's native game</small>
+  <img src="https://raw.githubusercontent.com/Soulmanyes/sourceyaw/main/docs/screenshot.png" alt="Source Yaw settings window">
+  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/sourceyaw/main/install.sh | sh</pre>
+  <small><a href="https://github.com/Soulmanyes/sourceyaw">More on GitHub</a></small>
+</div>
+
+<h2>Linux desktop tools</h2>
+<div class="app">
+  <b>Hyprland Dashboard</b>
+  Edit a Hyprland Lua config from a window: options, monitors, keybinds, window rules, animations and startup.
+  Backs up first and can roll back, but it rewrites your config, so keep your own copy. <small>Hyprland, needs git</small>
+  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/hypr-dashboard/main/install.sh | bash</pre>
+  <small><a href="https://github.com/Soulmanyes/hypr-dashboard">More on GitHub</a></small>
+</div>
+<div class="app">
+  <b>Kitty Styler</b>
+  Pick the kitty terminal's theme, font and look with a live preview, plus an optional starship prompt and zsh setup.
+  <small>Linux with kitty</small>
+  <img src="https://raw.githubusercontent.com/Soulmanyes/kitty-styler/main/docs/screenshot.png" alt="Kitty Styler with a styled prompt">
+  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/kitty-styler/main/install.sh | sh</pre>
+  <small><a href="https://github.com/Soulmanyes/kitty-styler">More on GitHub</a></small>
+</div>
 </body>
 </html>
