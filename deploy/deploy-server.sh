@@ -27,8 +27,10 @@ mkdir -p ~/everyday-backups/manual
 scp -q "oracle:~/backups/manual/$file" ~/everyday-backups/manual/
 echo "Copied to ~/everyday-backups/manual/$file"
 
-# Never .env (it exists only on the server) or build output.
-rsync -az --exclude build --exclude .gradle --exclude .env server deploy oracle:~/everyday-app/
+# Never .env (it exists only on the server) or build output. The web pages go up with publish-pages.sh,
+# and the APK with publish-release.sh, so a server deploy never puts back older pages.
+rsync -az --exclude build --exclude .gradle --exclude .env --exclude /deploy/apps --exclude /deploy/download \
+  server deploy oracle:~/everyday-app/
 ssh oracle 'cd ~/everyday-app/deploy && docker compose up -d --build api'
 echo "Waiting for the API to start..."
 sleep 20

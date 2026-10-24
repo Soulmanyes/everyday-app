@@ -23,7 +23,8 @@ printf '{"versionCode": %s, "versionName": "%s", "url": "https://szekbal.duckdns
 
 # The APK goes up before version.json, so phones are never told about a file that isn't there yet.
 ssh oracle 'mkdir -p ~/everyday-app/deploy/download'
-rsync -az "$out/index.html" "$out/join.html" "$out/everyday.apk" oracle:~/everyday-app/deploy/download/
+# Only the APK and version.json: the download page goes up with publish-pages.sh.
+rsync -az "$out/everyday.apk" oracle:~/everyday-app/deploy/download/
 rsync -az "$out/version.json" oracle:~/everyday-app/deploy/download/
 git tag -f "v$name"
 echo "Published $name (versionCode $code). Push the tag with: git push origin v$name"
