@@ -1,0 +1,49 @@
+/* Shared look for the app pages (/apps/ and /download/). Page-specific rules stay in each page. */
+:root { color-scheme: light dark; --accent: #4a5d8f; --line: color-mix(in srgb, currentColor 30%, transparent); }
+body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 0 auto; padding: 0 1.25rem 3rem; line-height: 1.5; }
+body.wide { max-width: 72rem; }
+h1 { margin-bottom: .25rem; }
+h2 { margin-top: 2rem; }
+li { margin-bottom: .5rem; }
+small { opacity: .7; }
+a { color: var(--accent); }
+@media (prefers-color-scheme: dark) { :root { --accent: #8ea2d8; } .button, .go { --accent: #4a5d8f; } }
+
+/* Header: the site's name and a link to GitHub, on every page */
+header.site { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+              padding: 1rem 0; margin-bottom: 1rem; border-bottom: 1px solid var(--line); }
+header.site a { color: inherit; text-decoration: none; font-weight: 600; }
+header.site .brand { display: flex; align-items: center; gap: .6rem; font-size: 1.1rem; }
+header.site .brand img { width: 1.75rem; height: 1.75rem; }
+header.site .gh { opacity: .8; }
+header.site .gh:hover, header.site .gh:focus-visible { opacity: 1; text-decoration: underline; }
+
+/* Buttons */
+.button { display: inline-block; margin: 1.25rem 0; padding: .9rem 1.6rem; border-radius: 999px; background: var(--accent);
+          color: #fff; text-decoration: none; font-weight: 600; }
+.go { display: inline-block; margin-top: .25rem; padding: .55rem 1.2rem; border-radius: 999px; background: var(--accent);
+      color: #fff; text-decoration: none; font-weight: 600; }
+.button:hover, .button:focus-visible, .go:hover, .go:focus-visible { filter: brightness(1.15); }
+
+/* Cards on the apps page; on wide screens they sit side by side */
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr)); align-items: start; }
+.app { padding: 1rem 1.25rem; border: 1px solid var(--line); border-radius: 1rem;
+       background: color-mix(in srgb, currentColor 6%, transparent); }
+.app > b { display: block; font-size: 1.15rem; color: var(--accent); }
+.ver { margin-left: .4rem; font-size: .8rem; font-weight: 400; opacity: .7; color: CanvasText; }
+
+/* Screenshots: click for full size */
+img.shot { display: block; width: 100%; height: auto; margin: .75rem 0; border-radius: .5rem; cursor: zoom-in; }
+/* In cards a tall screenshot shows its top part; the full image opens on click */
+.app img.shot { max-height: 26rem; object-fit: cover; object-position: top; }
+dialog.lightbox { max-width: 96vw; max-height: 96vh; padding: 0; border: 0; border-radius: .5rem; background: transparent; }
+dialog.lightbox::backdrop { background: rgb(0 0 0 / .8); }
+dialog.lightbox img { display: block; max-width: 96vw; max-height: 96vh; cursor: zoom-out; }
+
+/* Commands, with a Copy button added by site.js */
+.cmd { position: relative; margin: .75rem 0 .5rem; }
+.cmd pre { margin: 0; padding: .7rem 5.5rem .7rem .9rem; border-radius: .5rem; font-size: .85rem;
+           white-space: pre-wrap; word-break: break-all; background: color-mix(in srgb, currentColor 10%, transparent); }
+.cmd button { position: absolute; top: .4rem; right: .4rem; padding: .3rem .8rem; border: 1px solid var(--line); border-radius: .4rem;
+              background: Canvas; color: CanvasText; font: inherit; font-size: .8rem; cursor: pointer; }
+.cmd button:hover, .cmd button:focus-visible { border-color: var(--accent); }

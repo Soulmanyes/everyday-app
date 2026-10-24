@@ -3,28 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DPIdeck</title>
-<style>
-  :root { color-scheme: light dark; --accent: #4a5d8f; }
-  body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 0 auto; padding: 2rem 1.25rem; line-height: 1.5; }
-  h1 { margin-bottom: .25rem; }
-  .button { display: inline-block; margin: 1.25rem 0; padding: .9rem 1.6rem; border-radius: 999px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; }
-  li { margin-bottom: .5rem; }
-  pre { white-space: pre-wrap; word-break: break-all; padding: .75rem 1rem; border-radius: .5rem; background: color-mix(in srgb, currentColor 8%, transparent); }
-  img { display: block; width: 100%; height: auto; margin: 1rem 0 0; border-radius: .5rem; }
-  small { opacity: .7; }
-</style>
+<title>DPIdeck: settings for ATK / VXE mice</title>
+<meta name="description" content="Change DPI, polling rate, sensor, buttons and lights of ATK / VXE mice on Windows and Linux, without the ATK HUB website.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="DPIdeck: settings for ATK / VXE mice">
+<meta property="og:description" content="Change DPI, polling rate, sensor, buttons and lights of ATK / VXE mice on Windows and Linux, without the ATK HUB website.">
+<meta property="og:url" content="https://szekbal.duckdns.org/apps/dpideck/">
+<meta property="og:image" content="https://raw.githubusercontent.com/Soulmanyes/dpideck/main/docs/screenshot.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/apps/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/apps/site.css">
 </head>
 <body>
-<p><small><a href="../">← All apps</a></small></p>
+<header class="site">
+  <a class="brand" href="/apps/"><img class="shot" src="/apps/favicon.svg" alt="">Soulmanyes</a>
+  <a class="gh" href="https://github.com/Soulmanyes">GitHub</a>
+</header>
+<p><small><a href="/apps/">← All apps</a></small></p>
 <h1>DPIdeck</h1>
 <p>Settings for ATK / VXE mice, such as the VXE MAD R, on Windows and Linux. No ATK HUB website or
 Chromium-based browser needed. It works over the 2.4 GHz dongle and over the USB cable.</p>
 <p>It changes DPI stages, polling rate (up to 8000 Hz, depending on the connection), sensor mode, lift-off
 distance, motion sync, angle snapping, ripple control, long range mode, the DPI and receiver lights, click
 debounce, the sleep timer and the button mapping. Settings are saved in the mouse itself.</p>
-<img src="https://raw.githubusercontent.com/Soulmanyes/dpideck/main/docs/screenshot.png" alt="DPIdeck showing a mouse's DPI and sensor settings">
-<p><small id="version"></small></p>
+<img class="shot" src="https://raw.githubusercontent.com/Soulmanyes/dpideck/main/docs/screenshot.png" alt="DPIdeck showing a mouse's DPI and sensor settings">
+<p><small data-release="Soulmanyes/dpideck" data-prefix="Version "></small></p>
 <h2>Windows</h2>
 <a class="button" href="https://github.com/Soulmanyes/dpideck/releases/latest/download/DPIdeck-windows.zip">Download for Windows</a>
 <p>Unzip it and run <code>DPIdeck.exe</code>. Nothing needs installing. Windows may say "Windows protected your
@@ -38,10 +41,6 @@ back in. Run the same command again to update. Works on Arch, Debian/Ubuntu, Fed
 <p><small>Source code, the full list of supported mice and how to uninstall:
 <a href="https://github.com/Soulmanyes/dpideck">github.com/Soulmanyes/dpideck</a>. DPIdeck's own code is public
 domain (CC0 1.0); the parts it builds on keep their own licenses, listed in the repository. It isn't made by ATK.</small></p>
-<script>
-  fetch("https://api.github.com/repos/Soulmanyes/dpideck/releases/latest").then(r => r.json())
-    .then(v => { if (v.tag_name) document.getElementById("version").textContent = "Version " + v.tag_name.replace(/^v/, ""); })
-    .catch(() => {});
-</script>
+<script src="/apps/site.js"></script>
 </body>
 </html>
