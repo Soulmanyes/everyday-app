@@ -9,30 +9,44 @@
   body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 0 auto; padding: 2rem 1.25rem; line-height: 1.5; }
   .app { display: block; margin: 1rem 0; padding: 1rem 1.25rem; border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
          border-radius: 1rem; background: color-mix(in srgb, currentColor 6%, transparent); color: inherit; text-decoration: none; }
-  a.app:hover, a.app:focus-visible { border-color: var(--accent); }
   .app b { display: block; font-size: 1.15rem; color: var(--accent); }
   .app img { display: block; width: 100%; height: auto; margin: .75rem 0; border-radius: .5rem; }
   .app pre { white-space: pre-wrap; word-break: break-all; margin: .75rem 0 .5rem; padding: .6rem .8rem; border-radius: .5rem; font-size: .8rem;
              background: color-mix(in srgb, currentColor 10%, transparent); }
   h2 { margin-top: 2rem; font-size: 1.1rem; }
+  .go { display: inline-block; margin-top: .25rem; padding: .55rem 1.2rem; border-radius: 999px; background: var(--accent);
+        color: #fff; text-decoration: none; font-weight: 600; }
+  .go:hover, .go:focus-visible { filter: brightness(1.15); }
   small { opacity: .7; }
 </style>
 </head>
 <body>
 <h1>Apps</h1>
 <p>Pick the one you want to download. The Linux apps install with the command shown: paste it into a terminal.</p>
-<a class="app" href="../download/">
+<div class="app">
   <b>Everyday</b>
-  Reminders and chores for your household. <small>Android</small>
-</a>
-<a class="app" href="gesture-cam/">
+  Reminders and chores for your household. Share events with the people in them, see who's busy, and split
+  the chores across the week. Each person sets their own reminders, and a call button rings the others' phones.
+  <small>Android 9+</small>
+  <img src="img/everyday.webp" alt="Everyday's week of events, and the chore timetable with who does what">
+  <a class="go" href="../download/">Download for Android</a>
+</div>
+<div class="app">
   <b>Gesture Cam</b>
-  Webcam effects for video calls and camera apps, set off by hand gestures. <small>Linux: Arch, Debian 13+, Ubuntu 24.04+, Fedora 40+</small>
-</a>
-<a class="app" href="dpideck/">
+  Webcam effects for video calls and camera apps, set off by hand gestures: thumbs up for fireworks, peace sign
+  for confetti, plus hearts, rain, balloons, snow, sparkles, bubbles and lasers. They play behind you, so they
+  never cover your face. <small>Linux: Arch, Debian 13+, Ubuntu 24.04+, Fedora 40+</small>
+  <img src="https://raw.githubusercontent.com/Soulmanyes/gesture-cam/main/docs/screenshot.png" alt="Gesture Cam's window with its effects and gestures">
+  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/gesture-cam/main/install.sh | sh</pre>
+  <a class="go" href="gesture-cam/">More about Gesture Cam</a>
+</div>
+<div class="app">
   <b>DPIdeck</b>
-  Settings for ATK / VXE mice: DPI, polling rate, buttons and lights, without the ATK HUB website. <small>Windows and Linux</small>
-</a>
+  Settings for ATK / VXE mice, such as the VXE MAD R: DPI stages, polling rate up to 8000 Hz, sensor mode,
+  buttons and lights, without the ATK HUB website. Settings are saved in the mouse. <small>Windows and Linux</small>
+  <img src="https://raw.githubusercontent.com/Soulmanyes/dpideck/main/docs/screenshot.png" alt="DPIdeck showing a mouse's DPI and sensor settings">
+  <a class="go" href="dpideck/">Download for Windows or Linux</a>
+</div>
 
 <h2>For Counter-Strike: Source and Momentum Mod</h2>
 <div class="app">
@@ -41,7 +55,7 @@
   Made for surf, with an optional strafe trainer. <small>Linux, Steam's native game</small>
   <img src="https://raw.githubusercontent.com/Soulmanyes/sourceyaw/main/docs/screenshot.png" alt="Source Yaw settings window">
   <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/sourceyaw/main/install.sh | sh</pre>
-  <small><a href="https://github.com/Soulmanyes/sourceyaw">More on GitHub</a></small>
+  <a class="go" href="https://github.com/Soulmanyes/sourceyaw">View on GitHub</a>
 </div>
 
 <h2>Linux desktop tools</h2>
@@ -50,7 +64,7 @@
   Edit a Hyprland Lua config from a window: options, monitors, keybinds, window rules, animations and startup.
   Backs up first and can roll back, but it rewrites your config, so keep your own copy. <small>Hyprland, needs git</small>
   <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/hypr-dashboard/main/install.sh | bash</pre>
-  <small><a href="https://github.com/Soulmanyes/hypr-dashboard">More on GitHub</a></small>
+  <a class="go" href="https://github.com/Soulmanyes/hypr-dashboard">View on GitHub</a>
 </div>
 <div class="app">
   <b>Kitty Styler</b>
@@ -58,7 +72,7 @@
   <small>Linux with kitty</small>
   <img src="https://raw.githubusercontent.com/Soulmanyes/kitty-styler/main/docs/screenshot.png" alt="Kitty Styler with a styled prompt">
   <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/kitty-styler/main/install.sh | sh</pre>
-  <small><a href="https://github.com/Soulmanyes/kitty-styler">More on GitHub</a></small>
+  <a class="go" href="https://github.com/Soulmanyes/kitty-styler">View on GitHub</a>
 </div>
 </body>
 </html>
