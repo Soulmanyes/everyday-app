@@ -34,7 +34,7 @@ See `ROADMAP.md` for planned features and their order.
 | Joining | Reminders made on a phone before it joined move to the member the phone is approved as. |
 | Backend | Ktor (Kotlin) REST API + PostgreSQL, both in Docker on an Oracle Cloud **Ampere A1 (arm64)** VM |
 | HTTPS | Caddy reverse proxy with automatic Let's Encrypt certificates. The owner has **no domain**, so the plan is a free DuckDNS subdomain. |
-| Repo | Private GitHub repo `everyday-app` |
+| Repo | Public GitHub repo `Soulmanyes/everyday-app` |
 
 ## Domain model
 
