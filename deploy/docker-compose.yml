@@ -51,10 +51,13 @@ services:
     environment:
       API_DOMAIN: ${API_DOMAIN}
       OLD_DOMAIN: ${OLD_DOMAIN}
+      SHOTS_DOMAIN: ${SHOTS_DOMAIN:-shots.localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./download:/srv/download:ro
       - ./apps:/srv/apps:ro
+      # Screenshots uploaded over SSH (see the Caddyfile). Outside the code folder, so rsync never touches it.
+      - ${SHOTS_DIR:-/home/opc/shots}:/srv/shots:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

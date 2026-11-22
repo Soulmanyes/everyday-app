@@ -48,3 +48,20 @@
 	redir @pages https://{$API_DOMAIN}{uri} permanent
 	import site
 }
+
+# The owner's screenshot links (its own DuckDNS name, in SHOTS_DOMAIN in .env). Images are uploaded over
+# SSH into SHOTS_DIR on the VM, never over HTTP, so this site only reads. Names are long random IDs and
+# nothing lists the folder, so a link can't be guessed. Unset, the site falls back to a local-only name
+# that needs no certificate.
+{$SHOTS_DOMAIN:shots.localhost} {
+	@image path_regexp ^/[A-Za-z0-9]{12,}\.(png|jpg|webp|gif)$
+	handle @image {
+		root * /srv/shots
+		header X-Content-Type-Options nosniff
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+	handle {
+		respond 404
+	}
+}
