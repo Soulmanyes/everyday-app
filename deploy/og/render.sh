@@ -10,4 +10,4 @@ firefox --headless --no-remote --profile "$profile" --window-size 1200,630 \
   --screenshot "$out" "file://$PWD/og.html" >/dev/null 2>&1
 magick "$out" -crop 1200x630+0+0 +repage -strip ../apps/img/og.png
 rm -f "$out"
-echo "Wrote deploy/apps/img/og.png"
+echo "Wrote deploy/apps/img/og.png. Bump ?v= on og:image in deploy/apps/index.html, or Discord keeps its cached copy."
