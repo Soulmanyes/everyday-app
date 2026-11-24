@@ -38,11 +38,17 @@ for (const img of document.querySelectorAll("img.shot")) {
 
 // Version numbers. data-release="owner/repo": the latest GitHub release. data-updated="owner/repo": the
 // date of the latest commit, for apps without releases. data-json="url" data-field="name": a version.json.
+// data-tag-prefix="hub-v" with data-release: the newest release whose tag starts with it, for repos that
+// tag several apps (Movement Kit's modules); the prefix is left out of the number shown.
 const show = (el, text) => { if (text) el.textContent = (el.dataset.prefix ?? "") + text; };
 const getJson = url => fetch(url, { cache: "no-store" }).then(r => r.ok ? r.json() : Promise.reject(r.status));
+const latestTag = (repo, prefix) => prefix
+  ? getJson(`https://api.github.com/repos/${repo}/releases?per_page=30`)
+      .then(list => list.find(r => !r.draft && !r.prerelease && r.tag_name.startsWith(prefix)).tag_name.slice(prefix.length))
+  : getJson(`https://api.github.com/repos/${repo}/releases/latest`).then(v => v.tag_name);
 for (const el of document.querySelectorAll("[data-release]")) {
-  getJson(`https://api.github.com/repos/${el.dataset.release}/releases/latest`)
-    .then(v => show(el, "v" + v.tag_name.replace(/^v/, ""))).catch(() => {});
+  latestTag(el.dataset.release, el.dataset.tagPrefix)
+    .then(tag => show(el, "v" + tag.replace(/^v/, ""))).catch(() => {});
 }
 for (const el of document.querySelectorAll("[data-updated]")) {
   getJson(`https://api.github.com/repos/${el.dataset.updated}/commits?per_page=1`)

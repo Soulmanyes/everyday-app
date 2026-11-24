@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Apps by Soulmanyes</title>
-<meta name="description" content="Free apps for Android, Linux and Windows: Everyday, Gesture Cam, DPIdeck, Source Yaw, Hyprland Dashboard and Kitty Styler.">
+<meta name="description" content="Free apps for Android, Linux and Windows: Everyday, Gesture Cam, DPIdeck, Movement Kit, Lacquer, Hyprland Dashboard, Shellac, Playtime and Noctalia bar plugins.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Apps by Soulmanyes">
-<meta property="og:description" content="Free apps for Android, Linux and Windows: household reminders, webcam gesture effects, mouse settings and Linux desktop tools.">
+<meta property="og:description" content="Free apps for Android, Linux and Windows: household reminders, webcam gesture effects, mouse settings, surf and bhop tools, and Linux desktop tools.">
 <meta property="og:url" content="https://szekbal.duckdns.org/apps/">
 <meta property="og:image" content="https://szekbal.duckdns.org/apps/img/og.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -50,31 +50,79 @@
 <h2>For Counter-Strike: Source and Momentum Mod</h2>
 <div class="grid">
 <div class="app">
-  <b>Source Yaw<span class="ver" data-release="Soulmanyes/sourceyaw"></span></b>
-  Cycle <code>cl_yawspeed</code> with one key, and see which one is active from a sound and your crosshair colour.
-  Made for surf, with an optional strafe trainer. <small>Linux, Steam's native game</small>
-  <img class="shot" src="https://raw.githubusercontent.com/Soulmanyes/sourceyaw/main/docs/screenshot.png" alt="Source Yaw settings window">
-  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/sourceyaw/main/install.sh | sh</pre>
-  <a class="go" href="https://github.com/Soulmanyes/sourceyaw">View on GitHub</a>
+  <b>Movement Kit<span class="ver" data-release="Soulmanyes/movement-kit" data-tag-prefix="hub-v"></span></b>
+  Surf, bhop and movement tools in one hub: Source Yaw (cycle <code>cl_yawspeed</code> with one key), a strafe
+  trainer, per-tick strafe review in the browser, a gain converter, and HUD modules for Momentum such as JHUD
+  and a strafe speed histogram. Install only the tools you want from the hub's Modules page.
+  <small>Windows and Linux</small>
+  <img class="shot" src="https://raw.githubusercontent.com/Soulmanyes/movement-kit/main/sourceyaw/docs/screenshot.png" alt="Source Yaw's settings in the Movement Kit hub">
+  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/movement-kit/main/movekit/install-hub.sh | sh</pre>
+  <a class="go" href="https://github.com/Soulmanyes/movement-kit/releases?q=hub-v&amp;expanded=true">Download for Windows</a>
+  <a class="go" href="https://github.com/Soulmanyes/movement-kit">View on GitHub</a>
 </div>
 </div>
 <h2>Linux desktop tools</h2>
 <div class="grid">
 <div class="app">
-  <b>Hyprland Dashboard<span class="ver" data-updated="Soulmanyes/hypr-dashboard"></span></b>
-  Edit a Hyprland Lua config from a window: options, monitors, keybinds, window rules, animations and startup.
-  Backs up first and can roll back, but it rewrites your config, so keep your own copy. <small>Hyprland, needs git</small>
+  <b>Lacquer<span class="ver" data-release="Soulmanyes/lacquer"></span></b>
+  Change your Hyprland desktop's look in one place: window gaps, borders and blur, animations, colour palette,
+  wallpaper, GTK/Qt theme, cursor and fonts. Every change shows live first; keep it or revert it, and risky
+  ones revert by themselves. <small>Hyprland with a Lua config; Noctalia optional</small>
+  <img class="shot" src="https://raw.githubusercontent.com/Soulmanyes/lacquer/master/docs/screenshot.png" alt="Lacquer on its Palette page">
+  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/lacquer/master/install.sh | sh</pre>
+  <a class="go" href="https://github.com/Soulmanyes/lacquer">View on GitHub</a>
+</div>
+<div class="app">
+  <b>Hyprland Dashboard<span class="ver" data-release="Soulmanyes/hypr-dashboard"></span></b>
+  Edit a Hyprland Lua config from a window: options, monitors, workspaces, keybinds, window rules, animations,
+  gestures and startup, with a search across all of them. Backs up first and can roll back, but it rewrites
+  your config, so keep your own copy. <small>Hyprland with a Lua config</small>
   <img class="shot" src="https://raw.githubusercontent.com/Soulmanyes/hypr-dashboard/main/docs/screenshot.png" alt="Hyprland Dashboard on its Options page">
-  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/hypr-dashboard/main/install.sh | bash</pre>
+  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/hypr-dashboard/main/install.sh | sh</pre>
   <a class="go" href="https://github.com/Soulmanyes/hypr-dashboard">View on GitHub</a>
 </div>
 <div class="app">
-  <b>Kitty Styler<span class="ver" data-updated="Soulmanyes/kitty-styler"></span></b>
-  Pick the kitty terminal's theme, font and look with a live preview, plus an optional starship prompt and zsh setup.
-  <small>Linux with kitty</small>
-  <img class="shot" src="https://raw.githubusercontent.com/Soulmanyes/kitty-styler/main/docs/screenshot.png" alt="Kitty Styler with a styled prompt">
-  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/kitty-styler/main/install.sh | sh</pre>
-  <a class="go" href="https://github.com/Soulmanyes/kitty-styler">View on GitHub</a>
+  <b>Shellac<span class="ver" data-release="Soulmanyes/shellac"></span></b>
+  Pick your terminal's theme, fonts, cursor and window look with a live preview, plus a styled prompt and zsh
+  setup. Works with kitty, Alacritty, foot and Ghostty. Formerly Kitty Styler.
+  <small>Linux with kitty, Alacritty, foot or Ghostty</small>
+  <img class="shot" src="https://raw.githubusercontent.com/Soulmanyes/shellac/main/docs/screenshot.png" alt="Shellac with a styled starship prompt">
+  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/shellac/main/install.sh | sh</pre>
+  <a class="go" href="https://github.com/Soulmanyes/shellac">View on GitHub</a>
+</div>
+</div>
+<h2>Noctalia bar plugins</h2>
+<div class="grid">
+<div class="app">
+  <b>Playtime<span class="ver" data-release="Soulmanyes/playtime"></span></b>
+  Tracks how long you play games on Linux (Steam, Proton, Prism Launcher and your own rules), with day, week,
+  month, year and all-time charts per game in the bar's panel. History stays in a local file, optionally
+  mirrored to your own server. <small>Linux with systemd; Noctalia for the bar widget</small>
+  <img class="shot" src="https://raw.githubusercontent.com/Soulmanyes/playtime/main/screenshots/month.png" alt="Playtime's month view with a bar per day">
+  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/playtime/main/install.sh | sh</pre>
+  <a class="go" href="https://github.com/Soulmanyes/playtime">View on GitHub</a>
+</div>
+<div class="app">
+  <b>Workspace Restore<span class="ver" data-updated="Soulmanyes/workspace-restore"></span></b>
+  Give each Hyprland workspace a list of apps. One click, or logging in, puts every workspace back on its screen,
+  opens the apps that are closed and moves the others back. <small>Hyprland, Noctalia</small>
+  <img class="shot" src="https://raw.githubusercontent.com/Soulmanyes/workspace-restore/main/screenshots/panel.webp" alt="Workspace Restore's panel with a column per screen">
+  <a class="go" href="https://github.com/Soulmanyes/workspace-restore">View on GitHub</a>
+</div>
+<div class="app">
+  <b>Split Reset<span class="ver" data-updated="Soulmanyes/split-reset"></span></b>
+  A bar button for Hyprland's dwindle layout: one click puts every split on that monitor back to 50/50.
+  <small>Hyprland, Noctalia</small>
+  <img class="shot" src="https://raw.githubusercontent.com/Soulmanyes/split-reset/main/screenshots/after.png" alt="Four windows back to equal quarters">
+  <a class="go" href="https://github.com/Soulmanyes/split-reset">View on GitHub</a>
+</div>
+<div class="app">
+  <b>Minecraft Server Panel<span class="ver" data-release="Soulmanyes/minecraft-server-panel"></span></b>
+  Watch and run Minecraft servers on a Linux box over ssh: players online in the bar, and a card per server with
+  Start, Stop, backups, crash and lag alerts, auto-restart and adding new server packs.
+  <small>Noctalia; a Linux server box with ssh</small>
+  <pre>curl -fsSL https://raw.githubusercontent.com/Soulmanyes/minecraft-server-panel/main/install.sh | sh</pre>
+  <a class="go" href="https://github.com/Soulmanyes/minecraft-server-panel">View on GitHub</a>
 </div>
 </div>
 <script src="/apps/site.js"></script>
