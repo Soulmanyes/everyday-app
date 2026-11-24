@@ -32,6 +32,8 @@ header.site .gh:hover, header.site .gh:focus-visible { opacity: 1; text-decorati
    the spare width in proportion to --n, so cards in a row come out about the same width. A section
    alone in its row stretches its cards across it. */
 .groups { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 2rem; }
+/* .own-row: the section never shares its row (a lone card beside a big section leaves a hole under it) */
+.group.own-row { flex-basis: 100%; }
 .group { container-type: inline-size; --cols: min(var(--n), 3); flex: var(--n) 1 calc(var(--cols) * 26rem + (var(--cols) - 1) * 1rem); min-width: 0; }
 /* Cards: as many side by side as fit, each at least 26rem wide, but at most --max per row (default --n),
    so a section can ask for full rows (6 cards as 3 + 3, not 4 + 2). Cards in a row share one height. */
