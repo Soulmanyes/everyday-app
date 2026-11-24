@@ -32,9 +32,11 @@ header.site .gh:hover, header.site .gh:focus-visible { opacity: 1; text-decorati
    the spare width in proportion to --n, so cards in a row come out about the same width. A section
    alone in its row stretches its cards across it. */
 .groups { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 2rem; }
-.group { --cols: min(var(--n), 3); flex: var(--n) 1 calc(var(--cols) * 26rem + (var(--cols) - 1) * 1rem); min-width: 0; }
-/* Cards: as many side by side as fit, each at least 26rem wide */
-.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); align-items: start; }
+.group { container-type: inline-size; --cols: min(var(--n), 3); flex: var(--n) 1 calc(var(--cols) * 26rem + (var(--cols) - 1) * 1rem); min-width: 0; }
+/* Cards: as many side by side as fit, each at least 26rem wide, but at most --max per row (default --n),
+   so a section can ask for full rows (6 cards as 3 + 3, not 4 + 2). Cards in a row share one height. */
+.grid { --per-row: var(--max, var(--n, 99)); display: grid; gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, max(26rem, (100cqw - (var(--per-row) - 1) * 1rem) / var(--per-row))), 1fr)); }
 /* A lone card keeps a normal card width instead of stretching across a whole row */
 .grid:has(> :only-child) { grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr)); }
 .app { padding: 1rem 1.25rem; border: 1px solid var(--line); border-radius: 1rem;
