@@ -28,12 +28,15 @@ header.site .gh:hover, header.site .gh:focus-visible { opacity: 1; text-decorati
 .button:hover, .button:focus-visible, .go:hover, .go:focus-visible { filter: brightness(1.15); }
 
 /* Sections of the apps page. Short ones share a row when they fit: each section asks for room for its
-   --n cards (26rem each) and takes a share of the spare width in proportion to them, so cards in a row
-   come out about the same width. A section alone in its row stretches its cards across it. */
+   --n cards (26rem each, at most 3, so a big section still leaves room beside it) and takes a share of
+   the spare width in proportion to --n, so cards in a row come out about the same width. A section
+   alone in its row stretches its cards across it. */
 .groups { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 2rem; }
-.group { flex: var(--n) 1 calc(var(--n) * 26rem + (var(--n) - 1) * 1rem); min-width: 0; }
+.group { --cols: min(var(--n), 3); flex: var(--n) 1 calc(var(--cols) * 26rem + (var(--cols) - 1) * 1rem); min-width: 0; }
 /* Cards: as many side by side as fit, each at least 26rem wide */
 .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); align-items: start; }
+/* A lone card keeps a normal card width instead of stretching across a whole row */
+.grid:has(> :only-child) { grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr)); }
 .app { padding: 1rem 1.25rem; border: 1px solid var(--line); border-radius: 1rem;
        background: color-mix(in srgb, currentColor 6%, transparent); }
 .app > b { display: block; font-size: 1.15rem; color: var(--accent); }
